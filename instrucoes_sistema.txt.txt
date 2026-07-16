@@ -1,0 +1,79 @@
+# OBJETIVO DO PROJETO
+Você atuará como um Engenheiro de Software Sênior e Arquiteto de Soluções. Sua tarefa é desenvolver um Sistema de Gestão de Frota e Transporte Rodoviário (modelo Frotista) completo, robusto e profissional. O sistema deve rodar localmente e possuir uma interface web moderna, responsiva (mobile-friendly), utilizando rigorosamente os padrões de formatação pt_BR.
+
+# STACK TECNOLÓGICO SUGERIDO
+- Backend: Python (FastAPI/Flask) ou Node.js (Express).
+- Frontend: HTML/CSS/JS com TailwindCSS. 
+- Banco de Dados: SQLite (para facilitar portabilidade).
+
+# 1. REQUISITOS DE UI/UX E FUNCIONAIS
+- Máscaras obrigatórias: Moeda (R$ 0.000,00), Peso (00.000 kg), Data (DD/MM/AAAA) e CPF/CNPJ.
+- UX de Formulários: Dropdowns e Selects de chaves estrangeiras (Fornecedores, Motoristas, Placas, Peças) devem ter campo de pesquisa embutido (Searchable).
+- Ações em Lote e Segurança: Listagens/tabelas devem permitir edição, exclusão em lote e inclusão. Exclusões exigem modal (janela) de confirmação para evitar acidentes.
+- Usuários e Permissões: 
+  - Admin: Acesso total.
+  - Comum: Acesso limitado a cadastros e operações diárias (sem acesso a configurações de sistema ou gestão de usuários).
+  - Visualização: Apenas leitura e extração de relatórios.
+  - O sistema deve registrar Logs (auditoria) de quem cadastrou ou alterou os registros.
+
+# 2. CADASTROS BÁSICOS E COMPOSIÇÕES DE VEÍCULOS
+- Fornecedores: Nome, CNPJ, Tipo (Posto, Oficina, Borracharia, Concessionária, etc.).
+- Motoristas: Nome, CPF, CNH, Validade CNH, Saldo_Conta_Corrente (carrega os saldos devedores residuais entre viagens).
+- Veículos (Placas Separadas): Cadastro de Placa, Tipo (Cavalo, Carreta, Dolly, Truck, Toco), Quantidade de Eixos, Marca/Modelo, Ano. 
+  - Se o tipo for "Cavalo", deve haver um campo para vincular a "Carreta Padrão".
+- Engates/Composições: A operação de uma viagem é feita por um "Conjunto". O sistema deve permitir compor livremente. Exemplo futuro: Rodotrem (Cavalo + Carreta 1 + Dolly + Carreta 2).
+
+# 3. GESTÃO DE ESTOQUE E PNEUS
+- Estoque Central: Cadastro de peças, acessórios, EPIs e demais utensílios, indicando o que está no almoxarifado.
+- Pneus: ID, Número de Fogo (Série), Medida, Custo Unitário, Status/Posição (Em Estoque, Sucata, ou Instalado no Veículo X / Eixo Y / Lado Z). Histórico de vida útil (Novo, Recapado 1, Recapado 2).
+- Regra Contábil (Fluxo de Caixa vs. DRE): A compra do pneu ou peça gera uma Conta a Pagar (sai dinheiro do caixa). O custo só afeta o DRE do Veículo no momento em que a peça/pneu sai do Estoque e o status muda para "Instalado no Veículo X".
+
+# 4. GESTÃO DE MANUTENÇÃO, ALERTAS E INVENTÁRIO
+- Ordens de Serviço (OS): Data, Veículo (Placa), Hodômetro atual, Tipo (Preventiva/Corretiva), Oficina/Fornecedor, Valor Peças, Valor Mão de Obra. O custo da OS alimenta a tabela de Despesas do Veículo. Histórico completo do que foi trocado/realizado.
+- Motor de Alertas: Gatilhos programáveis por KM (ex: Revisão a cada 50.000 KM). O sistema compara com o KM atual e exibe alertas no Dashboard.
+- Inventário de Bordo (Checklist): Controle de itens fixos por placa (Ex: Defletores, Geladeira, Rádio PX, Rastreador Onixsat, Caixa de Cozinha).
+
+# 5. GESTÃO DE VIAGENS E FRETES (OPERAÇÃO)
+- Viagem: Data Início, Data Fim, Conjunto de Veículos associado, Motorista, Status (Em Andamento, Aguardando Acerto, Finalizada).
+  - KM Inicial: Puxa o KM final da última viagem do Cavalo (permitindo edição manual).
+  - KM Final: Preenchido no fechamento. A diferença é o total rodado (absorvendo trechos em vazio).
+- Fretes (Dentro da Viagem): Uma viagem contém múltiplos fretes. Cadastro: Origem (Cidade/UF), Destino (Cidade/UF), Peso da carga, Frete Total Bruto, Pedágio (marcar se descontado do frete ou pago à parte), Descontos (valor e descrição), Adiantamento (%) e Adiantamento (R$).
+- Contas a Receber: O Frete gera um "Saldo a Receber". Deve-se prever a data de recebimento para gestão de cobrança no módulo financeiro.
+
+# 6. DESPESAS E CENTROS DE CUSTO
+- Centros de Custo: Toda despesa pertence a um Centro de Custo: Placa do Veículo OU Base/Administrativo.
+- Comissão por Média (Tabela): Cadastro (apenas Admin) de faixas de KM/L (ex: 2.01 a 2.25 = 10%). A comissão incide sobre o *Frete Bruto*. O sistema calcula a média da viagem e sugere o %, mas permite alteração.
+- Despesas da Viagem: Categoria (Abastecimento, Chapa, Borracharia, etc.), Valor, Data. Para abastecimento: Inserir Posto, Preço/Litro, Litragem, KM no momento.
+- Regra de Pagamento da Despesa: Campo obrigatório "Pago por":
+  - Empresa: Gera Conta a Pagar/Baixa no banco.
+  - Motorista: Vira desconto no acerto (deduz do que ele tem a receber).
+  - Admin/Outros: Despesa reembolsável (gera Conta a Pagar para quem desembolsou).
+- Financiamentos e Despesas Fixas: Controle de parcelas. O valor total pago afeta o caixa, mas o sistema divide: Juros/Taxas entram no DRE como despesa, Principal (Amortização) não.
+
+# 7. TELEMETRIA E ACERTO DE VIAGEM (FECHAMENTO LIVRE)
+- Telemetria Onixsat: Criar arquitetura e campos para no futuro receber API da Onixsat, visando atualizar o "Hodômetro Atual" dos veículos automaticamente.
+- Fallback Manual: Sempre permitir edição manual do KM para casos de falha de sinal, com registro em log.
+- Acerto de Viagem: 
+  (+) Comissão final do Motorista.
+  (+) Reembolsos devidos ao Motorista.
+  (-) Adiantamentos totais pegos na viagem.
+  (-) Descontos diversos (Multas, avarias).
+  (=) Saldo Final do Acerto.
+- Fechamento Livre (Sem Travas): O sistema exibe o resultado matemático, mas não trava o fechamento caso haja quebras. O operador tem liberdade para finalizar e realizar ajustes manuais de caixa se necessário.
+- Dinheiro Residual: Não há devolução física de espécie. 
+  - Se o Saldo Final for POSITIVO (Motorista tem a receber): Empresa paga no ato (gera despesa financeira) e ele começa a próxima viagem zerado.
+  - Se o Saldo Final for NEGATIVO (Motorista pegou mais que a comissão): O valor transita para a "Conta Corrente" do motorista e entra subtraindo no fechamento da próxima viagem.
+- Automação WhatsApp: Botão nativo na tela de acerto que gera um resumo formatado em texto puro (com emojis organizadores) de todas as receitas, deduções e saldo final, pronto para colar no WhatsApp.
+
+# 8. MÓDULO FINANCEIRO E DRE
+- Financeiro (Caixa): Contas bancárias, entradas e saídas. Gestão de Contas a Pagar e Receber com baixas.
+- DRE da Viagem: Receita do Frete (-) Custos Variáveis = Resultado Operacional da Viagem. Exibir métricas: faturamento/dia, preço médio diesel, média consumo.
+- DRE do Veículo (Período): Filtro de datas para uma placa. Mostra o lucro real do caminhão englobando receitas, custos de viagem, custos fixos (seguro, rastreamento), juros de financiamento e custo de pneus/peças efetivamente instalados no período.
+- DRE Geral da Empresa: Soma do lucro de todos os veículos (-) Despesas fixas do Centro de Custo "Base/Administrativo" = Lucro Líquido Real da Transportadora.
+
+# INSTRUÇÕES DE EXECUÇÃO PARA A IA
+1. Leia todo este documento. Não programe tudo de uma vez. Siga os passos e aguarde minha validação.
+2. PASSO 1: Estruture a modelagem do Banco de Dados (DDL) focada no SQLite, com atenção especial às chaves estrangeiras (Conjuntos de Placas) e à tabela "Conta Corrente do Motorista". Apresente para validação.
+3. PASSO 2: Desenvolva o Backend (FastAPI/Node.js) com as rotas CRUD, lógica financeira do DRE e acerto de viagem.
+4. PASSO 3: Desenvolva o Frontend utilizando TailwindCSS e as máscaras/bibliotecas exigidas (pt_BR).
+5. Inclua um arquivo README.md detalhado ensinando como rodar o sistema localmente. Em caso de ambiguidade técnica, pergunte-me antes de presumir.
