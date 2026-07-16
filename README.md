@@ -2,6 +2,13 @@
 
 Sistema completo (modelo frotista) para gestão de frota, viagens, fretes, manutenção, pneus, estoque, financeiro e DRE, com controle de acesso granular por módulo.
 
+> **Continuando este projeto em outra máquina ou numa sessão nova do Claude Code?**
+> Depois de rodar o setup abaixo, leia o [`CONTEXTO_PROJETO.md`](CONTEXTO_PROJETO.md) —
+> ele traz as decisões de arquitetura e regras de negócio não-óbvias que não
+> aparecem só lendo o código. Tem também um prompt pronto em
+> [`PROMPT_NOVA_SESSAO.md`](PROMPT_NOVA_SESSAO.md) para colar como primeira
+> mensagem.
+
 ## Stack
 
 - **Backend:** Node.js + Express, banco **SQLite** (via módulo nativo `node:sqlite` do Node — sem dependências nativas para compilar).
