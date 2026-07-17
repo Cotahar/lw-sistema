@@ -2,12 +2,15 @@ import { get } from '../api.js';
 import { formatarMoeda, formatarDataBr } from '../masks.js';
 import { mostrarErro } from '../components/toast.js';
 
-function cartaoResumo(titulo, valor, cor = 'text-slate-900') {
+function cartaoResumo(titulo, valor, { cor = 'text-slate-900', rota } = {}) {
+  const classes = `card block p-4${rota ? ' hover:border-brand-300 hover:shadow-sm' : ''}`;
+  const tag = rota ? `a href="#${rota}"` : 'div';
+  const fechoTag = rota ? 'a' : 'div';
   return `
-    <div class="card p-4">
+    <${tag} class="${classes}">
       <p class="text-xs font-medium uppercase tracking-wide text-slate-500">${titulo}</p>
       <p class="mt-1 text-2xl font-bold ${cor}">${valor}</p>
-    </div>
+    </${fechoTag}>
   `;
 }
 
@@ -17,11 +20,10 @@ export async function render(container) {
     const resumo = await get('/dashboard/resumo');
     container.innerHTML = `
       <h1 class="mb-4 text-xl font-bold text-slate-900">Painel</h1>
-      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        ${cartaoResumo('Saldo em caixa', formatarMoeda(resumo.saldoTotalContas))}
-        ${cartaoResumo('Viagens em andamento', resumo.viagensEmAndamento)}
-        ${cartaoResumo('Aguardando acerto', resumo.viagensAguardandoAcerto)}
-        ${cartaoResumo('Alertas pendentes', resumo.alertasPendentes.length, resumo.alertasPendentes.length ? 'text-amber-600' : 'text-slate-900')}
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        ${cartaoResumo('Viagens em andamento', resumo.viagensEmAndamento, { rota: '/viagens' })}
+        ${cartaoResumo('Aguardando acerto', resumo.viagensAguardandoAcerto, { rota: '/acertos' })}
+        ${cartaoResumo('Alertas pendentes', resumo.alertasPendentes.length, { cor: resumo.alertasPendentes.length ? 'text-amber-600' : 'text-slate-900', rota: '/alertas' })}
       </div>
 
       <div class="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">

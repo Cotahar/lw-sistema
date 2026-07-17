@@ -96,6 +96,11 @@ CREATE TABLE logs_auditoria (
     acao            TEXT NOT NULL CHECK (acao IN ('INSERT', 'UPDATE', 'DELETE')),
     dados_antes     TEXT,   -- JSON serializado do registro antes da acao
     dados_depois    TEXT,   -- JSON serializado do registro depois da acao
+    -- Preenchidos quando um Admin reverte esta acao (ver backend/src/routes/admin.routes.js).
+    -- Uma acao so pode ser revertida uma vez, e so quando for a mais recente
+    -- registrada para aquele registro_id (evita sobrescrever mudancas mais novas).
+    revertido_em    TEXT,
+    revertido_por   INTEGER REFERENCES usuarios(id),
     criado_em       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX idx_logs_auditoria_tabela_registro ON logs_auditoria(tabela_afetada, registro_id);
@@ -152,6 +157,12 @@ CREATE TABLE veiculos (
     -- padrao ao montar um conjunto (nao impede compor com outra).
     carreta_padrao_id   INTEGER REFERENCES veiculos(id),
     hodometro_atual     INTEGER NOT NULL DEFAULT 0,  -- km; atualizado por hodometro_eventos
+    -- Cache da localizacao mais recente (atualizado por localizacao_eventos),
+    -- mesmo padrao do hodometro_atual. origem_id preenchido implicitamente:
+    -- ver localizacao_eventos para o historico completo e a origem (Onixsat/Manual).
+    localizacao_cidade      TEXT,
+    localizacao_uf          TEXT,
+    localizacao_atualizado_em TEXT,
     ativo               INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1)),
     criado_em           TEXT NOT NULL DEFAULT (datetime('now')),
     atualizado_em       TEXT,
@@ -234,6 +245,8 @@ CREATE INDEX idx_estoque_mov_veiculo ON estoque_movimentacoes(veiculo_destino_id
 CREATE TABLE pneus (
     id                  INTEGER PRIMARY KEY,
     numero_fogo         TEXT NOT NULL UNIQUE,   -- numero de serie/fogo
+    marca               TEXT,
+    modelo              TEXT,
     medida              TEXT NOT NULL,
     custo_unitario      INTEGER NOT NULL,       -- centavos (custo de aquisicao, historico/informativo)
     -- 'EmRecapagem' = fora da frota e fora do estoque, na recapadora.
@@ -361,6 +374,22 @@ CREATE TABLE veiculo_checklist (
     UNIQUE (veiculo_id, item_id)
 );
 
+-- Registro fotografico do veiculo no Recebimento (motorista pega o caminhao) e
+-- na Entrega (motorista devolve), para comparar o estado antes/depois. item_id
+-- e opcional: preenchido quando a foto documenta um item especifico do
+-- catalogo, em branco quando e uma foto geral do veiculo. Arquivos ficam em
+-- disco (backend/uploads/checklist/), so o nome do arquivo fica no banco.
+CREATE TABLE veiculo_checklist_fotos (
+    id              INTEGER PRIMARY KEY,
+    veiculo_id      INTEGER NOT NULL REFERENCES veiculos(id),
+    item_id         INTEGER REFERENCES checklist_itens_catalogo(id),
+    momento         TEXT NOT NULL CHECK (momento IN ('Recebimento', 'Entrega')),
+    arquivo         TEXT NOT NULL,
+    criado_por      INTEGER REFERENCES usuarios(id),
+    criado_em       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_checklist_fotos_veiculo ON veiculo_checklist_fotos(veiculo_id, momento);
+
 -- =====================================================================
 -- 5. VIAGENS E FRETES
 -- =====================================================================
@@ -398,23 +427,59 @@ CREATE TABLE hodometro_eventos (
 );
 CREATE INDEX idx_hodometro_eventos_veiculo ON hodometro_eventos(veiculo_id, data_hora);
 
+-- Leituras de localizacao: mesmo padrao do hodometro_eventos - eventos
+-- futuros da API Onixsat (que traria lat/lng) e lancamentos manuais
+-- (fallback, so cidade/UF) caem aqui. veiculos.localizacao_* e so a cache
+-- da leitura mais recente, para nao precisar de subquery a cada listagem.
+CREATE TABLE localizacao_eventos (
+    id              INTEGER PRIMARY KEY,
+    veiculo_id      INTEGER NOT NULL REFERENCES veiculos(id),
+    cidade          TEXT NOT NULL,
+    uf              TEXT NOT NULL,
+    latitude        REAL,
+    longitude       REAL,
+    origem          TEXT NOT NULL CHECK (origem IN ('Onixsat', 'Manual')),
+    usuario_id      INTEGER REFERENCES usuarios(id),  -- obrigatorio quando origem='Manual'
+    data_hora       TEXT NOT NULL DEFAULT (datetime('now')),
+    observacao      TEXT
+);
+CREATE INDEX idx_localizacao_eventos_veiculo ON localizacao_eventos(veiculo_id, data_hora);
+
 CREATE TABLE fretes (
     id                          INTEGER PRIMARY KEY,
     viagem_id                   INTEGER NOT NULL REFERENCES viagens(id) ON DELETE CASCADE,
+    -- Transportadora contratante deste frete (o frotista e sempre contratado
+    -- por uma). Reaproveita o cadastro de fornecedores (tipo 'Transportadora',
+    -- gerenciavel em Config > Tipos de Fornecedor) em vez de uma tabela nova.
+    transportadora_id           INTEGER REFERENCES fornecedores(id),
     origem_cidade               TEXT NOT NULL,
     origem_uf                   TEXT NOT NULL,
     destino_cidade              TEXT NOT NULL,
     destino_uf                  TEXT NOT NULL,
     peso_carga_kg               INTEGER,
     frete_bruto                 INTEGER NOT NULL,  -- centavos; valor base do recebivel (ver contas_receber_baixas)
-    -- Adiantamento tomado PELO MOTORISTA durante a viagem: independente das
-    -- baixas do recebivel do cliente (contas_receber_baixas). Usado apenas no
-    -- Acerto de Viagem, secao 7, como deducao da comissao.
-    adiantamento_percentual      REAL NOT NULL DEFAULT 0,
-    adiantamento_valor           INTEGER NOT NULL DEFAULT 0,  -- centavos
     criado_em                    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX idx_fretes_viagem ON fretes(viagem_id);
+
+-- Adiantamentos tomados PELO MOTORISTA a qualquer momento durante a viagem
+-- (nao mais atrelados a um frete especifico - podem ocorrer antes de existir
+-- qualquer frete cadastrado). Independente das baixas do recebivel do cliente
+-- (contas_receber_baixas). Usado no Acerto de Viagem como deducao da comissao.
+-- conta_bancaria_id e opcional, no mesmo padrao de contas_receber_baixas: se
+-- informado, sai dinheiro de verdade do caixa (movimentacoes_caixa); se em
+-- branco, e so um registro contabil (ex.: dinheiro vivo/malote da viagem).
+CREATE TABLE viagem_adiantamentos (
+    id                  INTEGER PRIMARY KEY,
+    viagem_id           INTEGER NOT NULL REFERENCES viagens(id) ON DELETE CASCADE,
+    valor               INTEGER NOT NULL,  -- centavos
+    data                TEXT NOT NULL DEFAULT (date('now')),
+    conta_bancaria_id   INTEGER REFERENCES contas_bancarias(id),
+    descricao           TEXT,
+    criado_por          INTEGER REFERENCES usuarios(id),
+    criado_em           TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_viagem_adiantamentos_viagem ON viagem_adiantamentos(viagem_id);
 
 -- =====================================================================
 -- 6. CENTROS DE CUSTO, COMISSAO E DESPESAS
@@ -598,7 +663,7 @@ CREATE TABLE movimentacoes_caixa (
     valor               INTEGER NOT NULL,  -- centavos
     data                TEXT NOT NULL DEFAULT (date('now')),
     descricao           TEXT,
-    origem_tipo         TEXT CHECK (origem_tipo IN ('ContaPagar', 'ContaReceber', 'Ajuste')),
+    origem_tipo         TEXT CHECK (origem_tipo IN ('ContaPagar', 'ContaReceber', 'ViagemAdiantamento', 'Ajuste')),
     origem_id           INTEGER,
     criado_por          INTEGER REFERENCES usuarios(id)
 );
@@ -647,3 +712,21 @@ CREATE TABLE motorista_conta_corrente_lancamentos (
     criado_por           INTEGER REFERENCES usuarios(id)
 );
 CREATE INDEX idx_motorista_cc_motorista ON motorista_conta_corrente_lancamentos(motorista_id, data);
+
+-- =====================================================================
+-- 9. OCORRENCIAS (HISTORICO LIVRE POR REGISTRO)
+-- =====================================================================
+
+-- Linha do tempo de anotacoes livres (problema, desentendimento, ajuste,
+-- justificativa...) anexada a qualquer registro de negocio, para consulta
+-- futura. Generica via entidade_tipo + entidade_id (mesmo padrao de
+-- contas_pagar.origem_tipo/origem_id) em vez de uma tabela por entidade.
+CREATE TABLE ocorrencias (
+    id              INTEGER PRIMARY KEY,
+    entidade_tipo   TEXT NOT NULL CHECK (entidade_tipo IN ('Viagem', 'Frete', 'DespesaViagem', 'ContaPagar', 'ContaReceber', 'AcertoViagem')),
+    entidade_id     INTEGER NOT NULL,
+    texto           TEXT NOT NULL,
+    criado_por      INTEGER REFERENCES usuarios(id),
+    criado_em       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_ocorrencias_entidade ON ocorrencias(entidade_tipo, entidade_id);

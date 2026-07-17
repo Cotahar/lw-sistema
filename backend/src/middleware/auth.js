@@ -96,4 +96,5 @@ module.exports = {
   requerAcessoModulo,
   calcularPermissoesEfetivas,
   nivelBaseDoPerfil,
+  nivelEfetivoNoModulo,
 };

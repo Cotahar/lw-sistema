@@ -1,7 +1,8 @@
 import { iniciarRouter, registrar, navegar } from './router.js';
 import { getToken, getUsuario, limparSessao, podeVisualizar } from './api.js';
 import { renderLogin } from './pages/login.js';
-import { GRUPOS_MENU, ROTA_PAINEL, ITEM_ADMIN, ITENS_CONFIGURACAO } from './modulosConfig.js';
+import { renderRelatorio } from './pages/acertoRelatorio.js';
+import { GRUPOS_MENU, ROTA_PAINEL, ITEM_ADMIN, ITEM_AUDITORIA, ITENS_CONFIGURACAO } from './modulosConfig.js';
 
 const appEl = document.getElementById('app');
 let shellConstruido = false;
@@ -14,37 +15,42 @@ function garantirLogado() {
   return true;
 }
 
+function rotaEstaAtiva(rota) {
+  const hash = window.location.hash.slice(1) || ROTA_PAINEL;
+  return hash === rota || hash.startsWith(`${rota}/`);
+}
+
+function renderGrupoAccordion(chave, titulo, itens) {
+  if (!itens.length) return '';
+  const aberto = itens.some((item) => rotaEstaAtiva(item.rota));
+  return `
+    <div data-grupo="${chave}">
+      <button type="button" data-grupo-toggle="${chave}" class="flex w-full items-center justify-between rounded-lg px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-slate-400 hover:text-slate-600">
+        <span>${titulo}</span>
+        <svg data-grupo-chevron class="h-3 w-3 shrink-0 transition-transform duration-150 ${aberto ? 'rotate-90' : ''}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+      <div data-grupo-body class="space-y-0.5 ${aberto ? '' : 'hidden'}">
+        ${itens.map((item) => `
+          <a href="#${item.rota}" data-rota="${item.rota}" class="menu-link block rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">
+            ${item.label}
+          </a>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
 function montarSidebarHtml() {
   const usuario = getUsuario();
   const grupos = GRUPOS_MENU.map((grupo) => {
     const itensVisiveis = grupo.itens.filter((item) => podeVisualizar(item.chave));
-    if (!itensVisiveis.length) return '';
-    return `
-      <div>
-        <p class="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">${grupo.titulo}</p>
-        ${itensVisiveis.map((item) => `
-          <a href="#${item.rota}" data-rota="${item.rota}" class="menu-link block rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">
-            ${item.label}
-          </a>
-        `).join('')}
-      </div>
-    `;
+    return renderGrupoAccordion(grupo.titulo.toLowerCase(), grupo.titulo, itensVisiveis);
   }).join('');
 
   const admin = usuario && usuario.perfil === 'Admin'
-    ? `
-      <div>
-        <p class="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">Administracao</p>
-        <a href="#${ITEM_ADMIN.rota}" data-rota="${ITEM_ADMIN.rota}" class="menu-link block rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">
-          ${ITEM_ADMIN.label}
-        </a>
-        ${ITENS_CONFIGURACAO.map((item) => `
-          <a href="#${item.rota}" data-rota="${item.rota}" class="menu-link block rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">
-            ${item.label}
-          </a>
-        `).join('')}
-      </div>
-    `
+    ? renderGrupoAccordion('administracao', 'Administracao', [ITEM_ADMIN, ITEM_AUDITORIA, ...ITENS_CONFIGURACAO])
     : '';
 
   return `
@@ -104,6 +110,15 @@ function wireShell() {
   overlay.addEventListener('click', fecharMenu);
   appEl.querySelectorAll('.menu-link').forEach((link) => link.addEventListener('click', fecharMenu));
 
+  appEl.querySelectorAll('[data-grupo-toggle]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const body = btn.parentElement.querySelector('[data-grupo-body]');
+      const chevron = btn.querySelector('[data-grupo-chevron]');
+      body.classList.toggle('hidden');
+      chevron.classList.toggle('rotate-90');
+    });
+  });
+
   appEl.querySelector('[data-sair]').addEventListener('click', () => {
     limparSessao();
     shellConstruido = false;
@@ -135,6 +150,13 @@ function garantirShell() {
 registrar('/login', () => {
   shellConstruido = false;
   renderLogin(appEl);
+});
+
+// Pagina de impressao do relatorio do acerto: fora do shell (sem menu/header)
+// de proposito, para a impressao/PDF sair limpa.
+registrar('/acertos/:viagemId/relatorio', (params, query) => {
+  shellConstruido = false;
+  renderRelatorio(appEl, params, query);
 });
 
 registrar('/', () => navegar(getToken() ? ROTA_PAINEL : '/login'));
@@ -173,6 +195,7 @@ registrarPagina('/despesas-fixas', () => import('./pages/financeiro/despesasFixa
 registrarPagina('/financiamentos', () => import('./pages/financeiro/financiamentos.js'), 'financiamentos');
 registrarPagina('/dre', () => import('./pages/dre.js'), 'dre');
 registrarPagina('/usuarios', () => import('./pages/usuarios.js'));
+registrarPagina('/auditoria', () => import('./pages/auditoria.js'));
 registrarPagina('/config/fornecedor-tipos', () => import('./pages/config/fornecedorTipos.js'));
 registrarPagina('/config/categorias-despesa', () => import('./pages/config/categoriasDespesa.js'));
 registrarPagina('/config/comissao-faixas', () => import('./pages/config/comissaoFaixas.js'));

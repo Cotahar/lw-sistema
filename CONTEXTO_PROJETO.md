@@ -81,10 +81,15 @@ Node/Express) e Passo 3 (frontend HTML/CSS/JS + TailwindCSS).
    ou não (é só abatimento contábil). O status vira `Recebido` quando
    `valor_recebido + valor_descontado >= valor`.
    - **Importante**: o "Adiantamento" dessa baixa (dinheiro que o cliente
-     já adiantou sobre o frete) é **independente** do campo
-     `fretes.adiantamento_valor` (dinheiro que o motorista pegou em
-     viagem, usado no Acerto). Decisão explícita do usuário — não ligar
-     os dois.
+     já adiantou sobre o frete) é **independente** da tabela
+     `viagem_adiantamentos` (dinheiro que o motorista pegou durante a
+     viagem, lançado a qualquer momento e usado no Acerto). Decisão
+     explícita do usuário — não ligar os dois. `viagem_adiantamentos`
+     substituiu os antigos campos `fretes.adiantamento_percentual`/
+     `adiantamento_valor` (o adiantamento não nascia necessariamente
+     junto com o cadastro do frete, por isso virou lançamento avulso por
+     viagem, com conta bancária opcional — mesmo padrão de
+     `contas_receber_baixas`).
 
 7. **Comissão do motorista**: por faixa de KM/L (`comissao_faixas`,
    cadastro Admin-only), incide sobre o **frete bruto** total da viagem. A

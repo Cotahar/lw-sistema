@@ -40,16 +40,16 @@ router.get('/:id/eventos', requerAcessoModulo('pneus', 'Visualizar'), asyncHandl
 // Aquisicao de pneu novo: entra no estoque e gera Conta a Pagar. O custo fica
 // "pendente" ate a primeira instalacao, quando finalmente bate no DRE do veiculo.
 router.post('/', requerAcessoModulo('pneus', 'Gerenciar'), asyncHandler(async (req, res) => {
-  const { numero_fogo, medida, custo_unitario, fornecedor_id, data_aquisicao } = req.body;
+  const { numero_fogo, marca, modelo, medida, custo_unitario, fornecedor_id, data_aquisicao } = req.body;
   if (!numero_fogo || !medida || custo_unitario === undefined) {
     throw new ApiError(400, 'Preencha numero_fogo, medida e custo_unitario.');
   }
 
   const pneu = withTransaction(db, () => {
     const info = db.prepare(`
-      INSERT INTO pneus (numero_fogo, medida, custo_unitario, status, custo_pendente_dre, fornecedor_id, data_aquisicao)
-      VALUES (?, ?, ?, 'Estoque', ?, ?, COALESCE(?, date('now')))
-    `).run(numero_fogo, medida, custo_unitario, custo_unitario, fornecedor_id || null, data_aquisicao || null);
+      INSERT INTO pneus (numero_fogo, marca, modelo, medida, custo_unitario, status, custo_pendente_dre, fornecedor_id, data_aquisicao)
+      VALUES (?, ?, ?, ?, ?, 'Estoque', ?, ?, COALESCE(?, date('now')))
+    `).run(numero_fogo, marca || null, modelo || null, medida, custo_unitario, custo_unitario, fornecedor_id || null, data_aquisicao || null);
     const novoPneu = db.prepare('SELECT * FROM pneus WHERE id = ?').get(info.lastInsertRowid);
 
     const evento = registrarEvento({
@@ -72,7 +72,7 @@ router.put('/:id', requerAcessoModulo('pneus', 'Gerenciar'), asyncHandler(async 
   const antes = db.prepare('SELECT * FROM pneus WHERE id = ?').get(req.params.id);
   if (!antes) throw new ApiError(404, 'Pneu nao encontrado.');
   // Apenas dados cadastrais. Status/posicao so mudam pelas acoes dedicadas abaixo.
-  const campos = ['numero_fogo', 'medida', 'fornecedor_id'];
+  const campos = ['numero_fogo', 'marca', 'modelo', 'medida', 'fornecedor_id'];
   const sets = [];
   const valores = [];
   for (const campo of campos) {
@@ -90,10 +90,12 @@ router.post('/:id/instalar', requerAcessoModulo('pneus', 'Gerenciar'), asyncHand
   if (!veiculo_id || !eixo || !lado) throw new ApiError(400, 'Preencha veiculo_id, eixo e lado.');
   if (!['Esquerdo', 'Direito'].includes(lado)) throw new ApiError(400, "Lado deve ser 'Esquerdo' ou 'Direito'.");
 
+  let pneuAntes;
   const pneu = withTransaction(db, () => {
     const atual = db.prepare('SELECT * FROM pneus WHERE id = ?').get(req.params.id);
     if (!atual) throw new ApiError(404, 'Pneu nao encontrado.');
     if (atual.status !== 'Estoque') throw new ApiError(400, `So e possivel instalar um pneu que esta em Estoque (status atual: ${atual.status}).`);
+    pneuAntes = atual;
 
     // custo_pendente_dre e o que ainda nao foi lancado no DRE de nenhum veiculo:
     // custo de aquisicao na 1a instalacao, ou so o valor da ultima recapagem
@@ -110,17 +112,19 @@ router.post('/:id/instalar', requerAcessoModulo('pneus', 'Gerenciar'), asyncHand
     return db.prepare('SELECT * FROM pneus WHERE id = ?').get(atual.id);
   });
 
-  registrarAuditoria({ usuarioId: req.usuario.id, tabela: 'pneus', registroId: pneu.id, acao: 'UPDATE', depois: pneu });
+  registrarAuditoria({ usuarioId: req.usuario.id, tabela: 'pneus', registroId: pneu.id, acao: 'UPDATE', antes: pneuAntes, depois: pneu });
   res.json(pneu);
 }));
 
 router.post('/:id/remover', requerAcessoModulo('pneus', 'Gerenciar'), asyncHandler(async (req, res) => {
   const { km_veiculo, observacao } = req.body;
 
+  let pneuAntes;
   const pneu = withTransaction(db, () => {
     const atual = db.prepare('SELECT * FROM pneus WHERE id = ?').get(req.params.id);
     if (!atual) throw new ApiError(404, 'Pneu nao encontrado.');
     if (atual.status !== 'Instalado') throw new ApiError(400, 'So e possivel remover um pneu que esta Instalado.');
+    pneuAntes = atual;
 
     registrarEvento({
       pneuId: atual.id, tipoEvento: 'Remocao', veiculoId: atual.veiculo_id, eixo: atual.eixo, lado: atual.lado,
@@ -131,7 +135,7 @@ router.post('/:id/remover', requerAcessoModulo('pneus', 'Gerenciar'), asyncHandl
     return db.prepare('SELECT * FROM pneus WHERE id = ?').get(atual.id);
   });
 
-  registrarAuditoria({ usuarioId: req.usuario.id, tabela: 'pneus', registroId: pneu.id, acao: 'UPDATE', depois: pneu });
+  registrarAuditoria({ usuarioId: req.usuario.id, tabela: 'pneus', registroId: pneu.id, acao: 'UPDATE', antes: pneuAntes, depois: pneu });
   res.json(pneu);
 }));
 
@@ -139,17 +143,19 @@ router.post('/:id/enviar-recapagem', requerAcessoModulo('pneus', 'Gerenciar'), a
   const { fornecedor_id, observacao } = req.body;
   if (!fornecedor_id) throw new ApiError(400, 'Informe a recapadora (fornecedor_id).');
 
+  let pneuAntes;
   const pneu = withTransaction(db, () => {
     const atual = db.prepare('SELECT * FROM pneus WHERE id = ?').get(req.params.id);
     if (!atual) throw new ApiError(404, 'Pneu nao encontrado.');
     if (atual.status !== 'Estoque') throw new ApiError(400, 'So e possivel enviar para recapagem um pneu que esta em Estoque.');
+    pneuAntes = atual;
 
     registrarEvento({ pneuId: atual.id, tipoEvento: 'EnvioRecapagem', fornecedorId: fornecedor_id, observacao, usuarioId: req.usuario.id });
     db.prepare(`UPDATE pneus SET status = 'EmRecapagem' WHERE id = ?`).run(atual.id);
     return db.prepare('SELECT * FROM pneus WHERE id = ?').get(atual.id);
   });
 
-  registrarAuditoria({ usuarioId: req.usuario.id, tabela: 'pneus', registroId: pneu.id, acao: 'UPDATE', depois: pneu });
+  registrarAuditoria({ usuarioId: req.usuario.id, tabela: 'pneus', registroId: pneu.id, acao: 'UPDATE', antes: pneuAntes, depois: pneu });
   res.json(pneu);
 }));
 
@@ -160,10 +166,12 @@ router.post('/:id/retornar-recapagem', requerAcessoModulo('pneus', 'Gerenciar'),
   const { custo, fornecedor_id, observacao } = req.body;
   if (custo === undefined || custo === null) throw new ApiError(400, 'Informe o custo da recapagem.');
 
+  let pneuAntes;
   const pneu = withTransaction(db, () => {
     const atual = db.prepare('SELECT * FROM pneus WHERE id = ?').get(req.params.id);
     if (!atual) throw new ApiError(404, 'Pneu nao encontrado.');
     if (atual.status !== 'EmRecapagem') throw new ApiError(400, 'Este pneu nao esta em recapagem.');
+    pneuAntes = atual;
 
     const evento = registrarEvento({
       pneuId: atual.id, tipoEvento: 'RetornoRecapagem', fornecedorId: fornecedor_id, custo, observacao, usuarioId: req.usuario.id,
@@ -182,17 +190,19 @@ router.post('/:id/retornar-recapagem', requerAcessoModulo('pneus', 'Gerenciar'),
     return db.prepare('SELECT * FROM pneus WHERE id = ?').get(atual.id);
   });
 
-  registrarAuditoria({ usuarioId: req.usuario.id, tabela: 'pneus', registroId: pneu.id, acao: 'UPDATE', depois: pneu });
+  registrarAuditoria({ usuarioId: req.usuario.id, tabela: 'pneus', registroId: pneu.id, acao: 'UPDATE', antes: pneuAntes, depois: pneu });
   res.json(pneu);
 }));
 
 router.post('/:id/sucatear', requerAcessoModulo('pneus', 'Gerenciar'), asyncHandler(async (req, res) => {
   const { observacao } = req.body;
 
+  let pneuAntes;
   const pneu = withTransaction(db, () => {
     const atual = db.prepare('SELECT * FROM pneus WHERE id = ?').get(req.params.id);
     if (!atual) throw new ApiError(404, 'Pneu nao encontrado.');
     if (!['Estoque', 'Instalado'].includes(atual.status)) throw new ApiError(400, `Nao e possivel sucatear um pneu com status ${atual.status}.`);
+    pneuAntes = atual;
 
     registrarEvento({
       pneuId: atual.id, tipoEvento: 'Sucateamento', veiculoId: atual.veiculo_id, eixo: atual.eixo, lado: atual.lado,
@@ -203,7 +213,7 @@ router.post('/:id/sucatear', requerAcessoModulo('pneus', 'Gerenciar'), asyncHand
     return db.prepare('SELECT * FROM pneus WHERE id = ?').get(atual.id);
   });
 
-  registrarAuditoria({ usuarioId: req.usuario.id, tabela: 'pneus', registroId: pneu.id, acao: 'UPDATE', depois: pneu });
+  registrarAuditoria({ usuarioId: req.usuario.id, tabela: 'pneus', registroId: pneu.id, acao: 'UPDATE', antes: pneuAntes, depois: pneu });
   res.json(pneu);
 }));
 

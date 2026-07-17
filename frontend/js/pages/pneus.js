@@ -28,7 +28,11 @@ async function abrirFormularioAquisicao(recarregar) {
   form.className = 'space-y-4';
   form.innerHTML = `
     <div>${campoTexto('Numero de fogo *', 'numero_fogo').replace('/>', 'required />')}</div>
-    <div>${campoTexto('Medida * (ex.: 295/80R22.5)', 'medida').replace('/>', 'required />')}</div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>${campoTexto('Marca', 'marca')}</div>
+      <div>${campoTexto('Modelo', 'modelo')}</div>
+    </div>
+    <div>${campoTexto('Medida *', 'medida').replace('/>', 'required value="295/80R22.5" />')}</div>
     <div><label class="label">Custo de aquisicao *</label><input type="text" name="custo_unitario" class="input" required /></div>
     <div><label class="label">Fornecedor</label><div data-fornecedor></div></div>
     <p class="hidden text-sm text-red-600" data-erro></p>
@@ -44,6 +48,8 @@ async function abrirFormularioAquisicao(recarregar) {
     try {
       await post('/pneus', {
         numero_fogo: form.numero_fogo.value,
+        marca: form.marca.value || null,
+        modelo: form.modelo.value || null,
         medida: form.medida.value,
         custo_unitario: getMoedaValue(form.custo_unitario),
         fornecedor_id: fornecedorSelect.getValue(),
@@ -214,6 +220,7 @@ export async function render(container) {
   const tabela = criarDataTable({
     colunas: [
       { chave: 'numero_fogo', titulo: 'Numero de Fogo' },
+      { chave: 'marca_modelo', titulo: 'Marca/Modelo', render: (r) => [r.marca, r.modelo].filter(Boolean).join(' ') || '-' },
       { chave: 'medida', titulo: 'Medida' },
       { chave: 'status', titulo: 'Status', render: (r) => `<span class="badge ${STATUS_BADGE[r.status]}">${r.status}</span>` },
       { chave: 'posicao', titulo: 'Posicao', render: (r) => (r.status === 'Instalado' ? `${r.placa_veiculo || '#' + r.veiculo_id} - eixo ${r.eixo} ${r.lado}` : '-') },

@@ -25,7 +25,6 @@ router.get('/resumo', requerAcessoModulo('dre', 'Visualizar'), asyncHandler(asyn
 
   const viagensEmAndamento = db.prepare("SELECT COUNT(*) AS total FROM viagens WHERE status = 'EmAndamento'").get().total;
   const viagensAguardandoAcerto = db.prepare("SELECT COUNT(*) AS total FROM viagens WHERE status = 'AguardandoAcerto'").get().total;
-  const saldoTotalContas = db.prepare('SELECT COALESCE(SUM(saldo_atual), 0) AS total FROM contas_bancarias WHERE ativo = 1').get().total;
 
   res.json({
     alertasPendentes,
@@ -33,7 +32,6 @@ router.get('/resumo', requerAcessoModulo('dre', 'Visualizar'), asyncHandler(asyn
     contasReceberVencidas,
     viagensEmAndamento,
     viagensAguardandoAcerto,
-    saldoTotalContas,
   });
 }));
 

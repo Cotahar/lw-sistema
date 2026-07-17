@@ -3,6 +3,7 @@ import { abrirModal } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
 import { formatarMoeda, attachMoedaMask, getMoedaValue, setMoedaValue, formatarDataBr } from '../masks.js';
 import { navegar } from '../router.js';
+import { criarOcorrencias } from '../components/ocorrencias.js';
 
 function linha(label, valor, destaque = false) {
   return `<div class="flex items-center justify-between py-1.5 ${destaque ? 'text-base font-semibold text-slate-900' : 'text-sm text-slate-600'}"><span>${label}</span><span>${valor}</span></div>`;
@@ -31,7 +32,11 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
         <p class="hidden text-sm text-red-600" data-erro></p>
       </div>
     </div>
+    <div class="card mt-6 p-4" data-ocorrencias></div>
   `;
+  container.querySelector('[data-ocorrencias]').appendChild(
+    criarOcorrencias({ entidadeTipo: 'AcertoViagem', entidadeId: viagem.id, podeGerenciar: gerenciar }).el,
+  );
 
   const resumoEl = container.querySelector('[data-resumo]');
   const form = container.querySelector('[data-form]');
@@ -116,10 +121,18 @@ async function renderFechado(container, viagem, motorista, acerto, gerenciar) {
         <h1 class="text-xl font-bold text-slate-900">Acerto - Viagem #${viagem.id}</h1>
         <p class="text-sm text-slate-500">${motorista.nome} · Fechado em ${formatarDataBr(acerto.data_acerto)}</p>
       </div>
-      <button type="button" class="btn-primary" data-whatsapp>Gerar resumo WhatsApp</button>
+      <div class="flex gap-2">
+        <button type="button" class="btn-secondary" data-relatorio="resumido">Relatorio resumido (PDF)</button>
+        <button type="button" class="btn-secondary" data-relatorio="detalhado">Relatorio detalhado (PDF)</button>
+        <button type="button" class="btn-primary" data-whatsapp>Gerar resumo WhatsApp</button>
+      </div>
     </div>
     <div class="card max-w-xl p-4" data-resumo></div>
+    <div class="card mt-6 max-w-xl p-4" data-ocorrencias></div>
   `;
+  container.querySelector('[data-ocorrencias]').appendChild(
+    criarOcorrencias({ entidadeTipo: 'AcertoViagem', entidadeId: viagem.id, podeGerenciar: gerenciar }).el,
+  );
   container.querySelector('[data-resumo]').innerHTML = [
     linha('Comissao aplicada', `${acerto.percentual_comissao_aplicado}% = ${formatarMoeda(acerto.valor_comissao)}`),
     linha('Reembolsos', formatarMoeda(acerto.valor_reembolsos)),
@@ -130,6 +143,12 @@ async function renderFechado(container, viagem, motorista, acerto, gerenciar) {
     linha('Saldo final', `${formatarMoeda(Math.abs(acerto.saldo_final))} ${acerto.saldo_final >= 0 ? '(a pagar)' : '(fica em conta corrente)'}`, true),
     acerto.observacoes_ajustes ? `<p class="mt-3 text-sm text-slate-500">Obs.: ${acerto.observacoes_ajustes}</p>` : '',
   ].join('');
+
+  container.querySelectorAll('[data-relatorio]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      window.open(`${window.location.pathname}#/acertos/${viagem.id}/relatorio?tipo=${btn.dataset.relatorio}`, '_blank');
+    });
+  });
 
   container.querySelector('[data-whatsapp]').addEventListener('click', async () => {
     try {

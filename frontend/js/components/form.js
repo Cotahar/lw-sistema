@@ -94,7 +94,7 @@ export function criarFormulario({ campos, valoresIniciais = {}, aoSalvar, textoS
       if (campo.tipo === 'moeda') valores[campo.nome] = getMoedaValue(el);
       else if (campo.tipo === 'peso') valores[campo.nome] = getPesoValue(el);
       else if (campo.tipo === 'data') valores[campo.nome] = el.value ? parseDataBrParaIso(el.value) : null;
-      else if (campo.tipo === 'cpf_cnpj') valores[campo.nome] = apenasDigitos(el.value);
+      else if (campo.tipo === 'cpf_cnpj') valores[campo.nome] = apenasDigitos(el.value) || null;
       else if (campo.tipo === 'numero') valores[campo.nome] = el.value === '' ? null : Number(el.value);
       else valores[campo.nome] = el.value;
 

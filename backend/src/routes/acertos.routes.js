@@ -33,7 +33,8 @@ function calcularAcerto(viagemId, overrides = {}) {
 
   const fretes = db.prepare('SELECT * FROM fretes WHERE viagem_id = ?').all(viagemId);
   const freteBrutoTotal = somar(fretes.map((f) => f.frete_bruto));
-  const adiantamentosTotal = somar(fretes.map((f) => f.adiantamento_valor));
+  const adiantamentos = db.prepare('SELECT * FROM viagem_adiantamentos WHERE viagem_id = ?').all(viagemId);
+  const adiantamentosTotal = somar(adiantamentos.map((a) => a.valor));
 
   const despesas = db.prepare('SELECT * FROM despesas_viagem WHERE viagem_id = ?').all(viagemId);
   const litrosTotal = somar(despesas.map((d) => d.litragem));

@@ -3,8 +3,12 @@ import { criarDataTable } from '../components/dataTable.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { abrirModal, fecharModal, confirmarAcao } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
-import { formatarMoeda, attachMoedaMask, getMoedaValue, attachPesoMask, getPesoValue, attachDataMask, parseDataBrParaIso, formatarDataBr } from '../masks.js';
+import { criarOcorrencias } from '../components/ocorrencias.js';
+import { formatarMoeda, attachMoedaMask, getMoedaValue, setMoedaValue, attachPesoMask, getPesoValue, attachDataMask, parseDataBrParaIso, formatarDataBr, formatarDataHoraBr } from '../masks.js';
 import { navegar } from '../router.js';
+import { abrirHodometro, abrirLocalizacao } from './veiculos.js';
+
+const TIPOS_TRATORA = ['Cavalo', 'Truck', 'Toco'];
 
 const STATUS_LABEL = { EmAndamento: 'Em Andamento', AguardandoAcerto: 'Aguardando Acerto', Finalizada: 'Finalizada' };
 const TIPOS_BAIXA = ['Adiantamento', 'Pedagio', 'Saldo', 'Desconto', 'Outro'];
@@ -31,6 +35,7 @@ function montarFormularioFrete(aoSalvar) {
   const form = document.createElement('form');
   form.className = 'space-y-4';
   form.innerHTML = `
+    <div><label class="label">Transportadora</label><div data-transportadora></div></div>
     <div class="grid grid-cols-2 gap-3">
       <div><label class="label">Origem (cidade) *</label><input type="text" name="origem_cidade" class="input" required /></div>
       <div><label class="label">UF *</label><input type="text" name="origem_uf" class="input" maxlength="2" required /></div>
@@ -43,17 +48,14 @@ function montarFormularioFrete(aoSalvar) {
       <div><label class="label">Peso da carga</label><input type="text" name="peso_carga_kg" class="input" /></div>
       <div><label class="label">Frete Bruto *</label><input type="text" name="frete_bruto" class="input" required /></div>
     </div>
-    <div class="grid grid-cols-2 gap-3">
-      <div><label class="label">Adiantamento ao motorista (%)</label><input type="number" name="adiantamento_percentual" class="input" step="0.01" /></div>
-      <div><label class="label">Adiantamento ao motorista (R$)</label><input type="text" name="adiantamento_valor" class="input" /></div>
-    </div>
     <div><label class="label">Data prevista de recebimento</label><input type="text" name="data_prevista_recebimento" class="input" /></div>
     <p class="hidden text-sm text-red-600" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Cadastrar frete</button></div>
   `;
+  const transportadoraSelect = criarSearchableSelect({ buscar: buscarFornecedores, placeholder: 'Pesquisar transportadora...' });
+  form.querySelector('[data-transportadora]').appendChild(transportadoraSelect.el);
   attachPesoMask(form.peso_carga_kg);
   attachMoedaMask(form.frete_bruto, 0);
-  attachMoedaMask(form.adiantamento_valor, 0);
   attachDataMask(form.data_prevista_recebimento);
   const erro = form.querySelector('[data-erro]');
   form.addEventListener('submit', async (ev) => {
@@ -61,14 +63,13 @@ function montarFormularioFrete(aoSalvar) {
     erro.classList.add('hidden');
     try {
       await aoSalvar({
+        transportadora_id: transportadoraSelect.getValue(),
         origem_cidade: form.origem_cidade.value,
         origem_uf: form.origem_uf.value.toUpperCase(),
         destino_cidade: form.destino_cidade.value,
         destino_uf: form.destino_uf.value.toUpperCase(),
         peso_carga_kg: getPesoValue(form.peso_carga_kg) || null,
         frete_bruto: getMoedaValue(form.frete_bruto),
-        adiantamento_percentual: form.adiantamento_percentual.value ? Number(form.adiantamento_percentual.value) : 0,
-        adiantamento_valor: getMoedaValue(form.adiantamento_valor),
         data_prevista_recebimento: form.data_prevista_recebimento.value ? parseDataBrParaIso(form.data_prevista_recebimento.value) : null,
       });
     } catch (err) {
@@ -92,6 +93,7 @@ async function abrirNovoFrete(viagemId, recarregar) {
 async function abrirBaixasFrete(frete, recarregar, gerenciar) {
   try {
     const { contaReceber, baixas } = await get(`/viagens/fretes/${frete.id}/baixas`);
+    const ocorrencias = criarOcorrencias({ entidadeTipo: 'Frete', entidadeId: frete.id, podeGerenciar: gerenciar });
 
     function montarConteudo(cr, listaBaixas) {
       const saldoEmAberto = cr.valor - cr.valor_recebido - cr.valor_descontado;
@@ -131,7 +133,9 @@ async function abrirBaixasFrete(frete, recarregar, gerenciar) {
             <div class="flex justify-end"><button type="submit" class="btn-primary btn-sm">Lancar baixa</button></div>
           </form>
         ` : ''}
+        <div data-ocorrencias class="mt-4 border-t border-slate-200 pt-4"></div>
       `;
+      wrapper.querySelector('[data-ocorrencias]').appendChild(ocorrencias.el);
       return wrapper;
     }
 
@@ -198,6 +202,7 @@ async function abrirBaixasFrete(frete, recarregar, gerenciar) {
 
 async function abrirNovaDespesa(viagemId, recarregar) {
   const categorias = await get('/categorias-despesa');
+  const categoriaAbastecimentoId = categorias.find((c) => c.nome.trim().toLowerCase() === 'abastecimento')?.id ?? null;
   const form = document.createElement('form');
   form.className = 'space-y-4';
   form.innerHTML = `
@@ -219,6 +224,14 @@ async function abrirNovaDespesa(viagemId, recarregar) {
         <div><label class="label">KM no abastecimento</label><input type="number" name="km_abastecimento" class="input" /></div>
       </div>
     </div>
+    <div class="hidden rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800" data-divergencia>
+      <p class="mb-2 font-medium" data-divergencia-msg></p>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="btn-secondary btn-sm" data-recalcular="valor">Recalcular valor total</button>
+        <button type="button" class="btn-secondary btn-sm" data-recalcular="preco">Recalcular preco/litro</button>
+        <button type="button" class="btn-secondary btn-sm" data-recalcular="litragem">Recalcular litragem</button>
+      </div>
+    </div>
     <p class="hidden text-sm text-red-600" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Cadastrar despesa</button></div>
   `;
@@ -234,15 +247,31 @@ async function abrirNovaDespesa(viagemId, recarregar) {
     form.querySelector('[data-bloco-usuario]').classList.toggle('hidden', form.pago_por.value !== 'AdminOutros');
   });
 
+  // Auto-calculo entre Valor / Preco-Litro / Litragem quando a categoria e
+  // Abastecimento: sempre que 2 dos 3 campos estiverem preenchidos e o
+  // terceiro estiver em branco/zerado, ele e calculado a partir dos outros
+  // dois. Nunca sobrescreve um campo que ja tenha valor (o usuario pode ter
+  // digitado algo diferente do que o calculo daria).
+  function categoriaEhAbastecimento() {
+    return categoriaAbastecimentoId !== null && Number(form.categoria_id.value) === categoriaAbastecimentoId;
+  }
+  function recalcularAutomatico() {
+    if (!categoriaEhAbastecimento()) return;
+    const valor = getMoedaValue(form.valor);
+    const preco = getMoedaValue(form.preco_litro);
+    const litragem = form.litragem.value ? Number(form.litragem.value) : 0;
+    if (valor > 0 && litragem > 0 && preco === 0) setMoedaValue(form.preco_litro, Math.round(valor / litragem));
+    else if (valor > 0 && preco > 0 && litragem === 0) form.litragem.value = (valor / preco).toFixed(2);
+    else if (preco > 0 && litragem > 0 && valor === 0) setMoedaValue(form.valor, Math.round(preco * litragem));
+  }
+  form.valor.addEventListener('input', recalcularAutomatico);
+  form.preco_litro.addEventListener('input', recalcularAutomatico);
+  form.litragem.addEventListener('input', recalcularAutomatico);
+
   const erro = form.querySelector('[data-erro]');
-  form.addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    erro.classList.add('hidden');
-    if (form.pago_por.value === 'AdminOutros' && !usuarioSelect.getValue()) {
-      erro.textContent = 'Selecione quem desembolsou.';
-      erro.classList.remove('hidden');
-      return;
-    }
+  const divergenciaEl = form.querySelector('[data-divergencia]');
+
+  async function enviarDespesa() {
     try {
       await post(`/viagens/${viagemId}/despesas`, {
         categoria_id: Number(form.categoria_id.value),
@@ -262,8 +291,107 @@ async function abrirNovaDespesa(viagemId, recarregar) {
       erro.textContent = err.message;
       erro.classList.remove('hidden');
     }
+  }
+
+  divergenciaEl.querySelectorAll('[data-recalcular]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const valor = getMoedaValue(form.valor);
+      const preco = getMoedaValue(form.preco_litro);
+      const litragem = form.litragem.value ? Number(form.litragem.value) : 0;
+      if (btn.dataset.recalcular === 'valor') setMoedaValue(form.valor, Math.round(preco * litragem));
+      else if (btn.dataset.recalcular === 'preco') setMoedaValue(form.preco_litro, litragem > 0 ? Math.round(valor / litragem) : 0);
+      else if (btn.dataset.recalcular === 'litragem') form.litragem.value = preco > 0 ? (valor / preco).toFixed(2) : '0';
+      divergenciaEl.classList.add('hidden');
+      await enviarDespesa();
+    });
+  });
+
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    erro.classList.add('hidden');
+    divergenciaEl.classList.add('hidden');
+    if (form.pago_por.value === 'AdminOutros' && !usuarioSelect.getValue()) {
+      erro.textContent = 'Selecione quem desembolsou.';
+      erro.classList.remove('hidden');
+      return;
+    }
+    // "Prova real": com os 3 valores de abastecimento preenchidos, confere se
+    // valor == preco_litro x litragem antes de gravar. Se nao bater, deixa o
+    // usuario escolher qual dos 3 recalcular em vez de adivinhar.
+    if (categoriaEhAbastecimento()) {
+      const valor = getMoedaValue(form.valor);
+      const preco = getMoedaValue(form.preco_litro);
+      const litragem = form.litragem.value ? Number(form.litragem.value) : 0;
+      if (valor > 0 && preco > 0 && litragem > 0) {
+        const esperado = Math.round(preco * litragem);
+        const diferenca = Math.abs(esperado - valor);
+        if (diferenca > 1) {
+          form.querySelector('[data-divergencia-msg]').textContent =
+            `Valor informado: ${formatarMoeda(valor)} • Preco/Litro x Litragem = ${formatarMoeda(esperado)}. Qual campo deseja recalcular?`;
+          divergenciaEl.classList.remove('hidden');
+          return;
+        }
+      }
+    }
+    await enviarDespesa();
   });
   abrirModal({ titulo: 'Nova despesa da viagem', conteudo: form, largura: 'max-w-lg' });
+}
+
+function abrirOcorrenciasDespesa(despesa, gerenciar) {
+  const ocorrencias = criarOcorrencias({ entidadeTipo: 'DespesaViagem', entidadeId: despesa.id, podeGerenciar: gerenciar });
+  abrirModal({ titulo: 'Ocorrencias da despesa', conteudo: ocorrencias.el, largura: 'max-w-lg' });
+}
+
+// ---- Adiantamentos ao motorista ----
+
+async function abrirNovoAdiantamento(viagemId, recarregar) {
+  const form = document.createElement('form');
+  form.className = 'space-y-4';
+  form.innerHTML = `
+    <div><label class="label">Valor *</label><input type="text" name="valor" class="input" required /></div>
+    <div><label class="label">Data</label><input type="text" name="data" class="input" /></div>
+    <div><label class="label">Conta bancaria (se saiu de verdade do caixa)</label><div data-conta-select></div></div>
+    <div><label class="label">Descricao</label><input type="text" name="descricao" class="input" /></div>
+    <p class="hidden text-sm text-red-600" data-erro></p>
+    <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Lancar adiantamento</button></div>
+  `;
+  attachMoedaMask(form.valor, 0);
+  attachDataMask(form.data);
+  const contaSelect = criarSearchableSelect({ buscar: buscarContasBancarias, placeholder: 'Pesquisar conta (opcional)...' });
+  form.querySelector('[data-conta-select]').appendChild(contaSelect.el);
+  const erro = form.querySelector('[data-erro]');
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    erro.classList.add('hidden');
+    try {
+      await post(`/viagens/${viagemId}/adiantamentos`, {
+        valor: getMoedaValue(form.valor),
+        data: form.data.value ? parseDataBrParaIso(form.data.value) : null,
+        conta_bancaria_id: contaSelect.getValue(),
+        descricao: form.descricao.value || null,
+      });
+      fecharModal();
+      mostrarToast('Adiantamento lancado.');
+      recarregar();
+    } catch (err) {
+      erro.textContent = err.message;
+      erro.classList.remove('hidden');
+    }
+  });
+  abrirModal({ titulo: 'Novo adiantamento ao motorista', conteudo: form });
+}
+
+async function removerAdiantamento(adiantamento, recarregar) {
+  const ok = await confirmarAcao({ titulo: 'Remover adiantamento', mensagem: `Remover este adiantamento de ${formatarMoeda(adiantamento.valor)}?`, textoConfirmar: 'Remover' });
+  if (!ok) return;
+  try {
+    await del(`/viagens/adiantamentos/${adiantamento.id}`);
+    mostrarToast('Adiantamento removido.');
+    recarregar();
+  } catch (err) {
+    mostrarErro(err);
+  }
 }
 
 // ---- Finalizar viagem ----
@@ -278,7 +406,9 @@ async function abrirFinalizar(viagem, recarregarPagina) {
     <p class="hidden text-sm text-red-600" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Finalizar viagem</button></div>
   `;
-  attachDataMask(form.data_fim);
+  const hoje = new Date();
+  const isoHoje = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
+  attachDataMask(form.data_fim, isoHoje);
   const erro = form.querySelector('[data-erro]');
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
@@ -306,13 +436,31 @@ export async function render(container, params) {
 
   async function recarregarPagina() {
     const viagem = await get(`/viagens/${viagemId}`);
-    const [conjunto, motorista, despesas, categorias] = await Promise.all([
+    const [conjunto, motorista, despesas, categorias, adiantamentos, fornecedores] = await Promise.all([
       get(`/conjuntos/${viagem.conjunto_id}`),
       get(`/motoristas/${viagem.motorista_id}`),
       get(`/viagens/${viagemId}/despesas`),
       get('/categorias-despesa'),
+      get(`/viagens/${viagemId}/adiantamentos`),
+      get('/fornecedores'),
     ]);
     const nomeCategoriasPorId = Object.fromEntries(categorias.map((c) => [c.id, c.nome]));
+    const nomeFornecedoresPorId = Object.fromEntries(fornecedores.map((f) => [f.id, f.nome]));
+
+    const tratora = conjunto.itens.find((i) => TIPOS_TRATORA.includes(i.tipo));
+    // hodometro_atual do veiculo so e uma leitura confiavel da posicao atual
+    // da viagem se ja foi atualizado (manual ou Onixsat) alem do km_inicial -
+    // um veiculo recem-cadastrado tem hodometro_atual=0, bem menor que o
+    // km_inicial de uma viagem com um caminhao ja rodado, o que daria km
+    // percorrido negativo sem essa checagem.
+    const kmAtualConfiavel = viagem.km_final ?? (tratora && tratora.hodometro_atual > viagem.km_inicial ? tratora.hodometro_atual : null);
+    const kmPercorrido = kmAtualConfiavel !== null ? kmAtualConfiavel - viagem.km_inicial : null;
+    const dataFimOuHoje = viagem.data_fim || new Date().toISOString().slice(0, 10);
+    const diasDecorridos = Math.max(1, Math.round((new Date(dataFimOuHoje) - new Date(viagem.data_inicio)) / 86400000));
+    const distanciaDiaria = kmPercorrido !== null ? kmPercorrido / diasDecorridos : null;
+    const totalFaturado = (viagem.fretes || []).reduce((t, f) => t + f.frete_bruto, 0);
+    const totalDespesas = despesas.reduce((t, d) => t + d.valor, 0);
+    const lucroAteAgora = totalFaturado - totalDespesas;
 
     container.innerHTML = `
       <div class="mb-4 flex items-center justify-between">
@@ -328,11 +476,63 @@ export async function render(container, params) {
         </div>
       </div>
 
+      <div class="card mb-6 grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 lg:grid-cols-6">
+        <div>
+          <p class="text-xs font-medium uppercase text-slate-500">Localizacao atual</p>
+          ${tratora && tratora.localizacao_cidade ? `
+            <details>
+              <summary class="inline cursor-pointer text-sm font-semibold text-slate-900">${tratora.localizacao_cidade}/${tratora.localizacao_uf}</summary>
+              <div class="mt-1 text-xs text-slate-500">
+                Atualizado em ${formatarDataHoraBr(tratora.localizacao_atualizado_em)}<br />
+                <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${tratora.localizacao_cidade}, ${tratora.localizacao_uf}`)}" target="_blank" rel="noopener" class="text-brand-600 hover:underline">Google Maps</a>
+              </div>
+            </details>
+          ` : '<p class="text-sm text-slate-400">Nao informada</p>'}
+          ${gerenciar && tratora ? '<button type="button" class="mt-1 text-xs text-brand-600 hover:underline" data-atualizar-localizacao>Atualizar</button>' : ''}
+        </div>
+        <div>
+          <p class="text-xs font-medium uppercase text-slate-500">Hodometro atual</p>
+          <p class="text-sm font-semibold text-slate-900">${tratora ? `${tratora.hodometro_atual.toLocaleString('pt-BR')} km` : '-'}</p>
+          ${gerenciar && tratora ? '<button type="button" class="mt-1 text-xs text-brand-600 hover:underline" data-atualizar-hodometro>Atualizar</button>' : ''}
+        </div>
+        <div>
+          <p class="text-xs font-medium uppercase text-slate-500">Distancia diaria</p>
+          <p class="text-sm font-semibold text-slate-900">${distanciaDiaria !== null ? `${distanciaDiaria.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} km/dia` : '-'}</p>
+        </div>
+        <div>
+          <p class="text-xs font-medium uppercase text-slate-500">Faturado ate agora</p>
+          <p class="text-sm font-semibold text-slate-900">${formatarMoeda(totalFaturado)}</p>
+        </div>
+        <div>
+          <p class="text-xs font-medium uppercase text-slate-500">Despesas ate agora</p>
+          <p class="text-sm font-semibold text-slate-900">${formatarMoeda(totalDespesas)}</p>
+        </div>
+        <div>
+          <p class="text-xs font-medium uppercase text-slate-500">Lucro ate agora</p>
+          <p class="text-sm font-semibold ${lucroAteAgora >= 0 ? 'text-emerald-600' : 'text-red-600'}">${formatarMoeda(lucroAteAgora)}</p>
+        </div>
+      </div>
+
       <div class="mb-3 flex items-center justify-between">
         <h2 class="font-semibold text-slate-900">Fretes</h2>
         ${gerenciar && viagem.status !== 'Finalizada' ? '<button type="button" class="btn-primary btn-sm" data-novo-frete>+ Frete</button>' : ''}
       </div>
       <div data-tabela-fretes class="mb-6"></div>
+
+      <div class="mb-3 flex items-center justify-between">
+        <h2 class="font-semibold text-slate-900">Adiantamentos ao Motorista</h2>
+        ${gerenciar && viagem.status !== 'Finalizada' ? '<button type="button" class="btn-primary btn-sm" data-novo-adiantamento>+ Adiantamento</button>' : ''}
+      </div>
+      <div class="card mb-6 overflow-x-auto p-0">
+        <table class="w-full min-w-max border-collapse">
+          <thead class="border-b border-slate-200 bg-slate-50"><tr>
+            <th class="table-th">Data</th><th class="table-th">Valor</th><th class="table-th">Descricao</th><th class="table-th"></th>
+          </tr></thead>
+          <tbody>
+            ${adiantamentos.map((a) => `<tr class="border-b border-slate-100"><td class="table-td">${formatarDataBr(a.data)}</td><td class="table-td">${formatarMoeda(a.valor)}${a.conta_bancaria_id ? '' : ' (sem caixa)'}</td><td class="table-td">${a.descricao || '-'}</td><td class="table-td text-right">${gerenciar && viagem.status !== 'Finalizada' ? `<button type="button" class="text-xs text-red-600 hover:underline" data-remover-adiantamento="${a.id}">Remover</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="4" class="table-td py-6 text-center text-slate-400">Nenhum adiantamento lancado.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
 
       <div class="mb-3 flex items-center justify-between">
         <h2 class="font-semibold text-slate-900">Despesas</h2>
@@ -341,13 +541,15 @@ export async function render(container, params) {
       <div class="card overflow-x-auto p-0">
         <table class="w-full min-w-max border-collapse">
           <thead class="border-b border-slate-200 bg-slate-50"><tr>
-            <th class="table-th">Data</th><th class="table-th">Categoria</th><th class="table-th">Valor</th><th class="table-th">Pago por</th>
+            <th class="table-th">Data</th><th class="table-th">Categoria</th><th class="table-th">Valor</th><th class="table-th">Pago por</th><th class="table-th"></th>
           </tr></thead>
           <tbody>
-            ${despesas.map((d) => `<tr class="border-b border-slate-100"><td class="table-td">${formatarDataBr(d.data)}</td><td class="table-td">${nomeCategoriasPorId[d.categoria_id] || d.categoria_id}</td><td class="table-td">${formatarMoeda(d.valor)}</td><td class="table-td">${d.pago_por}</td></tr>`).join('') || '<tr><td colspan="4" class="table-td py-6 text-center text-slate-400">Nenhuma despesa lancada.</td></tr>'}
+            ${despesas.map((d) => `<tr class="border-b border-slate-100" data-despesa-id="${d.id}"><td class="table-td">${formatarDataBr(d.data)}</td><td class="table-td">${nomeCategoriasPorId[d.categoria_id] || d.categoria_id}</td><td class="table-td">${formatarMoeda(d.valor)}</td><td class="table-td">${d.pago_por}</td><td class="table-td text-right"><button type="button" class="text-xs text-brand-600 hover:underline" data-ocorrencias-despesa="${d.id}">Ocorrencias</button></td></tr>`).join('') || '<tr><td colspan="5" class="table-td py-6 text-center text-slate-400">Nenhuma despesa lancada.</td></tr>'}
           </tbody>
         </table>
       </div>
+
+      <div class="card mt-6 p-4" data-ocorrencias-viagem></div>
     `;
 
     container.querySelector('[data-voltar]').addEventListener('click', () => navegar('/viagens'));
@@ -356,18 +558,38 @@ export async function render(container, params) {
     }
     const btnFinalizar = container.querySelector('[data-finalizar]');
     if (btnFinalizar) btnFinalizar.addEventListener('click', () => abrirFinalizar(viagem, recarregarPagina));
+    if (tratora) {
+      const veiculoTratora = { id: tratora.veiculo_id, placa: tratora.placa, hodometro_atual: tratora.hodometro_atual, localizacao_cidade: tratora.localizacao_cidade, localizacao_uf: tratora.localizacao_uf };
+      const btnAtualizarLocalizacao = container.querySelector('[data-atualizar-localizacao]');
+      if (btnAtualizarLocalizacao) btnAtualizarLocalizacao.addEventListener('click', () => abrirLocalizacao(veiculoTratora, recarregarPagina));
+      const btnAtualizarHodometro = container.querySelector('[data-atualizar-hodometro]');
+      if (btnAtualizarHodometro) btnAtualizarHodometro.addEventListener('click', () => abrirHodometro(veiculoTratora, recarregarPagina));
+    }
     const btnNovoFrete = container.querySelector('[data-novo-frete]');
     if (btnNovoFrete) btnNovoFrete.addEventListener('click', () => abrirNovoFrete(viagemId, recarregarPagina));
+    const btnNovoAdiantamento = container.querySelector('[data-novo-adiantamento]');
+    if (btnNovoAdiantamento) btnNovoAdiantamento.addEventListener('click', () => abrirNovoAdiantamento(viagemId, recarregarPagina));
+    container.querySelectorAll('[data-remover-adiantamento]').forEach((btn) => {
+      const adiantamento = adiantamentos.find((a) => String(a.id) === btn.dataset.removerAdiantamento);
+      btn.addEventListener('click', () => removerAdiantamento(adiantamento, recarregarPagina));
+    });
     const btnNovaDespesa = container.querySelector('[data-nova-despesa]');
     if (btnNovaDespesa) btnNovaDespesa.addEventListener('click', () => abrirNovaDespesa(viagemId, recarregarPagina));
+    container.querySelectorAll('[data-ocorrencias-despesa]').forEach((btn) => {
+      const despesa = despesas.find((d) => String(d.id) === btn.dataset.ocorrenciasDespesa);
+      btn.addEventListener('click', () => abrirOcorrenciasDespesa(despesa, gerenciar));
+    });
+    container.querySelector('[data-ocorrencias-viagem]').appendChild(
+      criarOcorrencias({ entidadeTipo: 'Viagem', entidadeId: Number(viagemId), podeGerenciar: gerenciar }).el,
+    );
 
     const fretes = await get(`/viagens/${viagemId}/fretes`);
     const tabelaFretes = criarDataTable({
       colunas: [
+        { chave: 'transportadora', titulo: 'Transportadora', render: (r) => (r.transportadora_id ? nomeFornecedoresPorId[r.transportadora_id] || `#${r.transportadora_id}` : '-') },
         { chave: 'rota', titulo: 'Rota', render: (r) => `${r.origem_cidade}/${r.origem_uf} &rarr; ${r.destino_cidade}/${r.destino_uf}` },
         { chave: 'peso_carga_kg', titulo: 'Peso', render: (r) => (r.peso_carga_kg ? `${r.peso_carga_kg.toLocaleString('pt-BR')} kg` : '-') },
         { chave: 'frete_bruto', titulo: 'Frete Bruto', render: (r) => formatarMoeda(r.frete_bruto) },
-        { chave: 'adiantamento_valor', titulo: 'Adiantamento Motorista', render: (r) => formatarMoeda(r.adiantamento_valor) },
       ],
       buscarDados: () => Promise.resolve(fretes),
       acoesExtras: () => [{ label: 'Recebivel/Baixas', onClick: (f) => abrirBaixasFrete(f, recarregarPagina, gerenciar) }],

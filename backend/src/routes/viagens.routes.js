@@ -10,21 +10,35 @@ const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/c
 
 const router = express.Router();
 
-function calcularValorReceber(frete) {
-  const pedagio = frete.pedagio_descontado_do_frete ? frete.pedagio_valor : 0;
-  return frete.frete_bruto - frete.desconto_valor - pedagio;
-}
-
-// GET /viagens?status=&motorista_id=&conjunto_id=
+// GET /viagens?status=&motorista_id=&conjunto_id=&placa=&data_de=&data_ate=
 router.get('/', requerAcessoModulo('viagens', 'Visualizar'), asyncHandler(async (req, res) => {
-  const { status, motorista_id, conjunto_id } = req.query;
+  const { status, motorista_id, conjunto_id, placa, data_de, data_ate } = req.query;
   const condicoes = [];
   const params = [];
   if (status) { condicoes.push('status = ?'); params.push(status); }
   if (motorista_id) { condicoes.push('motorista_id = ?'); params.push(motorista_id); }
   if (conjunto_id) { condicoes.push('conjunto_id = ?'); params.push(conjunto_id); }
+  if (placa) {
+    condicoes.push(`conjunto_id IN (
+      SELECT ci.conjunto_id FROM conjunto_itens ci JOIN veiculos v ON v.id = ci.veiculo_id WHERE v.placa LIKE ?
+    )`);
+    params.push(`%${placa}%`);
+  }
+  if (data_de) { condicoes.push('data_inicio >= ?'); params.push(data_de); }
+  if (data_ate) { condicoes.push('data_inicio <= ?'); params.push(data_ate); }
   const where = condicoes.length ? `WHERE ${condicoes.join(' AND ')}` : '';
-  res.json(db.prepare(`SELECT * FROM viagens ${where} ORDER BY data_inicio DESC, id DESC`).all(...params));
+  const linhas = db.prepare(`SELECT * FROM viagens ${where} ORDER BY data_inicio DESC, id DESC`).all(...params);
+  const comLocalizacao = linhas.map((v) => {
+    const tratora = buscarUnidadeTratora(v.conjunto_id);
+    return {
+      ...v,
+      placa_tratora: tratora ? tratora.placa : null,
+      localizacao_cidade: tratora ? tratora.localizacao_cidade : null,
+      localizacao_uf: tratora ? tratora.localizacao_uf : null,
+      localizacao_atualizado_em: tratora ? tratora.localizacao_atualizado_em : null,
+    };
+  });
+  res.json(comLocalizacao);
 }));
 
 router.get('/:id', requerAcessoModulo('viagens', 'Visualizar'), asyncHandler(async (req, res) => {
@@ -99,11 +113,13 @@ router.post('/:id/finalizar', requerAcessoModulo('viagens', 'Gerenciar'), asyncH
   const { km_final, data_fim } = req.body;
   if (km_final === undefined || km_final === null) throw new ApiError(400, 'Informe o km_final.');
 
+  let viagemAntes;
   const viagem = withTransaction(db, () => {
     const atual = db.prepare('SELECT * FROM viagens WHERE id = ?').get(req.params.id);
     if (!atual) throw new ApiError(404, 'Viagem nao encontrada.');
     if (atual.status !== 'EmAndamento') throw new ApiError(400, `Viagem no status ${atual.status} nao pode ser finalizada.`);
     if (km_final < atual.km_inicial) throw new ApiError(400, `km_final (${km_final}) nao pode ser menor que km_inicial (${atual.km_inicial}).`);
+    viagemAntes = atual;
 
     db.prepare(`
       UPDATE viagens SET km_final = ?, data_fim = COALESCE(?, date('now')), status = 'AguardandoAcerto' WHERE id = ?
@@ -123,7 +139,7 @@ router.post('/:id/finalizar', requerAcessoModulo('viagens', 'Gerenciar'), asyncH
 
   const tratora = buscarUnidadeTratora(viagem.conjunto_id);
   const alertasDisparados = tratora ? verificarAlertasDoVeiculo(tratora.id) : [];
-  registrarAuditoria({ usuarioId: req.usuario.id, tabela: 'viagens', registroId: viagem.id, acao: 'UPDATE', depois: viagem });
+  registrarAuditoria({ usuarioId: req.usuario.id, tabela: 'viagens', registroId: viagem.id, acao: 'UPDATE', antes: viagemAntes, depois: viagem });
   res.json({ ...viagem, alertasDisparados });
 }));
 
@@ -156,8 +172,8 @@ router.post('/:id/fretes', requerAcessoModulo('viagens', 'Gerenciar'), asyncHand
   if (viagem.status === 'Finalizada') throw new ApiError(400, 'Viagem ja finalizada nao aceita novos fretes.');
 
   const {
-    origem_cidade, origem_uf, destino_cidade, destino_uf, peso_carga_kg, frete_bruto,
-    adiantamento_percentual, adiantamento_valor, data_prevista_recebimento,
+    transportadora_id, origem_cidade, origem_uf, destino_cidade, destino_uf, peso_carga_kg, frete_bruto,
+    data_prevista_recebimento,
   } = req.body;
   if (!origem_cidade || !origem_uf || !destino_cidade || !destino_uf || frete_bruto === undefined) {
     throw new ApiError(400, 'Preencha origem, destino e frete_bruto.');
@@ -168,11 +184,10 @@ router.post('/:id/fretes', requerAcessoModulo('viagens', 'Gerenciar'), asyncHand
 
   const frete = withTransaction(db, () => {
     const info = db.prepare(`
-      INSERT INTO fretes (viagem_id, origem_cidade, origem_uf, destino_cidade, destino_uf, peso_carga_kg, frete_bruto, adiantamento_percentual, adiantamento_valor)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO fretes (viagem_id, transportadora_id, origem_cidade, origem_uf, destino_cidade, destino_uf, peso_carga_kg, frete_bruto)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      req.params.id, origem_cidade, origem_uf, destino_cidade, destino_uf, peso_carga_kg || null, frete_bruto,
-      adiantamento_percentual || 0, adiantamento_valor || 0
+      req.params.id, transportadora_id || null, origem_cidade, origem_uf, destino_cidade, destino_uf, peso_carga_kg || null, frete_bruto,
     );
     const novoFrete = db.prepare('SELECT * FROM fretes WHERE id = ?').get(info.lastInsertRowid);
 
@@ -195,7 +210,7 @@ router.put('/fretes/:freteId', requerAcessoModulo('viagens', 'Gerenciar'), async
   const antes = db.prepare('SELECT * FROM fretes WHERE id = ?').get(req.params.freteId);
   if (!antes) throw new ApiError(404, 'Frete nao encontrado.');
 
-  const campos = ['origem_cidade', 'origem_uf', 'destino_cidade', 'destino_uf', 'peso_carga_kg', 'frete_bruto', 'adiantamento_percentual', 'adiantamento_valor'];
+  const campos = ['transportadora_id', 'origem_cidade', 'origem_uf', 'destino_cidade', 'destino_uf', 'peso_carga_kg', 'frete_bruto'];
   const sets = [];
   const valores = [];
   for (const campo of campos) {
@@ -323,6 +338,68 @@ router.delete('/fretes/baixas/:baixaId', requerAcessoModulo('viagens', 'Gerencia
   });
 
   registrarAuditoria({ usuarioId: req.usuario.id, tabela: 'contas_receber_baixas', registroId: resultado.id, acao: 'DELETE', antes: resultado });
+  res.status(204).send();
+}));
+
+// ---- Adiantamentos ao motorista (durante a viagem) ----
+
+router.get('/:id/adiantamentos', requerAcessoModulo('viagens', 'Visualizar'), asyncHandler(async (req, res) => {
+  res.json(db.prepare('SELECT * FROM viagem_adiantamentos WHERE viagem_id = ? ORDER BY data DESC, id DESC').all(req.params.id));
+}));
+
+router.post('/:id/adiantamentos', requerAcessoModulo('viagens', 'Gerenciar'), asyncHandler(async (req, res) => {
+  const { valor, data, conta_bancaria_id, descricao } = req.body;
+  if (!valor || valor <= 0) throw new ApiError(400, 'Informe um valor de adiantamento maior que zero.');
+
+  const resultado = withTransaction(db, () => {
+    const viagem = db.prepare('SELECT * FROM viagens WHERE id = ?').get(req.params.id);
+    if (!viagem) throw new ApiError(404, 'Viagem nao encontrada.');
+    if (viagem.status === 'Finalizada') throw new ApiError(400, 'Viagem ja finalizada nao aceita novos adiantamentos.');
+
+    if (conta_bancaria_id) {
+      const contaBancaria = db.prepare('SELECT * FROM contas_bancarias WHERE id = ?').get(conta_bancaria_id);
+      if (!contaBancaria) throw new ApiError(400, 'Conta bancaria nao encontrada.');
+    }
+
+    const dataAdiantamento = dataOuHoje(data);
+    const info = db.prepare(`
+      INSERT INTO viagem_adiantamentos (viagem_id, valor, data, conta_bancaria_id, descricao, criado_por)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(req.params.id, valor, dataAdiantamento, conta_bancaria_id || null, descricao || null, req.usuario.id);
+    const adiantamento = db.prepare('SELECT * FROM viagem_adiantamentos WHERE id = ?').get(info.lastInsertRowid);
+
+    // Conta bancaria opcional: se informada, e dinheiro de verdade saindo do
+    // caixa para o motorista (mesmo padrao de contas_receber_baixas). Se em
+    // branco, e so um registro contabil (ex.: dinheiro vivo entregue em mao).
+    if (conta_bancaria_id) {
+      db.prepare(`
+        INSERT INTO movimentacoes_caixa (conta_bancaria_id, tipo, valor, data, descricao, origem_tipo, origem_id, criado_por)
+        VALUES (?, 'Saida', ?, ?, ?, 'ViagemAdiantamento', ?, ?)
+      `).run(conta_bancaria_id, valor, dataAdiantamento, descricao || `Adiantamento ao motorista - viagem #${req.params.id}`, adiantamento.id, req.usuario.id);
+      db.prepare('UPDATE contas_bancarias SET saldo_atual = saldo_atual - ? WHERE id = ?').run(valor, conta_bancaria_id);
+    }
+
+    return adiantamento;
+  });
+
+  registrarAuditoria({ usuarioId: req.usuario.id, tabela: 'viagem_adiantamentos', registroId: resultado.id, acao: 'INSERT', depois: resultado });
+  res.status(201).json(resultado);
+}));
+
+router.delete('/adiantamentos/:adiantamentoId', requerAcessoModulo('viagens', 'Gerenciar'), asyncHandler(async (req, res) => {
+  const resultado = withTransaction(db, () => {
+    const adiantamento = db.prepare('SELECT * FROM viagem_adiantamentos WHERE id = ?').get(req.params.adiantamentoId);
+    if (!adiantamento) throw new ApiError(404, 'Adiantamento nao encontrado.');
+
+    if (adiantamento.conta_bancaria_id) {
+      db.prepare("DELETE FROM movimentacoes_caixa WHERE origem_tipo = 'ViagemAdiantamento' AND origem_id = ?").run(adiantamento.id);
+      db.prepare('UPDATE contas_bancarias SET saldo_atual = saldo_atual + ? WHERE id = ?').run(adiantamento.valor, adiantamento.conta_bancaria_id);
+    }
+    db.prepare('DELETE FROM viagem_adiantamentos WHERE id = ?').run(adiantamento.id);
+    return adiantamento;
+  });
+
+  registrarAuditoria({ usuarioId: req.usuario.id, tabela: 'viagem_adiantamentos', registroId: resultado.id, acao: 'DELETE', antes: resultado });
   res.status(204).send();
 }));
 

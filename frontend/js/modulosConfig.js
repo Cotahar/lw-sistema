@@ -45,6 +45,7 @@ export const GRUPOS_MENU = [
 
 export const ROTA_PAINEL = '/dashboard';
 export const ITEM_ADMIN = { label: 'Usuarios e Permissoes', rota: '/usuarios' };
+export const ITEM_AUDITORIA = { label: 'Auditoria e Reversao', rota: '/auditoria' };
 
 // Telas de configuracao/taxonomia do sistema: restritas ao Admin, fora da
 // matriz de permissoes por modulo (ver crudGenerico.js: somenteAdmin).

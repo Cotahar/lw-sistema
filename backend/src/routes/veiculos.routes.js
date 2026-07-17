@@ -118,4 +118,36 @@ router.post('/:id/hodometro', requerAcessoModulo('veiculos', 'Gerenciar'), async
   res.status(201).json({ ...evento, alertasDisparados });
 }));
 
+// Localizacao: mesmo fallback manual do hodometro (arquitetura pronta para a
+// integracao real com a Onixsat, que preencheria origem='Onixsat' e lat/lng).
+router.get('/:id/localizacao', requerAcessoModulo('veiculos', 'Visualizar'), asyncHandler(async (req, res) => {
+  const eventos = db.prepare('SELECT * FROM localizacao_eventos WHERE veiculo_id = ? ORDER BY data_hora DESC').all(req.params.id);
+  res.json(eventos);
+}));
+
+router.post('/:id/localizacao', requerAcessoModulo('veiculos', 'Gerenciar'), asyncHandler(async (req, res) => {
+  const veiculo = db.prepare('SELECT * FROM veiculos WHERE id = ?').get(req.params.id);
+  if (!veiculo) throw new ApiError(404, 'Veiculo nao encontrado.');
+  const { cidade, uf, observacao } = req.body;
+  if (!cidade || !uf) throw new ApiError(400, 'Informe cidade e uf.');
+
+  const evento = withTransaction(db, () => {
+    const info = db.prepare(`
+      INSERT INTO localizacao_eventos (veiculo_id, cidade, uf, origem, usuario_id, observacao)
+      VALUES (?, ?, ?, 'Manual', ?, ?)
+    `).run(veiculo.id, cidade, uf.toUpperCase(), req.usuario.id, observacao || null);
+    db.prepare(`
+      UPDATE veiculos SET localizacao_cidade = ?, localizacao_uf = ?, localizacao_atualizado_em = datetime('now') WHERE id = ?
+    `).run(cidade, uf.toUpperCase(), veiculo.id);
+    return db.prepare('SELECT * FROM localizacao_eventos WHERE id = ?').get(info.lastInsertRowid);
+  });
+
+  registrarAuditoria({
+    usuarioId: req.usuario.id, tabela: 'veiculos', registroId: veiculo.id, acao: 'UPDATE',
+    antes: { localizacao_cidade: veiculo.localizacao_cidade, localizacao_uf: veiculo.localizacao_uf },
+    depois: { localizacao_cidade: cidade, localizacao_uf: uf.toUpperCase() },
+  });
+  res.status(201).json(evento);
+}));
+
 module.exports = router;

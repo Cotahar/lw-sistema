@@ -3,6 +3,7 @@ import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { abrirModal, fecharModal } from '../../components/modal.js';
 import { mostrarToast, mostrarErro } from '../../components/toast.js';
+import { criarOcorrencias } from '../../components/ocorrencias.js';
 import { formatarMoeda, attachMoedaMask, getMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr } from '../../masks.js';
 
 const STATUS_BADGE = { Pendente: 'bg-amber-100 text-amber-700', Parcial: 'bg-amber-100 text-amber-700', Pago: 'bg-emerald-100 text-emerald-700', Atrasado: 'bg-red-100 text-red-700' };
@@ -103,6 +104,11 @@ async function abrirBaixa(conta, recarregar) {
   abrirModal({ titulo: `Baixar - ${conta.descricao}`, conteudo: form });
 }
 
+function abrirOcorrencias(conta, gerenciar) {
+  const ocorrencias = criarOcorrencias({ entidadeTipo: 'ContaPagar', entidadeId: conta.id, podeGerenciar: gerenciar });
+  abrirModal({ titulo: `Ocorrencias - ${conta.descricao}`, conteudo: ocorrencias.el, largura: 'max-w-lg' });
+}
+
 export async function render(container) {
   container.innerHTML = '<h1 class="mb-4 text-xl font-bold text-slate-900">Contas a Pagar</h1><div data-tabela></div>';
   const gerenciar = podeGerenciar('contas_pagar');
@@ -117,7 +123,11 @@ export async function render(container) {
     ],
     buscarDados: () => get('/contas-pagar'),
     onNovo: gerenciar ? () => abrirNovaConta(tabela.recarregar) : undefined,
-    acoesExtras: gerenciar ? (r) => (r.status === 'Pendente' || r.status === 'Parcial' ? [{ label: 'Baixar', onClick: (c) => abrirBaixa(c, tabela.recarregar) }] : []) : undefined,
+    acoesExtras: (r) => {
+      const acoes = [{ label: 'Ocorrencias', onClick: (c) => abrirOcorrencias(c, gerenciar) }];
+      if (gerenciar && (r.status === 'Pendente' || r.status === 'Parcial')) acoes.push({ label: 'Baixar', onClick: (c) => abrirBaixa(c, tabela.recarregar) });
+      return acoes;
+    },
     tituloNovo: 'Conta a Pagar',
     vazio: 'Nenhuma conta a pagar registrada.',
   });

@@ -12,7 +12,8 @@ function buscarConjuntoCompleto(id) {
   const conjunto = db.prepare('SELECT * FROM conjuntos WHERE id = ?').get(id);
   if (!conjunto) return null;
   const itens = db.prepare(`
-    SELECT ci.id, ci.ordem, v.id AS veiculo_id, v.placa, v.tipo, v.qtd_eixos
+    SELECT ci.id, ci.ordem, v.id AS veiculo_id, v.placa, v.tipo, v.qtd_eixos, v.hodometro_atual,
+           v.localizacao_cidade, v.localizacao_uf, v.localizacao_atualizado_em
     FROM conjunto_itens ci
     JOIN veiculos v ON v.id = ci.veiculo_id
     WHERE ci.conjunto_id = ?

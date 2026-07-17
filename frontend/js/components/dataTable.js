@@ -13,6 +13,7 @@ export function criarDataTable({
   acoesExtras,
   tituloNovo = 'Novo',
   vazio = 'Nenhum registro encontrado.',
+  mostrarBusca = true,
 }) {
   const el = document.createElement('div');
   el.className = 'card';
@@ -20,7 +21,7 @@ export function criarDataTable({
 
   el.innerHTML = `
     <div class="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
-      <input type="text" class="input sm:max-w-xs" placeholder="Pesquisar..." data-busca />
+      <input type="text" class="input sm:max-w-xs ${mostrarBusca ? '' : 'hidden'}" placeholder="Pesquisar..." data-busca />
       <div class="flex items-center gap-2">
         <button type="button" class="btn-danger hidden" data-excluir-lote>Excluir selecionados</button>
         ${onNovo ? `<button type="button" class="btn-primary" data-novo>+ ${tituloNovo}</button>` : ''}

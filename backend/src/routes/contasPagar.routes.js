@@ -90,12 +90,13 @@ router.post('/:id/baixar', requerAcessoModulo('contas_pagar', 'Gerenciar'), asyn
     }
 
     return {
+      antes: contaPagar,
       contaPagar: db.prepare('SELECT * FROM contas_pagar WHERE id = ?').get(contaPagar.id),
       movimentacao: db.prepare('SELECT * FROM movimentacoes_caixa WHERE id = ?').get(movInfo.lastInsertRowid),
     };
   });
 
-  registrarAuditoria({ usuarioId: req.usuario.id, tabela: 'contas_pagar', registroId: resultado.contaPagar.id, acao: 'UPDATE', depois: resultado.contaPagar });
+  registrarAuditoria({ usuarioId: req.usuario.id, tabela: 'contas_pagar', registroId: resultado.contaPagar.id, acao: 'UPDATE', antes: resultado.antes, depois: resultado.contaPagar });
   res.json(resultado);
 }));
 

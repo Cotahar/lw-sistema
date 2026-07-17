@@ -104,7 +104,7 @@ async function abrirFormulario(registro, recarregar) {
   abrirModal({ titulo: registro ? `Editar veiculo ${registro.placa}` : 'Novo veiculo', conteudo: form });
 }
 
-async function abrirHodometro(veiculo, recarregar) {
+export async function abrirHodometro(veiculo, recarregar) {
   try {
     const eventos = await get(`/veiculos/${veiculo.id}/hodometro`);
     const corpo = document.createElement('div');
@@ -147,6 +147,49 @@ async function abrirHodometro(veiculo, recarregar) {
   }
 }
 
+export async function abrirLocalizacao(veiculo, recarregar) {
+  try {
+    const eventos = await get(`/veiculos/${veiculo.id}/localizacao`);
+    const corpo = document.createElement('div');
+    corpo.innerHTML = `
+      <div class="mb-4 flex items-end gap-2">
+        <div><label class="label">Cidade *</label><input type="text" class="input" data-cidade /></div>
+        <div><label class="label">UF *</label><input type="text" class="input w-16" maxlength="2" data-uf /></div>
+        <button type="button" class="btn-primary" data-registrar>Registrar</button>
+      </div>
+      <p class="hidden text-sm text-red-600" data-erro-loc></p>
+      <div class="max-h-64 overflow-y-auto">
+        <table class="w-full text-sm">
+          <thead><tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500"><th class="py-1">Data</th><th class="py-1">Cidade/UF</th><th class="py-1">Origem</th></tr></thead>
+          <tbody>
+            ${eventos.map((e) => `<tr class="border-b border-slate-100"><td class="py-1">${formatarDataBr(e.data_hora)}</td><td class="py-1">${e.cidade}/${e.uf}</td><td class="py-1">${e.origem}</td></tr>`).join('') || '<tr><td colspan="3" class="py-3 text-center text-slate-400">Sem historico.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    `;
+    const veiculoAtual = veiculo.localizacao_cidade ? `${veiculo.localizacao_cidade}/${veiculo.localizacao_uf}` : 'nao informada';
+    const overlay = abrirModal({ titulo: `Localizacao - ${veiculo.placa} (atual: ${veiculoAtual})`, conteudo: corpo, largura: 'max-w-lg' });
+    overlay.querySelector('[data-registrar]').addEventListener('click', async () => {
+      const erroEl = overlay.querySelector('[data-erro-loc]');
+      erroEl.classList.add('hidden');
+      const cidade = overlay.querySelector('[data-cidade]').value.trim();
+      const uf = overlay.querySelector('[data-uf]').value.trim();
+      if (!cidade || !uf) { erroEl.textContent = 'Preencha cidade e UF.'; erroEl.classList.remove('hidden'); return; }
+      try {
+        await post(`/veiculos/${veiculo.id}/localizacao`, { cidade, uf });
+        fecharModal();
+        mostrarToast('Localizacao atualizada.');
+        recarregar();
+      } catch (err) {
+        erroEl.textContent = err.message;
+        erroEl.classList.remove('hidden');
+      }
+    });
+  } catch (err) {
+    mostrarErro(err);
+  }
+}
+
 export async function render(container) {
   container.innerHTML = '<h1 class="mb-4 text-xl font-bold text-slate-900">Veiculos e Frota</h1><div data-tabela></div>';
   const gerenciar = podeGerenciar('veiculos');
@@ -158,6 +201,7 @@ export async function render(container) {
       { chave: 'qtd_eixos', titulo: 'Eixos' },
       { chave: 'marca_modelo', titulo: 'Marca/Modelo', render: (r) => [r.marca, r.modelo].filter(Boolean).join(' ') || '-' },
       { chave: 'hodometro_atual', titulo: 'Hodometro', render: (r) => `${r.hodometro_atual.toLocaleString('pt-BR')} km` },
+      { chave: 'localizacao', titulo: 'Localizacao', render: (r) => (r.localizacao_cidade ? `${r.localizacao_cidade}/${r.localizacao_uf}` : '-') },
       { chave: 'ativo', titulo: 'Status', render: (r) => (r.ativo ? '<span class="badge bg-emerald-100 text-emerald-700">Ativo</span>' : '<span class="badge bg-slate-100 text-slate-500">Inativo</span>') },
     ],
     buscarDados: (termo) => get(termo ? `/veiculos?search=${encodeURIComponent(termo)}` : '/veiculos'),
@@ -165,7 +209,10 @@ export async function render(container) {
     onEditar: gerenciar ? (r) => abrirFormulario(r, tabela.recarregar) : undefined,
     onExcluir: gerenciar ? (r) => del(`/veiculos/${r.id}`) : undefined,
     onExcluirLote: gerenciar ? (ids) => post('/veiculos/batch-delete', { ids }) : undefined,
-    acoesExtras: () => [{ label: 'Hodometro', onClick: (r) => abrirHodometro(r, tabela.recarregar) }],
+    acoesExtras: () => [
+      { label: 'Hodometro', onClick: (r) => abrirHodometro(r, tabela.recarregar) },
+      { label: 'Localizacao', onClick: (r) => abrirLocalizacao(r, tabela.recarregar) },
+    ],
     tituloNovo: 'Veiculo',
   });
   container.querySelector('[data-tabela]').appendChild(tabela.el);

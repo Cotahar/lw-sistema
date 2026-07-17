@@ -1,8 +1,9 @@
-import { get } from '../../api.js';
+import { get, podeGerenciar } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { abrirModal } from '../../components/modal.js';
 import { mostrarErro } from '../../components/toast.js';
 import { formatarMoeda, formatarDataBr } from '../../masks.js';
+import { criarOcorrencias } from '../../components/ocorrencias.js';
 
 const STATUS_BADGE = { Pendente: 'bg-amber-100 text-amber-700', Parcial: 'bg-amber-100 text-amber-700', Recebido: 'bg-emerald-100 text-emerald-700', Atrasado: 'bg-red-100 text-red-700' };
 
@@ -25,8 +26,14 @@ async function verBaixas(conta) {
   }
 }
 
+function abrirOcorrencias(conta, gerenciar) {
+  const ocorrencias = criarOcorrencias({ entidadeTipo: 'ContaReceber', entidadeId: conta.id, podeGerenciar: gerenciar });
+  abrirModal({ titulo: `Ocorrencias - Frete #${conta.frete_id}`, conteudo: ocorrencias.el, largura: 'max-w-lg' });
+}
+
 export async function render(container) {
   container.innerHTML = '<h1 class="mb-4 text-xl font-bold text-slate-900">Contas a Receber</h1><div data-tabela></div>';
+  const gerenciar = podeGerenciar('contas_receber');
 
   const tabela = criarDataTable({
     colunas: [
@@ -39,7 +46,7 @@ export async function render(container) {
       { chave: 'status', titulo: 'Status', render: (r) => `<span class="badge ${STATUS_BADGE[r.status]}">${r.status}</span>` },
     ],
     buscarDados: () => get('/contas-receber'),
-    acoesExtras: () => [{ label: 'Ver baixas', onClick: verBaixas }],
+    acoesExtras: (r) => [{ label: 'Ver baixas', onClick: verBaixas }, { label: 'Ocorrencias', onClick: (c) => abrirOcorrencias(c, gerenciar) }],
     vazio: 'Nenhuma conta a receber registrada.',
   });
   container.querySelector('[data-tabela]').appendChild(tabela.el);

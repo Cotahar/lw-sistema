@@ -33,6 +33,8 @@ const contasReceberRoutes = require('./routes/contasReceber.routes');
 const acertosRoutes = require('./routes/acertos.routes');
 const dreRoutes = require('./routes/dre.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
+const ocorrenciasRoutes = require('./routes/ocorrencias.routes');
+const adminRoutes = require('./routes/admin.routes');
 
 const app = express();
 app.use(cors());
@@ -43,6 +45,7 @@ app.use(express.json());
 // no frontend e via hash (#/modulo), entao servir os arquivos estaticos
 // normalmente (sem fallback de SPA) e suficiente.
 app.use(express.static(path.resolve(__dirname, '../../frontend')));
+app.use('/uploads', express.static(process.env.UPLOAD_DIR || path.resolve(__dirname, '../uploads')));
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
@@ -75,6 +78,8 @@ app.use('/api/contas-receber', contasReceberRoutes);
 app.use('/api/acertos', acertosRoutes);
 app.use('/api/dre', dreRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/ocorrencias', ocorrenciasRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.use((req, res) => res.status(404).json({ erro: 'Rota nao encontrada.' }));
 app.use(errorHandler);
