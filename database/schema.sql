@@ -730,3 +730,29 @@ CREATE TABLE ocorrencias (
     criado_em       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX idx_ocorrencias_entidade ON ocorrencias(entidade_tipo, entidade_id);
+
+-- =====================================================================
+-- 10. IMPORTACAO DRIVVO
+-- =====================================================================
+
+-- Cada linha de um relatorio Drivvo (abastecimento/despesa/receita) vira
+-- uma linha aqui, seja ela lancada automaticamente ou pendente de revisao
+-- manual. "chave_externa" e um fingerprint estavel da linha original
+-- (veiculo+data+valor+secao+timestamp interno do Drivvo) - a razao de
+-- existir: o export do Drivvo e sempre um dump historico completo, entao
+-- reimportar o mesmo arquivo (ou um mais novo que sobrepoe periodo) nao
+-- pode duplicar o que ja foi processado.
+CREATE TABLE importacoes_drivvo (
+    id                  INTEGER PRIMARY KEY,
+    chave_externa       TEXT NOT NULL UNIQUE,
+    secao               TEXT NOT NULL CHECK (secao IN ('Abastecimento', 'Despesa', 'Receita')),
+    status              TEXT NOT NULL CHECK (status IN ('Importado', 'Ignorado', 'PendenteRevisao')),
+    entidade_tipo       TEXT CHECK (entidade_tipo IN ('DespesaViagem', 'ViagemAdiantamento', 'Frete')),
+    entidade_id         INTEGER,
+    dados_brutos        TEXT NOT NULL,  -- JSON da linha original do Drivvo, para exibir/reprocessar na revisao
+    motivo_pendencia    TEXT,           -- por que caiu em revisao (veiculo nao encontrado, sem viagem aberta no periodo, etc.)
+    criado_em           TEXT NOT NULL DEFAULT (datetime('now')),
+    resolvido_em        TEXT,
+    resolvido_por       INTEGER REFERENCES usuarios(id)
+);
+CREATE INDEX idx_importacoes_drivvo_status ON importacoes_drivvo(status);

@@ -35,6 +35,7 @@ const dreRoutes = require('./routes/dre.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
 const ocorrenciasRoutes = require('./routes/ocorrencias.routes');
 const adminRoutes = require('./routes/admin.routes');
+const drivvoRoutes = require('./routes/drivvo.routes');
 
 const app = express();
 app.use(cors());
@@ -80,6 +81,7 @@ app.use('/api/dre', dreRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/ocorrencias', ocorrenciasRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/drivvo', drivvoRoutes);
 
 app.use((req, res) => res.status(404).json({ erro: 'Rota nao encontrada.' }));
 app.use(errorHandler);
