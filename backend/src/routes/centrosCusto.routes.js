@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
+const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 
 const router = express.Router();
 
@@ -8,12 +9,13 @@ const router = express.Router();
 // despesas_fixas, financiamentos e contas avulsas - qualquer usuario logado
 // pode ver a lista de centros de custo (placas + Base/Administrativo) para
 // escolher onde alocar um lancamento, mesmo que nao tenha permissao de
-// escrita nesses modulos.
-router.get('/', asyncHandler(async (req, res) => {
+// escrita nesses modulos. Escopado por empresa para nao deixar escolher o
+// centro de custo de outra empresa num lancamento.
+router.get('/', exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const { search } = req.query;
   const rows = search
-    ? db.prepare('SELECT * FROM centros_custo WHERE nome LIKE ? ORDER BY tipo, nome').all(`%${search}%`)
-    : db.prepare('SELECT * FROM centros_custo ORDER BY tipo, nome').all();
+    ? db.prepare('SELECT * FROM centros_custo WHERE empresa_id = ? AND nome LIKE ? ORDER BY tipo, nome').all(req.empresaId, `%${search}%`)
+    : db.prepare('SELECT * FROM centros_custo WHERE empresa_id = ? ORDER BY tipo, nome').all(req.empresaId);
   res.json(rows);
 }));
 

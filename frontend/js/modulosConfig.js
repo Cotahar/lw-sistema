@@ -26,6 +26,7 @@ export const GRUPOS_MENU = [
       { chave: 'viagens', label: 'Viagens e Fretes', rota: '/viagens' },
       { chave: 'acertos', label: 'Acertos de Viagem', rota: '/acertos' },
       { chave: 'viagens', label: 'Importar do Drivvo', rota: '/drivvo' },
+      { chave: 'multas', label: 'Multas de Transito', rota: '/multas' },
     ],
   },
   {
@@ -51,6 +52,7 @@ export const ITEM_AUDITORIA = { label: 'Auditoria e Reversao', rota: '/auditoria
 // Telas de configuracao/taxonomia do sistema: restritas ao Admin, fora da
 // matriz de permissoes por modulo (ver crudGenerico.js: somenteAdmin).
 export const ITENS_CONFIGURACAO = [
+  { label: 'Empresas', rota: '/config/empresas' },
   { label: 'Tipos de Fornecedor', rota: '/config/fornecedor-tipos' },
   { label: 'Categorias de Despesa', rota: '/config/categorias-despesa' },
   { label: 'Faixas de Comissao', rota: '/config/comissao-faixas' },

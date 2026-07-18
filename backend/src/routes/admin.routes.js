@@ -12,6 +12,7 @@ router.get('/logs', asyncHandler(async (req, res) => {
   const { tabela, registro_id, limit } = req.query;
   const condicoes = [];
   const params = [];
+  if (req.empresaId) { condicoes.push('l.empresa_id = ?'); params.push(req.empresaId); }
   if (tabela) { condicoes.push('l.tabela_afetada = ?'); params.push(tabela); }
   if (registro_id) { condicoes.push('l.registro_id = ?'); params.push(registro_id); }
   const where = condicoes.length ? `WHERE ${condicoes.join(' AND ')}` : '';

@@ -6,4 +6,5 @@ module.exports = createCrudRouter({
   required: ['nome', 'tipo_id'],
   searchFields: ['nome', 'cnpj'],
   modulo: 'fornecedores',
+  empresaScoped: true,
 });

@@ -6,6 +6,7 @@ const cors = require('cors');
 require('./config/db'); // garante que o banco/tabelas existam antes de subir as rotas
 
 const { autenticar } = require('./middleware/auth');
+const { resolverEmpresa } = require('./middleware/empresa');
 const errorHandler = require('./middleware/errorHandler');
 
 const authRoutes = require('./routes/auth.routes');
@@ -36,6 +37,10 @@ const dashboardRoutes = require('./routes/dashboard.routes');
 const ocorrenciasRoutes = require('./routes/ocorrencias.routes');
 const adminRoutes = require('./routes/admin.routes');
 const drivvoRoutes = require('./routes/drivvo.routes');
+const empresasRoutes = require('./routes/empresas.routes');
+const cnpjRoutes = require('./routes/cnpj.routes');
+const onixsatRoutes = require('./routes/onixsat.routes');
+const multasRoutes = require('./routes/multas.routes');
 
 const app = express();
 app.use(cors());
@@ -54,6 +59,7 @@ app.use('/api/auth', authRoutes);
 
 // Tudo abaixo exige login.
 app.use('/api', autenticar);
+app.use('/api', resolverEmpresa);
 
 app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/modulos', modulosRoutes);
@@ -82,6 +88,10 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/ocorrencias', ocorrenciasRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/drivvo', drivvoRoutes);
+app.use('/api/empresas', empresasRoutes);
+app.use('/api/cnpj', cnpjRoutes);
+app.use('/api/onixsat', onixsatRoutes);
+app.use('/api/multas', multasRoutes);
 
 app.use((req, res) => res.status(404).json({ erro: 'Rota nao encontrada.' }));
 app.use(errorHandler);
@@ -90,3 +100,8 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`API do Sistema Frotista rodando em http://localhost:${PORT}`);
 });
+
+// Sincronizacao automatica de posicao/hodometro via Onixsat. Intervalo em
+// minutos configuravel por ONIXSAT_POLL_MINUTOS (default 10); ONIXSAT_POLL_MINUTOS=0 desativa.
+const { iniciarAgendadorOnixsat } = require('./utils/onixsatScheduler');
+iniciarAgendadorOnixsat(process.env.ONIXSAT_POLL_MINUTOS !== undefined ? Number(process.env.ONIXSAT_POLL_MINUTOS) : 10);

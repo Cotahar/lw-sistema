@@ -3,7 +3,7 @@ import { criarDataTable } from '../components/dataTable.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { abrirModal, fecharModal, confirmarAcao } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
-import { formatarDataBr } from '../masks.js';
+import { formatarDataBr, formatarDataHoraBr } from '../masks.js';
 
 const TIPOS = ['Cavalo', 'Carreta', 'Dolly', 'Truck', 'Toco'];
 
@@ -190,9 +190,38 @@ export async function abrirLocalizacao(veiculo, recarregar) {
   }
 }
 
+async function sincronizarOnixsat(container, recarregar) {
+  const resumoEl = container.querySelector('[data-onixsat-resumo]');
+  const botao = container.querySelector('[data-onixsat-sincronizar]');
+  botao.disabled = true;
+  resumoEl.classList.remove('hidden', 'text-red-600');
+  resumoEl.textContent = 'Sincronizando...';
+  try {
+    const r = await post('/onixsat/sincronizar', {});
+    if (r.aviso) {
+      resumoEl.textContent = r.aviso;
+    } else {
+      resumoEl.textContent = `${r.veiculosMapeados} veiculo(s) mapeado(s), ${r.mensagensProcessadas} mensagem(ns) recebida(s): ${r.hodometroAtualizados} hodometro(s) e ${r.localizacaoAtualizados} localizacao(oes) atualizados (${r.mensagensIgnoradas} ignorada(s)).`;
+      recarregar();
+    }
+  } catch (err) {
+    resumoEl.textContent = err.message;
+    resumoEl.classList.add('text-red-600');
+  } finally {
+    botao.disabled = false;
+  }
+}
+
 export async function render(container) {
-  container.innerHTML = '<h1 class="mb-4 text-xl font-bold text-slate-900">Veiculos e Frota</h1><div data-tabela></div>';
   const gerenciar = podeGerenciar('veiculos');
+  container.innerHTML = `
+    <div class="mb-4 flex items-center justify-between">
+      <h1 class="text-xl font-bold text-slate-900">Veiculos e Frota</h1>
+      ${gerenciar ? '<button type="button" class="btn-secondary" data-onixsat-sincronizar>Sincronizar Onixsat</button>' : ''}
+    </div>
+    ${gerenciar ? '<p class="mb-4 hidden text-sm text-slate-500" data-onixsat-resumo></p>' : ''}
+    <div data-tabela></div>
+  `;
 
   const tabela = criarDataTable({
     colunas: [
@@ -201,7 +230,15 @@ export async function render(container) {
       { chave: 'qtd_eixos', titulo: 'Eixos' },
       { chave: 'marca_modelo', titulo: 'Marca/Modelo', render: (r) => [r.marca, r.modelo].filter(Boolean).join(' ') || '-' },
       { chave: 'hodometro_atual', titulo: 'Hodometro', render: (r) => `${r.hodometro_atual.toLocaleString('pt-BR')} km` },
-      { chave: 'localizacao', titulo: 'Localizacao', render: (r) => (r.localizacao_cidade ? `${r.localizacao_cidade}/${r.localizacao_uf}` : '-') },
+      {
+        chave: 'localizacao', titulo: 'Localizacao',
+        render: (r) => (r.localizacao_cidade ? `
+          <details>
+            <summary class="inline cursor-pointer">${r.localizacao_cidade}/${r.localizacao_uf}</summary>
+            <div class="mt-1 text-xs text-slate-500">Atualizado em ${formatarDataHoraBr(r.localizacao_atualizado_em)}</div>
+          </details>
+        ` : '-'),
+      },
       { chave: 'ativo', titulo: 'Status', render: (r) => (r.ativo ? '<span class="badge bg-emerald-100 text-emerald-700">Ativo</span>' : '<span class="badge bg-slate-100 text-slate-500">Inativo</span>') },
     ],
     buscarDados: (termo) => get(termo ? `/veiculos?search=${encodeURIComponent(termo)}` : '/veiculos'),
@@ -216,4 +253,8 @@ export async function render(container) {
     tituloNovo: 'Veiculo',
   });
   container.querySelector('[data-tabela]').appendChild(tabela.el);
+
+  if (gerenciar) {
+    container.querySelector('[data-onixsat-sincronizar]').addEventListener('click', () => sincronizarOnixsat(container, tabela.recarregar));
+  }
 }

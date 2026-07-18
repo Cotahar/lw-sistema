@@ -3,6 +3,8 @@ const db = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const { requerAcessoModulo } = require('../middleware/auth');
+const { exigirEmpresaEspecifica } = require('../middleware/empresa');
+const { condicaoEmpresa } = require('../utils/empresaScope');
 const { registrarAuditoria } = require('../utils/audit');
 const { withTransaction } = require('../utils/transaction');
 
@@ -26,8 +28,8 @@ function formatarData(iso) {
 // Calcula os valores do acerto (usado tanto na previa quanto no fechamento).
 // "overrides" permite ao operador sobrescrever o percentual sugerido e as
 // deducoes/reembolsos antes de fechar (Fechamento Livre, sem travas).
-function calcularAcerto(viagemId, overrides = {}) {
-  const viagem = db.prepare('SELECT * FROM viagens WHERE id = ?').get(viagemId);
+function calcularAcerto(viagemId, empresaId, overrides = {}) {
+  const viagem = db.prepare('SELECT * FROM viagens WHERE id = ? AND empresa_id = ?').get(viagemId, empresaId);
   if (!viagem) throw new ApiError(404, 'Viagem nao encontrada.');
   if (viagem.km_final === null) throw new ApiError(400, 'A viagem ainda nao foi finalizada (falta o km final).');
 
@@ -70,25 +72,26 @@ function calcularAcerto(viagemId, overrides = {}) {
   };
 }
 
-router.get('/', requerAcessoModulo('acertos', 'Visualizar'), asyncHandler(async (req, res) => {
+router.get('/', requerAcessoModulo('acertos', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const { motorista_id, status } = req.query;
   const condicoes = [];
   const params = [];
+  condicaoEmpresa(condicoes, params, req);
   if (motorista_id) { condicoes.push('viagem_id IN (SELECT id FROM viagens WHERE motorista_id = ?)'); params.push(motorista_id); }
   if (status) { condicoes.push('status = ?'); params.push(status); }
-  const where = condicoes.length ? `WHERE ${condicoes.join(' AND ')}` : '';
+  const where = `WHERE ${condicoes.join(' AND ')}`;
   res.json(db.prepare(`SELECT * FROM acertos_viagem ${where} ORDER BY id DESC`).all(...params));
 }));
 
-router.get('/:id', requerAcessoModulo('acertos', 'Visualizar'), asyncHandler(async (req, res) => {
-  const acerto = db.prepare('SELECT * FROM acertos_viagem WHERE id = ?').get(req.params.id);
+router.get('/:id', requerAcessoModulo('acertos', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const acerto = db.prepare('SELECT * FROM acertos_viagem WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
   if (!acerto) throw new ApiError(404, 'Acerto nao encontrado.');
   res.json(acerto);
 }));
 
-router.get('/viagem/:viagemId/preview', requerAcessoModulo('acertos', 'Visualizar'), asyncHandler(async (req, res) => {
+router.get('/viagem/:viagemId/preview', requerAcessoModulo('acertos', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const { percentual_comissao_aplicado, valor_reembolsos, valor_descontos } = req.query;
-  const calculo = calcularAcerto(req.params.viagemId, {
+  const calculo = calcularAcerto(req.params.viagemId, req.empresaId, {
     percentual_comissao_aplicado: percentual_comissao_aplicado !== undefined ? Number(percentual_comissao_aplicado) : undefined,
     valor_reembolsos: valor_reembolsos !== undefined ? Number(valor_reembolsos) : undefined,
     valor_descontos: valor_descontos !== undefined ? Number(valor_descontos) : undefined,
@@ -96,11 +99,11 @@ router.get('/viagem/:viagemId/preview', requerAcessoModulo('acertos', 'Visualiza
   res.json(calculo);
 }));
 
-router.post('/viagem/:viagemId/fechar', requerAcessoModulo('acertos', 'Gerenciar'), asyncHandler(async (req, res) => {
+router.post('/viagem/:viagemId/fechar', requerAcessoModulo('acertos', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const jaExiste = db.prepare('SELECT id FROM acertos_viagem WHERE viagem_id = ?').get(req.params.viagemId);
   if (jaExiste) throw new ApiError(400, 'Esta viagem ja possui um acerto fechado.');
 
-  const viagemAtual = db.prepare('SELECT * FROM viagens WHERE id = ?').get(req.params.viagemId);
+  const viagemAtual = db.prepare('SELECT * FROM viagens WHERE id = ? AND empresa_id = ?').get(req.params.viagemId, req.empresaId);
   if (!viagemAtual) throw new ApiError(404, 'Viagem nao encontrada.');
   if (viagemAtual.status !== 'AguardandoAcerto') {
     throw new ApiError(400, `Viagem no status ${viagemAtual.status} nao pode ser fechada (finalize o km primeiro).`);
@@ -109,18 +112,18 @@ router.post('/viagem/:viagemId/fechar', requerAcessoModulo('acertos', 'Gerenciar
   const { percentual_comissao_aplicado, valor_reembolsos, valor_descontos, observacoes_ajustes } = req.body;
 
   const resultado = withTransaction(db, () => {
-    const calculo = calcularAcerto(req.params.viagemId, {
+    const calculo = calcularAcerto(req.params.viagemId, req.empresaId, {
       percentual_comissao_aplicado, valor_reembolsos, valor_descontos,
     });
 
     const info = db.prepare(`
       INSERT INTO acertos_viagem (
-        viagem_id, media_consumo_km_l, percentual_comissao_sugerido, percentual_comissao_aplicado,
+        empresa_id, viagem_id, media_consumo_km_l, percentual_comissao_sugerido, percentual_comissao_aplicado,
         valor_comissao, valor_reembolsos, valor_adiantamentos, valor_descontos,
         saldo_conta_corrente_anterior, saldo_final, status, observacoes_ajustes, criado_por
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Fechado', ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Fechado', ?, ?)
     `).run(
-      req.params.viagemId, calculo.mediaConsumoKmL, calculo.percentualSugerido, calculo.percentualAplicado,
+      req.empresaId, req.params.viagemId, calculo.mediaConsumoKmL, calculo.percentualSugerido, calculo.percentualAplicado,
       calculo.valorComissao, calculo.valorReembolsos, calculo.adiantamentosTotal, calculo.valorDescontos,
       calculo.saldoContaCorrenteAnterior, calculo.saldoFinal, observacoes_ajustes || null, req.usuario.id
     );
@@ -132,10 +135,10 @@ router.post('/viagem/:viagemId/fechar', requerAcessoModulo('acertos', 'Gerenciar
 
     if (valorLancamento > 0) {
       db.prepare(`
-        INSERT INTO motorista_conta_corrente_lancamentos (motorista_id, acerto_id, tipo, valor, saldo_anterior, saldo_posterior, descricao, criado_por)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO motorista_conta_corrente_lancamentos (empresa_id, motorista_id, acerto_id, tipo, valor, saldo_anterior, saldo_posterior, descricao, criado_por)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        calculo.motorista.id, acertoId, tipoLancamento, valorLancamento,
+        req.empresaId, calculo.motorista.id, acertoId, tipoLancamento, valorLancamento,
         calculo.saldoContaCorrenteAnterior, novoSaldoContaCorrente,
         `Acerto da viagem #${req.params.viagemId}`, req.usuario.id
       );
@@ -148,9 +151,9 @@ router.post('/viagem/:viagemId/fechar', requerAcessoModulo('acertos', 'Gerenciar
     // caixa agora - ja foi absorvido na conta corrente para a proxima viagem.
     if (calculo.saldoFinal > 0) {
       db.prepare(`
-        INSERT INTO contas_pagar (descricao, valor, data_vencimento, status, origem_tipo, origem_id)
-        VALUES (?, ?, date('now'), 'Pendente', 'AcertoViagem', ?)
-      `).run(`Acerto viagem #${req.params.viagemId} - pagamento a ${calculo.motorista.nome}`, calculo.saldoFinal, acertoId);
+        INSERT INTO contas_pagar (empresa_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
+        VALUES (?, ?, ?, date('now'), 'Pendente', 'AcertoViagem', ?)
+      `).run(req.empresaId, `Acerto viagem #${req.params.viagemId} - pagamento a ${calculo.motorista.nome}`, calculo.saldoFinal, acertoId);
     }
 
     db.prepare("UPDATE viagens SET status = 'Finalizada' WHERE id = ?").run(req.params.viagemId);
@@ -158,12 +161,12 @@ router.post('/viagem/:viagemId/fechar', requerAcessoModulo('acertos', 'Gerenciar
     return db.prepare('SELECT * FROM acertos_viagem WHERE id = ?').get(acertoId);
   });
 
-  registrarAuditoria({ usuarioId: req.usuario.id, tabela: 'acertos_viagem', registroId: resultado.id, acao: 'INSERT', depois: resultado });
+  registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'acertos_viagem', registroId: resultado.id, acao: 'INSERT', depois: resultado });
   res.status(201).json(resultado);
 }));
 
-router.get('/:id/whatsapp', requerAcessoModulo('acertos', 'Visualizar'), asyncHandler(async (req, res) => {
-  const acerto = db.prepare('SELECT * FROM acertos_viagem WHERE id = ?').get(req.params.id);
+router.get('/:id/whatsapp', requerAcessoModulo('acertos', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const acerto = db.prepare('SELECT * FROM acertos_viagem WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
   if (!acerto) throw new ApiError(404, 'Acerto nao encontrado.');
   const viagem = db.prepare('SELECT * FROM viagens WHERE id = ?').get(acerto.viagem_id);
   const motorista = db.prepare('SELECT * FROM motoristas WHERE id = ?').get(viagem.motorista_id);

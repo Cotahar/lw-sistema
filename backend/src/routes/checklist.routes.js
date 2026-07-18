@@ -6,6 +6,7 @@ const db = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const { requerPerfilMinimo, requerAcessoModulo } = require('../middleware/auth');
+const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { registrarAuditoria } = require('../utils/audit');
 
 const router = express.Router();
@@ -23,6 +24,7 @@ const upload = multer({
 });
 
 // ---- Catalogo de itens (Defletores, Geladeira, Radio PX, Rastreador...) ----
+// Compartilhado entre empresas de proposito (taxonomia, nao dado operacional).
 router.get('/catalogo', requerAcessoModulo('checklist', 'Visualizar'), asyncHandler(async (req, res) => {
   res.json(db.prepare('SELECT * FROM checklist_itens_catalogo ORDER BY nome').all());
 }));
@@ -59,8 +61,14 @@ router.delete('/catalogo/:id', requerPerfilMinimo('Admin'), asyncHandler(async (
   res.status(204).send();
 }));
 
+function exigirVeiculoDaEmpresa(req) {
+  const veiculo = db.prepare('SELECT id FROM veiculos WHERE id = ? AND empresa_id = ?').get(req.params.veiculoId, req.empresaId);
+  if (!veiculo) throw new ApiError(404, 'Veiculo nao encontrado.');
+}
+
 // ---- Estado do checklist por placa ----
-router.get('/veiculo/:veiculoId', requerAcessoModulo('checklist', 'Visualizar'), asyncHandler(async (req, res) => {
+router.get('/veiculo/:veiculoId', requerAcessoModulo('checklist', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  exigirVeiculoDaEmpresa(req);
   const rows = db.prepare(`
     SELECT c.id AS item_id, c.nome, vc.id AS veiculo_checklist_id, vc.presente, vc.observacao, vc.atualizado_em
     FROM checklist_itens_catalogo c
@@ -71,7 +79,8 @@ router.get('/veiculo/:veiculoId', requerAcessoModulo('checklist', 'Visualizar'),
   res.json(rows);
 }));
 
-router.put('/veiculo/:veiculoId/:itemId', requerAcessoModulo('checklist', 'Gerenciar'), asyncHandler(async (req, res) => {
+router.put('/veiculo/:veiculoId/:itemId', requerAcessoModulo('checklist', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  exigirVeiculoDaEmpresa(req);
   const { presente, observacao } = req.body;
   const existente = db.prepare('SELECT * FROM veiculo_checklist WHERE veiculo_id = ? AND item_id = ?').get(req.params.veiculoId, req.params.itemId);
 
@@ -81,17 +90,18 @@ router.put('/veiculo/:veiculoId/:itemId', requerAcessoModulo('checklist', 'Geren
       .run(presente ? 1 : 0, observacao || null, existente.id);
     depois = db.prepare('SELECT * FROM veiculo_checklist WHERE id = ?').get(existente.id);
   } else {
-    const info = db.prepare('INSERT INTO veiculo_checklist (veiculo_id, item_id, presente, observacao) VALUES (?, ?, ?, ?)')
-      .run(req.params.veiculoId, req.params.itemId, presente ? 1 : 0, observacao || null);
+    const info = db.prepare('INSERT INTO veiculo_checklist (empresa_id, veiculo_id, item_id, presente, observacao) VALUES (?, ?, ?, ?, ?)')
+      .run(req.empresaId, req.params.veiculoId, req.params.itemId, presente ? 1 : 0, observacao || null);
     depois = db.prepare('SELECT * FROM veiculo_checklist WHERE id = ?').get(info.lastInsertRowid);
   }
 
-  registrarAuditoria({ usuarioId: req.usuario.id, tabela: 'veiculo_checklist', registroId: depois.id, acao: existente ? 'UPDATE' : 'INSERT', antes: existente || null, depois });
+  registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'veiculo_checklist', registroId: depois.id, acao: existente ? 'UPDATE' : 'INSERT', antes: existente || null, depois });
   res.json(depois);
 }));
 
 // ---- Registro fotografico (Recebimento / Entrega) ----
-router.get('/veiculo/:veiculoId/fotos', requerAcessoModulo('checklist', 'Visualizar'), asyncHandler(async (req, res) => {
+router.get('/veiculo/:veiculoId/fotos', requerAcessoModulo('checklist', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  exigirVeiculoDaEmpresa(req);
   const { momento } = req.query;
   const condicoes = ['veiculo_id = ?'];
   const params = [req.params.veiculoId];
@@ -99,20 +109,21 @@ router.get('/veiculo/:veiculoId/fotos', requerAcessoModulo('checklist', 'Visuali
   res.json(db.prepare(`SELECT * FROM veiculo_checklist_fotos WHERE ${condicoes.join(' AND ')} ORDER BY criado_em DESC`).all(...params));
 }));
 
-router.post('/veiculo/:veiculoId/fotos', requerAcessoModulo('checklist', 'Gerenciar'), upload.single('foto'), asyncHandler(async (req, res) => {
+router.post('/veiculo/:veiculoId/fotos', requerAcessoModulo('checklist', 'Gerenciar'), exigirEmpresaEspecifica, upload.single('foto'), asyncHandler(async (req, res) => {
+  exigirVeiculoDaEmpresa(req);
   const { momento, item_id } = req.body;
   if (!['Recebimento', 'Entrega'].includes(momento)) throw new ApiError(400, "Informe momento 'Recebimento' ou 'Entrega'.");
   if (!req.file) throw new ApiError(400, 'Envie um arquivo de imagem.');
   const info = db.prepare(`
-    INSERT INTO veiculo_checklist_fotos (veiculo_id, item_id, momento, arquivo, criado_por)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(req.params.veiculoId, item_id || null, momento, req.file.filename, req.usuario.id);
+    INSERT INTO veiculo_checklist_fotos (empresa_id, veiculo_id, item_id, momento, arquivo, criado_por)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(req.empresaId, req.params.veiculoId, item_id || null, momento, req.file.filename, req.usuario.id);
   const foto = db.prepare('SELECT * FROM veiculo_checklist_fotos WHERE id = ?').get(info.lastInsertRowid);
   res.status(201).json(foto);
 }));
 
-router.delete('/fotos/:id', requerAcessoModulo('checklist', 'Gerenciar'), asyncHandler(async (req, res) => {
-  const foto = db.prepare('SELECT * FROM veiculo_checklist_fotos WHERE id = ?').get(req.params.id);
+router.delete('/fotos/:id', requerAcessoModulo('checklist', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const foto = db.prepare('SELECT * FROM veiculo_checklist_fotos WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
   if (!foto) throw new ApiError(404, 'Foto nao encontrada.');
   db.prepare('DELETE FROM veiculo_checklist_fotos WHERE id = ?').run(foto.id);
   fs.unlink(path.join(UPLOAD_DIR, foto.arquivo), () => {});

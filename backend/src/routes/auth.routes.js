@@ -4,8 +4,24 @@ const db = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const { gerarToken, autenticar, calcularPermissoesEfetivas } = require('../middleware/auth');
+const { possuiTodasAsEmpresasAtivas } = require('../middleware/empresa');
 
 const router = express.Router();
+
+// Empresas que o usuario pode selecionar no seletor do cabecalho: todas as
+// ativas se Admin (acesso implicito, mesma logica de usuario_permissoes),
+// senao so as concedidas via usuario_empresas.
+function empresasDoUsuario(usuario) {
+  if (usuario.perfil === 'Admin') {
+    return db.prepare('SELECT id, razao_social, nome_fantasia FROM empresas WHERE ativo = 1 ORDER BY razao_social').all();
+  }
+  return db.prepare(`
+    SELECT e.id, e.razao_social, e.nome_fantasia FROM empresas e
+    JOIN usuario_empresas ue ON ue.empresa_id = e.id
+    WHERE ue.usuario_id = ? AND e.ativo = 1
+    ORDER BY e.razao_social
+  `).all(usuario.id);
+}
 
 router.post('/login', asyncHandler(async (req, res) => {
   const { email, senha } = req.body;
@@ -21,6 +37,8 @@ router.post('/login', asyncHandler(async (req, res) => {
     token,
     usuario: { id: usuario.id, nome: usuario.nome, email: usuario.email, perfil: usuario.perfil },
     permissoes: calcularPermissoesEfetivas(usuario),
+    empresas: empresasDoUsuario(usuario),
+    podeTodas: usuario.perfil === 'Admin' || possuiTodasAsEmpresasAtivas(usuario.id),
   });
 }));
 
@@ -31,7 +49,12 @@ router.post('/login', asyncHandler(async (req, res) => {
 router.get('/me', autenticar, asyncHandler(async (req, res) => {
   const usuario = db.prepare('SELECT id, nome, email, perfil, ativo FROM usuarios WHERE id = ?').get(req.usuario.id);
   if (!usuario) throw new ApiError(404, 'Usuario nao encontrado.');
-  res.json({ ...usuario, permissoes: calcularPermissoesEfetivas(usuario) });
+  res.json({
+    ...usuario,
+    permissoes: calcularPermissoesEfetivas(usuario),
+    empresas: empresasDoUsuario(usuario),
+    podeTodas: usuario.perfil === 'Admin' || possuiTodasAsEmpresasAtivas(usuario.id),
+  });
 }));
 
 module.exports = router;

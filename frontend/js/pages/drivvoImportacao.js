@@ -1,4 +1,4 @@
-import { get, post, del, getToken, podeGerenciar } from '../api.js';
+import { get, post, del, authHeaders, podeGerenciar } from '../api.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { abrirModal, fecharModal, confirmarAcao } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
@@ -66,8 +66,7 @@ async function buscarUsuarios(termo) {
 async function enviarArquivo(arquivo) {
   const formData = new FormData();
   formData.append('arquivo', arquivo);
-  const token = getToken();
-  const res = await fetch('/api/drivvo/importar', { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData });
+  const res = await fetch('/api/drivvo/importar', { method: 'POST', headers: authHeaders(), body: formData });
   const dados = await res.json().catch(() => null);
   if (!res.ok) throw new Error((dados && dados.erro) || `Erro ${res.status}`);
   return dados;

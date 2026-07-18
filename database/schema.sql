@@ -71,6 +71,7 @@ INSERT INTO modulos_sistema (chave, nome, ordem) VALUES
     ('despesas_fixas', 'Despesas Fixas', 140),
     ('financiamentos', 'Financiamentos', 150),
     ('acertos', 'Acerto de Viagem', 160),
+    ('multas', 'Multas de Transito', 165),
     ('dre', 'DRE e Relatorios', 170);
 
 -- Excecoes ao perfil base, por usuario e por modulo. Se nao houver linha
@@ -85,11 +86,23 @@ CREATE TABLE usuario_permissoes (
     UNIQUE (usuario_id, modulo)
 );
 
+-- Quais empresas (tenants) cada usuario pode acessar/trocar no seletor do
+-- cabecalho - eixo ortogonal a usuario_permissoes (isso e "o que"; aquilo e
+-- "onde"). Sem excecao para Admin (acesso implicito a todas, mesma logica
+-- ja aplicada a usuario_permissoes).
+CREATE TABLE usuario_empresas (
+    id          INTEGER PRIMARY KEY,
+    usuario_id  INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    empresa_id  INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+    UNIQUE (usuario_id, empresa_id)
+);
+
 -- Log de auditoria generico (quem cadastrou/alterou o que).
 -- "tabela_afetada" + "registro_id" apontam para qualquer linha do
 -- banco sem precisar de uma tabela de log por entidade.
 CREATE TABLE logs_auditoria (
     id              INTEGER PRIMARY KEY,
+    empresa_id      INTEGER NOT NULL REFERENCES empresas(id),
     usuario_id      INTEGER REFERENCES usuarios(id),
     tabela_afetada  TEXT NOT NULL,
     registro_id     INTEGER NOT NULL,
@@ -118,6 +131,7 @@ CREATE TABLE fornecedor_tipos (
 
 CREATE TABLE fornecedores (
     id              INTEGER PRIMARY KEY,
+    empresa_id      INTEGER NOT NULL REFERENCES empresas(id),
     nome            TEXT NOT NULL,
     cnpj            TEXT UNIQUE,        -- somente digitos
     tipo_id         INTEGER NOT NULL REFERENCES fornecedor_tipos(id),
@@ -130,6 +144,7 @@ CREATE INDEX idx_fornecedores_nome ON fornecedores(nome);
 
 CREATE TABLE motoristas (
     id                      INTEGER PRIMARY KEY,
+    empresa_id              INTEGER NOT NULL REFERENCES empresas(id),
     nome                    TEXT NOT NULL,
     cpf                     TEXT NOT NULL UNIQUE,   -- somente digitos
     cnh                     TEXT NOT NULL,
@@ -147,6 +162,7 @@ CREATE INDEX idx_motoristas_nome ON motoristas(nome);
 
 CREATE TABLE veiculos (
     id                  INTEGER PRIMARY KEY,
+    empresa_id          INTEGER NOT NULL REFERENCES empresas(id),
     placa               TEXT NOT NULL UNIQUE,
     tipo                TEXT NOT NULL CHECK (tipo IN ('Cavalo', 'Carreta', 'Dolly', 'Truck', 'Toco')),
     qtd_eixos           INTEGER NOT NULL,
@@ -180,6 +196,7 @@ CREATE INDEX idx_veiculos_tipo ON veiculos(tipo);
 -- montar um novo na hora ou reaproveitar um ja existente.
 CREATE TABLE conjuntos (
     id          INTEGER PRIMARY KEY,
+    empresa_id  INTEGER NOT NULL REFERENCES empresas(id),
     nome        TEXT,               -- rotulo opcional, ex.: "Rodotrem 01"
     ativo       INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1)),
     criado_em   TEXT NOT NULL DEFAULT (datetime('now'))
@@ -191,6 +208,7 @@ CREATE TABLE conjuntos (
 -- poderia contradizer o tipo cadastrado do veiculo.
 CREATE TABLE conjunto_itens (
     id              INTEGER PRIMARY KEY,
+    empresa_id      INTEGER NOT NULL REFERENCES empresas(id),
     conjunto_id     INTEGER NOT NULL REFERENCES conjuntos(id) ON DELETE CASCADE,
     veiculo_id      INTEGER NOT NULL REFERENCES veiculos(id),
     ordem           INTEGER NOT NULL,  -- 1, 2, 3... posicao na composicao
@@ -205,6 +223,7 @@ CREATE INDEX idx_conjunto_itens_veiculo ON conjunto_itens(veiculo_id);
 
 CREATE TABLE estoque_itens (
     id                  INTEGER PRIMARY KEY,
+    empresa_id          INTEGER NOT NULL REFERENCES empresas(id),
     nome                TEXT NOT NULL,
     categoria           TEXT NOT NULL CHECK (categoria IN ('Peca', 'Acessorio', 'EPI', 'Utensilio')),
     unidade_medida      TEXT NOT NULL DEFAULT 'UN',
@@ -223,6 +242,7 @@ CREATE INDEX idx_estoque_itens_nome ON estoque_itens(nome);
 -- com destino a um veiculo). Ver contas_pagar.origem_tipo = 'EstoqueMovimentacao'.
 CREATE TABLE estoque_movimentacoes (
     id                  INTEGER PRIMARY KEY,
+    empresa_id          INTEGER NOT NULL REFERENCES empresas(id),
     item_id             INTEGER NOT NULL REFERENCES estoque_itens(id),
     tipo                TEXT NOT NULL CHECK (tipo IN ('Entrada', 'Saida')),
     quantidade          REAL NOT NULL,
@@ -244,6 +264,7 @@ CREATE INDEX idx_estoque_mov_veiculo ON estoque_movimentacoes(veiculo_destino_id
 
 CREATE TABLE pneus (
     id                  INTEGER PRIMARY KEY,
+    empresa_id          INTEGER NOT NULL REFERENCES empresas(id),
     numero_fogo         TEXT NOT NULL UNIQUE,   -- numero de serie/fogo
     marca               TEXT,
     modelo              TEXT,
@@ -283,6 +304,7 @@ CREATE INDEX idx_pneus_status ON pneus(status);
 -- ciclo, muitas vezes zero em reinstalacoes sem recapagem no meio).
 CREATE TABLE pneu_eventos (
     id              INTEGER PRIMARY KEY,
+    empresa_id      INTEGER NOT NULL REFERENCES empresas(id),
     pneu_id         INTEGER NOT NULL REFERENCES pneus(id),
     tipo_evento     TEXT NOT NULL CHECK (tipo_evento IN ('Aquisicao', 'Instalacao', 'Remocao', 'EnvioRecapagem', 'RetornoRecapagem', 'Sucateamento')),
     veiculo_id      INTEGER REFERENCES veiculos(id),
@@ -303,6 +325,7 @@ CREATE INDEX idx_pneu_eventos_pneu ON pneu_eventos(pneu_id);
 
 CREATE TABLE ordens_servico (
     id              INTEGER PRIMARY KEY,
+    empresa_id      INTEGER NOT NULL REFERENCES empresas(id),
     data            TEXT NOT NULL DEFAULT (date('now')),
     veiculo_id      INTEGER NOT NULL REFERENCES veiculos(id),
     hodometro       INTEGER NOT NULL,
@@ -322,6 +345,7 @@ CREATE INDEX idx_os_data ON ordens_servico(data);
 -- em estoque_movimentacoes (tipo='Saida', os_id=esta OS).
 CREATE TABLE os_itens (
     id                  INTEGER PRIMARY KEY,
+    empresa_id          INTEGER NOT NULL REFERENCES empresas(id),
     os_id               INTEGER NOT NULL REFERENCES ordens_servico(id) ON DELETE CASCADE,
     estoque_item_id     INTEGER REFERENCES estoque_itens(id),
     pneu_id             INTEGER REFERENCES pneus(id),
@@ -334,6 +358,7 @@ CREATE INDEX idx_os_itens_os ON os_itens(os_id);
 -- Regras de alerta programavel por KM (ex.: revisao a cada 50.000 km).
 CREATE TABLE alertas_regras (
     id              INTEGER PRIMARY KEY,
+    empresa_id      INTEGER NOT NULL REFERENCES empresas(id),
     veiculo_id      INTEGER REFERENCES veiculos(id),  -- NULL = regra generica p/ toda a frota
     descricao       TEXT NOT NULL,
     intervalo_km    INTEGER NOT NULL,
@@ -346,6 +371,7 @@ CREATE TABLE alertas_regras (
 -- historico de alertas resolvidos/pendentes no Dashboard.
 CREATE TABLE alertas_ocorrencias (
     id                  INTEGER PRIMARY KEY,
+    empresa_id          INTEGER NOT NULL REFERENCES empresas(id),
     regra_id            INTEGER NOT NULL REFERENCES alertas_regras(id),
     veiculo_id          INTEGER NOT NULL REFERENCES veiculos(id),
     km_atual_no_disparo INTEGER NOT NULL,
@@ -366,6 +392,7 @@ CREATE TABLE checklist_itens_catalogo (
 -- Estado do checklist por placa.
 CREATE TABLE veiculo_checklist (
     id              INTEGER PRIMARY KEY,
+    empresa_id      INTEGER NOT NULL REFERENCES empresas(id),
     veiculo_id      INTEGER NOT NULL REFERENCES veiculos(id),
     item_id         INTEGER NOT NULL REFERENCES checklist_itens_catalogo(id),
     presente        INTEGER NOT NULL DEFAULT 1 CHECK (presente IN (0, 1)),
@@ -381,6 +408,7 @@ CREATE TABLE veiculo_checklist (
 -- disco (backend/uploads/checklist/), so o nome do arquivo fica no banco.
 CREATE TABLE veiculo_checklist_fotos (
     id              INTEGER PRIMARY KEY,
+    empresa_id      INTEGER NOT NULL REFERENCES empresas(id),
     veiculo_id      INTEGER NOT NULL REFERENCES veiculos(id),
     item_id         INTEGER REFERENCES checklist_itens_catalogo(id),
     momento         TEXT NOT NULL CHECK (momento IN ('Recebimento', 'Entrega')),
@@ -396,6 +424,7 @@ CREATE INDEX idx_checklist_fotos_veiculo ON veiculo_checklist_fotos(veiculo_id, 
 
 CREATE TABLE viagens (
     id              INTEGER PRIMARY KEY,
+    empresa_id      INTEGER NOT NULL REFERENCES empresas(id),
     data_inicio     TEXT NOT NULL,
     data_fim        TEXT,
     conjunto_id     INTEGER NOT NULL REFERENCES conjuntos(id),
@@ -418,6 +447,7 @@ CREATE INDEX idx_viagens_status ON viagens(status);
 -- dando log completo de quem/quando alterou o KM de um veiculo.
 CREATE TABLE hodometro_eventos (
     id              INTEGER PRIMARY KEY,
+    empresa_id      INTEGER NOT NULL REFERENCES empresas(id),
     veiculo_id      INTEGER NOT NULL REFERENCES veiculos(id),
     km              INTEGER NOT NULL,
     origem          TEXT NOT NULL CHECK (origem IN ('Onixsat', 'Manual')),
@@ -433,6 +463,7 @@ CREATE INDEX idx_hodometro_eventos_veiculo ON hodometro_eventos(veiculo_id, data
 -- da leitura mais recente, para nao precisar de subquery a cada listagem.
 CREATE TABLE localizacao_eventos (
     id              INTEGER PRIMARY KEY,
+    empresa_id      INTEGER NOT NULL REFERENCES empresas(id),
     veiculo_id      INTEGER NOT NULL REFERENCES veiculos(id),
     cidade          TEXT NOT NULL,
     uf              TEXT NOT NULL,
@@ -447,6 +478,7 @@ CREATE INDEX idx_localizacao_eventos_veiculo ON localizacao_eventos(veiculo_id, 
 
 CREATE TABLE fretes (
     id                          INTEGER PRIMARY KEY,
+    empresa_id                  INTEGER NOT NULL REFERENCES empresas(id),
     viagem_id                   INTEGER NOT NULL REFERENCES viagens(id) ON DELETE CASCADE,
     -- Transportadora contratante deste frete (o frotista e sempre contratado
     -- por uma). Reaproveita o cadastro de fornecedores (tipo 'Transportadora',
@@ -471,6 +503,7 @@ CREATE INDEX idx_fretes_viagem ON fretes(viagem_id);
 -- branco, e so um registro contabil (ex.: dinheiro vivo/malote da viagem).
 CREATE TABLE viagem_adiantamentos (
     id                  INTEGER PRIMARY KEY,
+    empresa_id          INTEGER NOT NULL REFERENCES empresas(id),
     viagem_id           INTEGER NOT NULL REFERENCES viagens(id) ON DELETE CASCADE,
     valor               INTEGER NOT NULL,  -- centavos
     data                TEXT NOT NULL DEFAULT (date('now')),
@@ -492,13 +525,17 @@ CREATE INDEX idx_viagem_adiantamentos_viagem ON viagem_adiantamentos(viagem_id);
 -- centro) mais simples.
 CREATE TABLE centros_custo (
     id          INTEGER PRIMARY KEY,
+    empresa_id  INTEGER NOT NULL REFERENCES empresas(id),
     tipo        TEXT NOT NULL CHECK (tipo IN ('Veiculo', 'Base')),
     veiculo_id  INTEGER UNIQUE REFERENCES veiculos(id),
     nome        TEXT NOT NULL,  -- para tipo='Base': "Base/Administrativo"; para 'Veiculo': a placa
     CHECK ((tipo = 'Veiculo' AND veiculo_id IS NOT NULL) OR (tipo = 'Base' AND veiculo_id IS NULL))
 );
--- Linha fixa do centro de custo administrativo (id=1, seed obrigatoria).
-INSERT INTO centros_custo (tipo, veiculo_id, nome) VALUES ('Base', NULL, 'Base/Administrativo');
+-- Cada empresa tem exatamente 1 centro "Base" (garantido pelo indice unico
+-- parcial abaixo); criado automaticamente pelo backend quando a empresa e
+-- cadastrada (ver POST /empresas), nao mais como seed fixa aqui - antes so
+-- existia 1 empresa implicita, agora o insert depende de qual empresa.
+CREATE UNIQUE INDEX idx_centros_custo_base_por_empresa ON centros_custo(empresa_id) WHERE tipo = 'Base';
 
 CREATE TABLE categorias_despesa (
     id      INTEGER PRIMARY KEY,
@@ -518,6 +555,7 @@ CREATE TABLE comissao_faixas (
 
 CREATE TABLE despesas_viagem (
     id                  INTEGER PRIMARY KEY,
+    empresa_id          INTEGER NOT NULL REFERENCES empresas(id),
     viagem_id           INTEGER NOT NULL REFERENCES viagens(id) ON DELETE CASCADE,
     centro_custo_id     INTEGER NOT NULL REFERENCES centros_custo(id),
     categoria_id        INTEGER NOT NULL REFERENCES categorias_despesa(id),
@@ -541,6 +579,7 @@ CREATE INDEX idx_despesas_viagem_centro ON despesas_viagem(centro_custo_id);
 -- (seguro, rastreamento, salario administrativo, aluguel da base...).
 CREATE TABLE despesas_fixas (
     id                  INTEGER PRIMARY KEY,
+    empresa_id          INTEGER NOT NULL REFERENCES empresas(id),
     centro_custo_id     INTEGER NOT NULL REFERENCES centros_custo(id),
     categoria_id        INTEGER NOT NULL REFERENCES categorias_despesa(id),
     valor               INTEGER NOT NULL,  -- centavos
@@ -554,6 +593,7 @@ CREATE INDEX idx_despesas_fixas_centro ON despesas_fixas(centro_custo_id);
 
 CREATE TABLE financiamentos (
     id                  INTEGER PRIMARY KEY,
+    empresa_id          INTEGER NOT NULL REFERENCES empresas(id),
     centro_custo_id     INTEGER NOT NULL REFERENCES centros_custo(id),
     descricao           TEXT NOT NULL,
     credor_fornecedor_id INTEGER REFERENCES fornecedores(id),
@@ -566,6 +606,7 @@ CREATE TABLE financiamentos (
 -- cheio da parcela afeta tanto o caixa quanto o DRE do centro de custo.
 CREATE TABLE financiamento_parcelas (
     id                  INTEGER PRIMARY KEY,
+    empresa_id          INTEGER NOT NULL REFERENCES empresas(id),
     financiamento_id    INTEGER NOT NULL REFERENCES financiamentos(id) ON DELETE CASCADE,
     numero_parcela      INTEGER NOT NULL,
     data_vencimento     TEXT NOT NULL,
@@ -582,6 +623,7 @@ CREATE INDEX idx_financiamento_parcelas_financiamento ON financiamento_parcelas(
 
 CREATE TABLE contas_bancarias (
     id              INTEGER PRIMARY KEY,
+    empresa_id      INTEGER NOT NULL REFERENCES empresas(id),
     nome            TEXT NOT NULL,
     banco           TEXT,
     agencia         TEXT,
@@ -596,6 +638,7 @@ CREATE TABLE contas_bancarias (
 -- FK diferente por tipo de origem.
 CREATE TABLE contas_pagar (
     id                  INTEGER PRIMARY KEY,
+    empresa_id          INTEGER NOT NULL REFERENCES empresas(id),
     fornecedor_id       INTEGER REFERENCES fornecedores(id),
     centro_custo_id     INTEGER REFERENCES centros_custo(id),
     descricao           TEXT NOT NULL,
@@ -619,6 +662,7 @@ CREATE INDEX idx_contas_pagar_origem ON contas_pagar(origem_tipo, origem_id);
 -- ate fechar o saldo em aberto, em vez de uma unica baixa total.
 CREATE TABLE contas_receber (
     id                  INTEGER PRIMARY KEY,
+    empresa_id          INTEGER NOT NULL REFERENCES empresas(id),
     frete_id            INTEGER NOT NULL REFERENCES fretes(id),
     centro_custo_id     INTEGER NOT NULL REFERENCES centros_custo(id),  -- unidade tratora da viagem do frete
     valor               INTEGER NOT NULL,  -- centavos, valor bruto do frete
@@ -639,6 +683,7 @@ CREATE INDEX idx_contas_receber_frete ON contas_receber(frete_id);
 -- conta da empresa). Desconto NUNCA movimenta caixa (forcado pelo CHECK).
 CREATE TABLE contas_receber_baixas (
     id                  INTEGER PRIMARY KEY,
+    empresa_id          INTEGER NOT NULL REFERENCES empresas(id),
     contas_receber_id   INTEGER NOT NULL REFERENCES contas_receber(id) ON DELETE CASCADE,
     tipo                TEXT NOT NULL CHECK (tipo IN ('Adiantamento', 'Pedagio', 'Saldo', 'Desconto', 'Outro')),
     valor               INTEGER NOT NULL,  -- centavos
@@ -658,6 +703,7 @@ CREATE INDEX idx_contas_receber_baixas_receber ON contas_receber_baixas(contas_r
 -- bancaria (abatimento contabil) ou do tipo Desconto NAO geram linha aqui.
 CREATE TABLE movimentacoes_caixa (
     id                  INTEGER PRIMARY KEY,
+    empresa_id          INTEGER NOT NULL REFERENCES empresas(id),
     conta_bancaria_id   INTEGER NOT NULL REFERENCES contas_bancarias(id),
     tipo                TEXT NOT NULL CHECK (tipo IN ('Entrada', 'Saida')),
     valor               INTEGER NOT NULL,  -- centavos
@@ -675,6 +721,7 @@ CREATE INDEX idx_movimentacoes_caixa_conta ON movimentacoes_caixa(conta_bancaria
 
 CREATE TABLE acertos_viagem (
     id                          INTEGER PRIMARY KEY,
+    empresa_id                  INTEGER NOT NULL REFERENCES empresas(id),
     viagem_id                   INTEGER NOT NULL UNIQUE REFERENCES viagens(id),
     data_acerto                 TEXT NOT NULL DEFAULT (datetime('now')),
     media_consumo_km_l          REAL,             -- calculado a partir dos abastecimentos + km_total
@@ -701,6 +748,7 @@ CREATE TABLE acertos_viagem (
 -- auditavel exigida pelo PRD.
 CREATE TABLE motorista_conta_corrente_lancamentos (
     id                  INTEGER PRIMARY KEY,
+    empresa_id          INTEGER NOT NULL REFERENCES empresas(id),
     motorista_id        INTEGER NOT NULL REFERENCES motoristas(id),
     acerto_id            INTEGER REFERENCES acertos_viagem(id),
     tipo                 TEXT NOT NULL CHECK (tipo IN ('DebitoResidual', 'CreditoAbatido', 'AjusteManual')),
@@ -714,6 +762,39 @@ CREATE TABLE motorista_conta_corrente_lancamentos (
 CREATE INDEX idx_motorista_cc_motorista ON motorista_conta_corrente_lancamentos(motorista_id, data);
 
 -- =====================================================================
+-- 8.1 MULTAS DE TRANSITO
+-- =====================================================================
+
+-- Lancamento manual (nao ha integracao automatica com orgaos de transito
+-- ainda). motorista_id fica NULL ate a empresa identificar o condutor
+-- responsavel; prazo_indicacao e calculado no insert (data_notificacao + 30
+-- dias, art. 257 par. 8 do CTB) e valor_nao_indicacao (2x o valor original)
+-- e calculado quando a multa e marcada como NaoIndicado.
+CREATE TABLE multas (
+    id                      INTEGER PRIMARY KEY,
+    empresa_id              INTEGER NOT NULL REFERENCES empresas(id),
+    veiculo_id              INTEGER NOT NULL REFERENCES veiculos(id),
+    motorista_id            INTEGER REFERENCES motoristas(id),
+    orgao_autuador          TEXT,
+    numero_ait              TEXT,
+    descricao               TEXT NOT NULL,
+    valor_original          INTEGER NOT NULL,  -- centavos
+    data_infracao           TEXT,
+    data_notificacao        TEXT NOT NULL,
+    prazo_indicacao         TEXT NOT NULL,      -- data_notificacao + 30 dias
+    status                  TEXT NOT NULL DEFAULT 'AguardandoIndicacao'
+                             CHECK (status IN ('AguardandoIndicacao', 'CondutorIndicado', 'NaoIndicado', 'Paga', 'Recorrida', 'Cancelada')),
+    condutor_indicado_em    TEXT,
+    valor_nao_indicacao     INTEGER,  -- centavos, 2x valor_original quando status = NaoIndicado
+    observacoes             TEXT,
+    criado_por              INTEGER REFERENCES usuarios(id),
+    criado_em               TEXT NOT NULL DEFAULT (datetime('now')),
+    atualizado_em           TEXT
+);
+CREATE INDEX idx_multas_veiculo ON multas(veiculo_id);
+CREATE INDEX idx_multas_prazo ON multas(prazo_indicacao) WHERE status = 'AguardandoIndicacao';
+
+-- =====================================================================
 -- 9. OCORRENCIAS (HISTORICO LIVRE POR REGISTRO)
 -- =====================================================================
 
@@ -723,7 +804,8 @@ CREATE INDEX idx_motorista_cc_motorista ON motorista_conta_corrente_lancamentos(
 -- contas_pagar.origem_tipo/origem_id) em vez de uma tabela por entidade.
 CREATE TABLE ocorrencias (
     id              INTEGER PRIMARY KEY,
-    entidade_tipo   TEXT NOT NULL CHECK (entidade_tipo IN ('Viagem', 'Frete', 'DespesaViagem', 'ContaPagar', 'ContaReceber', 'AcertoViagem')),
+    empresa_id      INTEGER NOT NULL REFERENCES empresas(id),
+    entidade_tipo   TEXT NOT NULL CHECK (entidade_tipo IN ('Viagem', 'Frete', 'DespesaViagem', 'ContaPagar', 'ContaReceber', 'AcertoViagem', 'Multa')),
     entidade_id     INTEGER NOT NULL,
     texto           TEXT NOT NULL,
     criado_por      INTEGER REFERENCES usuarios(id),
@@ -744,6 +826,7 @@ CREATE INDEX idx_ocorrencias_entidade ON ocorrencias(entidade_tipo, entidade_id)
 -- pode duplicar o que ja foi processado.
 CREATE TABLE importacoes_drivvo (
     id                  INTEGER PRIMARY KEY,
+    empresa_id          INTEGER NOT NULL REFERENCES empresas(id),
     chave_externa       TEXT NOT NULL UNIQUE,
     secao               TEXT NOT NULL CHECK (secao IN ('Abastecimento', 'Despesa', 'Receita')),
     status              TEXT NOT NULL CHECK (status IN ('Importado', 'Ignorado', 'PendenteRevisao')),
@@ -756,3 +839,35 @@ CREATE TABLE importacoes_drivvo (
     resolvido_por       INTEGER REFERENCES usuarios(id)
 );
 CREATE INDEX idx_importacoes_drivvo_status ON importacoes_drivvo(status);
+
+-- =====================================================================
+-- 11. EMPRESAS (CNPJs proprios da operacao)
+-- =====================================================================
+
+-- Cadastro da(s) empresa(s) donas da frota (nao confundir com fornecedores,
+-- que sao terceiros). Existe desde ja como tabela (nao um registro fixo
+-- unico) para comportar filiais/CNPJs adicionais no futuro sem migrar o
+-- modelo depois. Onixsat e por empresa porque cada CNPJ pode ter contrato
+-- proprio com o rastreador.
+CREATE TABLE empresas (
+    id                      INTEGER PRIMARY KEY,
+    razao_social            TEXT NOT NULL,
+    nome_fantasia           TEXT,
+    cnpj                    TEXT NOT NULL UNIQUE,   -- somente digitos
+    inscricao_estadual      TEXT,
+    endereco_logradouro     TEXT,
+    endereco_numero         TEXT,
+    endereco_complemento    TEXT,
+    endereco_bairro         TEXT,
+    endereco_cidade         TEXT,
+    endereco_uf             TEXT,
+    endereco_cep            TEXT,
+    telefone                TEXT,
+    email                   TEXT,
+    onixsat_usuario         TEXT,
+    onixsat_senha           TEXT,
+    onixsat_ultimo_mid      INTEGER, -- cursor de paginacao do RequestMensagemCB (ver onixsatClient.js)
+    ativo                   INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1)),
+    criado_em               TEXT NOT NULL DEFAULT (datetime('now')),
+    atualizado_em           TEXT
+);

@@ -1,4 +1,4 @@
-import { post, salvarSessao } from '../api.js';
+import { post, salvarSessao, salvarEmpresaAtiva, getEmpresaAtiva } from '../api.js';
 import { navegar } from '../router.js';
 
 export function renderLogin(root) {
@@ -35,11 +35,16 @@ export function renderLogin(root) {
     const botao = form.querySelector('button[type="submit"]');
     botao.disabled = true;
     try {
-      const { token, usuario, permissoes } = await post('/auth/login', {
+      const { token, usuario, permissoes, empresas, podeTodas } = await post('/auth/login', {
         email: form.email.value.trim(),
         senha: form.senha.value,
       });
-      salvarSessao(token, { ...usuario, permissoes });
+      salvarSessao(token, { ...usuario, permissoes, empresas, podeTodas });
+      // Sem empresa ativa ainda (1o login): seleciona a unica/1a disponivel
+      // automaticamente, senao toda tela ficaria bloqueada por "selecione uma empresa".
+      if (!getEmpresaAtiva() && empresas && empresas.length) {
+        salvarEmpresaAtiva(empresas[0].id);
+      }
       window.location.hash = '#/dashboard';
       window.location.reload();
     } catch (err) {

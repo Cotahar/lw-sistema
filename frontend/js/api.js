@@ -1,5 +1,6 @@
 const TOKEN_KEY = 'frotista_token';
 const USUARIO_KEY = 'frotista_usuario';
+const EMPRESA_KEY = 'frotista_empresa_id';
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY);
@@ -18,6 +19,29 @@ export function salvarSessao(token, usuario) {
 export function limparSessao() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USUARIO_KEY);
+  localStorage.removeItem(EMPRESA_KEY);
+}
+
+// Empresa ativa (tenant selecionado no seletor do cabecalho). 'todas' e um
+// valor especial (modo consolidado); caso contrario e o id da empresa.
+export function getEmpresaAtiva() {
+  return localStorage.getItem(EMPRESA_KEY);
+}
+
+export function salvarEmpresaAtiva(idOuTodas) {
+  localStorage.setItem(EMPRESA_KEY, String(idOuTodas));
+}
+
+// Headers prontos para os poucos pontos que montam fetch() na mao (uploads
+// de arquivo, que nao passam pelo api() abaixo) - sem isso eles ficariam
+// sem escopo de empresa.
+export function authHeaders() {
+  const headers = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const empresaId = getEmpresaAtiva();
+  if (empresaId) headers['X-Empresa-Id'] = empresaId;
+  return headers;
 }
 
 // Nivel efetivo do usuario logado num modulo ('Nenhum'|'Visualizar'|'Gerenciar').
@@ -55,6 +79,8 @@ export async function api(method, path, body) {
   const headers = { 'Content-Type': 'application/json' };
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
+  const empresaId = getEmpresaAtiva();
+  if (empresaId) headers['X-Empresa-Id'] = empresaId;
 
   const res = await fetch(`/api${path}`, {
     method,

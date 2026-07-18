@@ -3,6 +3,7 @@ const db = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const { requerAcessoModulo } = require('../middleware/auth');
+const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 
 const router = express.Router();
@@ -52,9 +53,28 @@ function receitaECustosDaViagemPorCentro(centroCustoId, inicio, fim) {
   return { receita, custosViagem };
 }
 
+function custosDiretosDoVeiculo(veiculoId, inicio, fim) {
+  const custoPecasDireto = db.prepare(`
+    SELECT COALESCE(SUM(quantidade * custo_unitario), 0) AS total FROM estoque_movimentacoes
+    WHERE tipo = 'Saida' AND veiculo_destino_id = ? AND os_id IS NULL AND data BETWEEN ? AND ?
+  `).get(veiculoId, inicio, fim).total;
+
+  const custoOrdensServico = db.prepare(`
+    SELECT COALESCE(SUM(valor_pecas + valor_mao_obra), 0) AS total FROM ordens_servico
+    WHERE veiculo_id = ? AND data BETWEEN ? AND ?
+  `).get(veiculoId, inicio, fim).total;
+
+  const custoPneus = db.prepare(`
+    SELECT COALESCE(SUM(custo), 0) AS total FROM pneu_eventos
+    WHERE tipo_evento = 'Instalacao' AND veiculo_id = ? AND data BETWEEN ? AND ?
+  `).get(veiculoId, inicio, fim).total;
+
+  return { custoPecasDireto, custoOrdensServico, custoPneus };
+}
+
 // ---- DRE da Viagem ----
-router.get('/viagem/:viagemId', requerAcessoModulo('dre', 'Visualizar'), asyncHandler(async (req, res) => {
-  const viagem = db.prepare('SELECT * FROM viagens WHERE id = ?').get(req.params.viagemId);
+router.get('/viagem/:viagemId', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const viagem = db.prepare('SELECT * FROM viagens WHERE id = ? AND empresa_id = ?').get(req.params.viagemId, req.empresaId);
   if (!viagem) throw new ApiError(404, 'Viagem nao encontrada.');
 
   const fretes = db.prepare('SELECT * FROM fretes WHERE viagem_id = ?').all(viagem.id);
@@ -81,30 +101,15 @@ router.get('/viagem/:viagemId', requerAcessoModulo('dre', 'Visualizar'), asyncHa
 }));
 
 // ---- DRE do Veiculo (periodo) ----
-router.get('/veiculo/:veiculoId', requerAcessoModulo('dre', 'Visualizar'), asyncHandler(async (req, res) => {
-  const veiculo = db.prepare('SELECT * FROM veiculos WHERE id = ?').get(req.params.veiculoId);
+router.get('/veiculo/:veiculoId', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const veiculo = db.prepare('SELECT * FROM veiculos WHERE id = ? AND empresa_id = ?').get(req.params.veiculoId, req.empresaId);
   if (!veiculo) throw new ApiError(404, 'Veiculo nao encontrado.');
   const centroCusto = buscarCentroCustoDoVeiculo(veiculo.id);
   if (!centroCusto) throw new ApiError(400, 'Centro de custo do veiculo nao encontrado.');
 
   const { inicio, fim } = periodoOuTudo(req.query.data_inicio, req.query.data_fim);
   const { receita, custosViagem } = receitaECustosDaViagemPorCentro(centroCusto.id, inicio, fim);
-
-  const custoPecasDireto = db.prepare(`
-    SELECT COALESCE(SUM(quantidade * custo_unitario), 0) AS total FROM estoque_movimentacoes
-    WHERE tipo = 'Saida' AND veiculo_destino_id = ? AND os_id IS NULL AND data BETWEEN ? AND ?
-  `).get(veiculo.id, inicio, fim).total;
-
-  const custoOrdensServico = db.prepare(`
-    SELECT COALESCE(SUM(valor_pecas + valor_mao_obra), 0) AS total FROM ordens_servico
-    WHERE veiculo_id = ? AND data BETWEEN ? AND ?
-  `).get(veiculo.id, inicio, fim).total;
-
-  const custoPneus = db.prepare(`
-    SELECT COALESCE(SUM(custo), 0) AS total FROM pneu_eventos
-    WHERE tipo_evento = 'Instalacao' AND veiculo_id = ? AND data BETWEEN ? AND ?
-  `).get(veiculo.id, inicio, fim).total;
-
+  const { custoPecasDireto, custoOrdensServico, custoPneus } = custosDiretosDoVeiculo(veiculo.id, inicio, fim);
   const custosFixosEFinanciamento = custosDoCentroCusto(centroCusto.id, inicio, fim);
 
   const custoTotal = custosViagem + custoPecasDireto + custoOrdensServico + custoPneus + custosFixosEFinanciamento.total;
@@ -127,27 +132,31 @@ router.get('/veiculo/:veiculoId', requerAcessoModulo('dre', 'Visualizar'), async
 }));
 
 // ---- DRE Geral da Empresa ----
+// Sem exigirEmpresaEspecifica: no modo "Todas" (req.empresaId === null) calcula
+// o total consolidado E a quebra por empresa (porEmpresa), ja que agregar o
+// centro Base de varias empresas num so ".get()" seria nao-deterministico.
 router.get('/geral', requerAcessoModulo('dre', 'Visualizar'), asyncHandler(async (req, res) => {
   const { inicio, fim } = periodoOuTudo(req.query.data_inicio, req.query.data_fim);
-  const veiculos = db.prepare('SELECT id, placa FROM veiculos').all();
+  const veiculos = req.empresaId
+    ? db.prepare('SELECT id, placa, empresa_id FROM veiculos WHERE empresa_id = ?').all(req.empresaId)
+    : db.prepare('SELECT id, placa, empresa_id FROM veiculos').all();
 
   let receitaTotal = 0;
   let custoTotalVeiculos = 0;
   const porVeiculo = [];
+  const porEmpresaMap = new Map();
+
+  const acumularEmpresa = (empresaId) => {
+    if (!porEmpresaMap.has(empresaId)) {
+      porEmpresaMap.set(empresaId, { receitaTotal: 0, custoTotalVeiculos: 0, despesasBase: { despesasFixas: 0, financiamento: 0, total: 0 } });
+    }
+    return porEmpresaMap.get(empresaId);
+  };
 
   for (const veiculo of veiculos) {
     const centroCusto = buscarCentroCustoDoVeiculo(veiculo.id);
     const { receita, custosViagem } = receitaECustosDaViagemPorCentro(centroCusto.id, inicio, fim);
-    const custoPecasDireto = db.prepare(`
-      SELECT COALESCE(SUM(quantidade * custo_unitario), 0) AS total FROM estoque_movimentacoes
-      WHERE tipo = 'Saida' AND veiculo_destino_id = ? AND os_id IS NULL AND data BETWEEN ? AND ?
-    `).get(veiculo.id, inicio, fim).total;
-    const custoOrdensServico = db.prepare(`
-      SELECT COALESCE(SUM(valor_pecas + valor_mao_obra), 0) AS total FROM ordens_servico WHERE veiculo_id = ? AND data BETWEEN ? AND ?
-    `).get(veiculo.id, inicio, fim).total;
-    const custoPneus = db.prepare(`
-      SELECT COALESCE(SUM(custo), 0) AS total FROM pneu_eventos WHERE tipo_evento = 'Instalacao' AND veiculo_id = ? AND data BETWEEN ? AND ?
-    `).get(veiculo.id, inicio, fim).total;
+    const { custoPecasDireto, custoOrdensServico, custoPneus } = custosDiretosDoVeiculo(veiculo.id, inicio, fim);
     const fixosEFinanciamento = custosDoCentroCusto(centroCusto.id, inicio, fim);
 
     const custoTotal = custosViagem + custoPecasDireto + custoOrdensServico + custoPneus + fixosEFinanciamento.total;
@@ -155,22 +164,60 @@ router.get('/geral', requerAcessoModulo('dre', 'Visualizar'), asyncHandler(async
 
     receitaTotal += receita;
     custoTotalVeiculos += custoTotal;
-    porVeiculo.push({ veiculo_id: veiculo.id, placa: veiculo.placa, receita, custoTotal, lucro });
+    porVeiculo.push({ veiculo_id: veiculo.id, placa: veiculo.placa, empresa_id: veiculo.empresa_id, receita, custoTotal, lucro });
+
+    const acc = acumularEmpresa(veiculo.empresa_id);
+    acc.receitaTotal += receita;
+    acc.custoTotalVeiculos += custoTotal;
   }
 
-  const centroBase = db.prepare("SELECT * FROM centros_custo WHERE tipo = 'Base'").get();
-  const custosBase = custosDoCentroCusto(centroBase.id, inicio, fim);
-  const lucroLiquido = (receitaTotal - custoTotalVeiculos) - custosBase.total;
+  // Uma linha "Base" por empresa (garantido pelo indice unico parcial em
+  // centros_custo) - agrupar aqui evita o .get() sem filtro que era
+  // nao-deterministico assim que existisse mais de uma empresa.
+  const centrosBase = req.empresaId
+    ? db.prepare("SELECT * FROM centros_custo WHERE tipo = 'Base' AND empresa_id = ?").all(req.empresaId)
+    : db.prepare("SELECT * FROM centros_custo WHERE tipo = 'Base'").all();
 
-  res.json({
+  let custosBaseTotal = 0;
+  for (const centroBase of centrosBase) {
+    const custosBase = custosDoCentroCusto(centroBase.id, inicio, fim);
+    custosBaseTotal += custosBase.total;
+    const acc = acumularEmpresa(centroBase.empresa_id);
+    acc.despesasBase = custosBase;
+  }
+
+  const lucroLiquido = (receitaTotal - custoTotalVeiculos) - custosBaseTotal;
+
+  const resposta = {
     periodo: { inicio, fim },
     receitaTotal,
     custoTotalVeiculos,
     lucroFrota: receitaTotal - custoTotalVeiculos,
-    despesasBase: custosBase,
     lucroLiquido,
     porVeiculo,
-  });
+  };
+
+  if (req.empresaId) {
+    const acc = porEmpresaMap.get(req.empresaId) || acumularEmpresa(req.empresaId);
+    resposta.despesasBase = acc.despesasBase;
+  } else {
+    const empresas = db.prepare('SELECT id, razao_social FROM empresas').all();
+    resposta.porEmpresa = empresas.map((e) => {
+      const acc = acumularEmpresa(e.id);
+      const lucroFrotaEmpresa = acc.receitaTotal - acc.custoTotalVeiculos;
+      return {
+        empresa_id: e.id,
+        razao_social: e.razao_social,
+        receitaTotal: acc.receitaTotal,
+        custoTotalVeiculos: acc.custoTotalVeiculos,
+        lucroFrota: lucroFrotaEmpresa,
+        despesasBase: acc.despesasBase,
+        lucroLiquido: lucroFrotaEmpresa - acc.despesasBase.total,
+      };
+    });
+  }
+
+  res.json(resposta);
 }));
 
 module.exports = router;

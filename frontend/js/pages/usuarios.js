@@ -91,6 +91,45 @@ async function abrirPermissoes(usuarioRow) {
   }
 }
 
+async function abrirEmpresas(usuarioRow) {
+  try {
+    const { usuario, empresas } = await get(`/usuarios/${usuarioRow.id}/empresas`);
+    const corpo = document.createElement('div');
+    corpo.innerHTML = `
+      <p class="mb-3 text-sm text-slate-500">Marque as empresas que <span class="font-medium">${usuario.nome}</span> pode acessar.</p>
+      <div class="max-h-96 space-y-1 overflow-y-auto">
+        ${empresas.map((e) => `
+          <div class="flex items-center justify-between rounded-lg px-2 py-1.5">
+            <span class="text-sm text-slate-700">${e.razao_social}</span>
+            <input type="checkbox" class="h-4 w-4" data-empresa="${e.id}" ${e.concedida ? 'checked' : ''} />
+          </div>
+        `).join('')}
+      </div>
+      ${!empresas.length ? '<p class="text-sm text-slate-500">Nenhuma empresa ativa cadastrada.</p>' : ''}
+      <p class="hidden mt-3 text-sm text-red-600" data-erro></p>
+      <div class="mt-4 flex justify-end gap-2 border-t border-slate-200 pt-3">
+        <button type="button" class="btn-primary" data-salvar>Salvar empresas</button>
+      </div>
+    `;
+    const overlay = abrirModal({ titulo: `Empresas - ${usuario.nome}`, conteudo: corpo, largura: 'max-w-lg' });
+    overlay.querySelector('[data-salvar]').addEventListener('click', async () => {
+      const checkboxes = overlay.querySelectorAll('[data-empresa]');
+      const empresaIds = [...checkboxes].filter((c) => c.checked).map((c) => Number(c.dataset.empresa));
+      try {
+        await put(`/usuarios/${usuarioRow.id}/empresas`, { empresaIds });
+        fecharModal();
+        mostrarToast('Empresas atualizadas.');
+      } catch (err) {
+        const erroEl = overlay.querySelector('[data-erro]');
+        erroEl.textContent = err.message;
+        erroEl.classList.remove('hidden');
+      }
+    });
+  } catch (err) {
+    mostrarErro(err);
+  }
+}
+
 export async function render(container) {
   if (!ehAdmin()) return renderizarAcessoNegado(container);
   container.innerHTML = '<h1 class="mb-4 text-xl font-bold text-slate-900">Usuarios e Permissoes</h1><div data-tabela></div>';
@@ -106,7 +145,7 @@ export async function render(container) {
     onNovo: () => abrirFormularioUsuario(null, tabela.recarregar),
     onEditar: (r) => abrirFormularioUsuario(r, tabela.recarregar),
     onExcluir: (r) => del(`/usuarios/${r.id}`),
-    acoesExtras: (r) => (r.perfil === 'Admin' ? [] : [{ label: 'Permissoes', onClick: abrirPermissoes }]),
+    acoesExtras: (r) => (r.perfil === 'Admin' ? [] : [{ label: 'Permissoes', onClick: abrirPermissoes }, { label: 'Empresas', onClick: abrirEmpresas }]),
     tituloNovo: 'Usuario',
   });
   container.querySelector('[data-tabela]').appendChild(tabela.el);

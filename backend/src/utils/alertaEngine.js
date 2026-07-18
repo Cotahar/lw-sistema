@@ -20,9 +20,9 @@ function verificarAlertasDoVeiculo(veiculoId) {
     if (jaPendente) continue;
 
     const info = db.prepare(`
-      INSERT INTO alertas_ocorrencias (regra_id, veiculo_id, km_atual_no_disparo)
-      VALUES (?, ?, ?)
-    `).run(regra.id, veiculoId, veiculo.hodometro_atual);
+      INSERT INTO alertas_ocorrencias (empresa_id, regra_id, veiculo_id, km_atual_no_disparo)
+      VALUES (?, ?, ?, ?)
+    `).run(veiculo.empresa_id, regra.id, veiculoId, veiculo.hodometro_atual);
     novasOcorrencias.push(db.prepare('SELECT * FROM alertas_ocorrencias WHERE id = ?').get(info.lastInsertRowid));
   }
 

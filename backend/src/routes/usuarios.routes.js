@@ -126,4 +126,51 @@ router.put('/:id/permissoes', asyncHandler(async (req, res) => {
   res.json({ usuarioId: Number(req.params.id), excecoes: atualizado });
 }));
 
+// ---- Concessao de empresas (ver usuario_empresas no schema) ----
+// Admin sempre acessa todas as empresas (e o modo "Todas"), sem precisar de
+// linha em usuario_empresas - por isso essa tela nem aparece para linhas Admin.
+router.get('/:id/empresas', asyncHandler(async (req, res) => {
+  const usuario = db.prepare('SELECT id, nome, perfil FROM usuarios WHERE id = ?').get(req.params.id);
+  if (!usuario) throw new ApiError(404, 'Usuario nao encontrado.');
+
+  const empresasAtivas = db.prepare('SELECT id, razao_social FROM empresas WHERE ativo = 1 ORDER BY razao_social').all();
+  const concedidas = new Set(
+    db.prepare('SELECT empresa_id FROM usuario_empresas WHERE usuario_id = ?').all(req.params.id).map((r) => r.empresa_id)
+  );
+
+  const empresas = empresasAtivas.map((e) => ({
+    id: e.id,
+    razao_social: e.razao_social,
+    concedida: usuario.perfil === 'Admin' || concedidas.has(e.id),
+  }));
+
+  res.json({ usuario, empresas });
+}));
+
+// Substitui as concessoes do usuario pela lista informada de empresa_id.
+router.put('/:id/empresas', asyncHandler(async (req, res) => {
+  const usuario = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(req.params.id);
+  if (!usuario) throw new ApiError(404, 'Usuario nao encontrado.');
+  if (usuario.perfil === 'Admin') throw new ApiError(400, 'Admin sempre tem acesso a todas as empresas; nao ha concessoes para configurar.');
+
+  const { empresaIds } = req.body;
+  if (!Array.isArray(empresaIds)) throw new ApiError(400, 'Informe a lista de empresaIds.');
+
+  const empresasValidas = db.prepare('SELECT id FROM empresas WHERE ativo = 1').all().map((e) => e.id);
+  for (const id of empresaIds) {
+    if (!empresasValidas.includes(id)) throw new ApiError(400, `Empresa ${id} invalida.`);
+  }
+
+  db.prepare('DELETE FROM usuario_empresas WHERE usuario_id = ?').run(req.params.id);
+  const inserir = db.prepare('INSERT INTO usuario_empresas (usuario_id, empresa_id) VALUES (?, ?)');
+  for (const empresaId of empresaIds) {
+    inserir.run(req.params.id, empresaId);
+  }
+
+  registrarAuditoria({ usuarioId: req.usuario.id, tabela: 'usuario_empresas', registroId: Number(req.params.id), acao: 'UPDATE', depois: { empresaIds } });
+
+  const atualizado = db.prepare('SELECT empresa_id FROM usuario_empresas WHERE usuario_id = ?').all(req.params.id);
+  res.json({ usuarioId: Number(req.params.id), empresas: atualizado.map((r) => r.empresa_id) });
+}));
+
 module.exports = router;

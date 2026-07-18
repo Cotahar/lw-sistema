@@ -3,8 +3,10 @@ const db = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const { nivelEfetivoNoModulo } = require('../middleware/auth');
+const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 
 const router = express.Router();
+router.use(exigirEmpresaEspecifica);
 
 const RANK_NIVEL = { Nenhum: 0, Visualizar: 1, Gerenciar: 2 };
 
@@ -18,6 +20,17 @@ const MODULO_POR_ENTIDADE = {
   ContaPagar: 'contas_pagar',
   ContaReceber: 'contas_receber',
   AcertoViagem: 'acertos',
+};
+
+// Tabela real de cada entidade_tipo, usada so para confirmar que o registro
+// apontado pertence a empresa ativa antes de lancar uma ocorrencia nele.
+const TABELA_POR_ENTIDADE = {
+  Viagem: 'viagens',
+  Frete: 'fretes',
+  DespesaViagem: 'despesas_viagem',
+  ContaPagar: 'contas_pagar',
+  ContaReceber: 'contas_receber',
+  AcertoViagem: 'acertos_viagem',
 };
 
 function checarAcesso(req, entidadeTipo, nivelMinimo) {
@@ -36,9 +49,9 @@ router.get('/', asyncHandler(async (req, res) => {
   const ocorrencias = db.prepare(`
     SELECT o.*, u.nome AS criado_por_nome FROM ocorrencias o
     LEFT JOIN usuarios u ON u.id = o.criado_por
-    WHERE o.entidade_tipo = ? AND o.entidade_id = ?
+    WHERE o.entidade_tipo = ? AND o.entidade_id = ? AND o.empresa_id = ?
     ORDER BY o.criado_em DESC, o.id DESC
-  `).all(entidade_tipo, entidade_id);
+  `).all(entidade_tipo, entidade_id, req.empresaId);
   res.json(ocorrencias);
 }));
 
@@ -46,9 +59,12 @@ router.post('/', asyncHandler(async (req, res) => {
   const { entidade_tipo, entidade_id, texto } = req.body;
   if (!entidade_tipo || !entidade_id || !texto) throw new ApiError(400, 'Informe entidade_tipo, entidade_id e texto.');
   checarAcesso(req, entidade_tipo, 'Gerenciar');
+  const tabela = TABELA_POR_ENTIDADE[entidade_tipo];
+  const entidade = db.prepare(`SELECT 1 FROM ${tabela} WHERE id = ? AND empresa_id = ?`).get(entidade_id, req.empresaId);
+  if (!entidade) throw new ApiError(404, 'Registro referenciado nao encontrado nesta empresa.');
   const info = db.prepare(`
-    INSERT INTO ocorrencias (entidade_tipo, entidade_id, texto, criado_por) VALUES (?, ?, ?, ?)
-  `).run(entidade_tipo, entidade_id, texto, req.usuario.id);
+    INSERT INTO ocorrencias (empresa_id, entidade_tipo, entidade_id, texto, criado_por) VALUES (?, ?, ?, ?, ?)
+  `).run(req.empresaId, entidade_tipo, entidade_id, texto, req.usuario.id);
   const ocorrencia = db.prepare(`
     SELECT o.*, u.nome AS criado_por_nome FROM ocorrencias o LEFT JOIN usuarios u ON u.id = o.criado_por WHERE o.id = ?
   `).get(info.lastInsertRowid);

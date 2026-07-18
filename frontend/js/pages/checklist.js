@@ -1,4 +1,4 @@
-import { get, put, del, getToken, podeGerenciar } from '../api.js';
+import { get, put, del, authHeaders, podeGerenciar } from '../api.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { abrirModal, confirmarAcao } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
@@ -70,10 +70,9 @@ async function enviarFoto(veiculoId, momento, blob) {
   const formData = new FormData();
   formData.append('foto', blob, 'foto.jpg');
   formData.append('momento', momento);
-  const token = getToken();
   const res = await fetch(`/api/checklist/veiculo/${veiculoId}/fotos`, {
     method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    headers: authHeaders(),
     body: formData,
   });
   const dados = await res.json().catch(() => null);
