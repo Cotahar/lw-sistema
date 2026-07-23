@@ -268,6 +268,10 @@ router.delete('/fretes/:freteId', requerAcessoModulo('viagens', 'Gerenciar'), ex
 
   withTransaction(db, () => {
     if (receber) db.prepare('DELETE FROM contas_receber WHERE id = ?').run(receber.id);
+    // Despesas vinculadas a este frete (ver POST /:id/despesas) voltam a
+    // frete_id NULL em vez de bloquear a exclusao - mesmo estado de uma
+    // despesa lancada antes do primeiro frete da viagem.
+    db.prepare('UPDATE despesas_viagem SET frete_id = NULL WHERE frete_id = ?').run(req.params.freteId);
     db.prepare('DELETE FROM fretes WHERE id = ?').run(req.params.freteId);
   });
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'fretes', registroId: antes.id, acao: 'DELETE', antes });
@@ -547,8 +551,10 @@ router.delete('/despesas/:despesaId', requerAcessoModulo('viagens', 'Gerenciar')
   if (contaPagar && contaPagar.status !== 'Pendente') throw new ApiError(400, 'Esta despesa ja possui pagamento lancado e nao pode ser excluida.');
 
   withTransaction(db, () => {
-    if (contaPagar) db.prepare('DELETE FROM contas_pagar WHERE id = ?').run(contaPagar.id);
+    // despesas_viagem.contas_pagar_id aponta pra contas_pagar - precisa apagar
+    // a despesa antes (ou a FK acusa violacao ao apagar a conta ainda referenciada).
     db.prepare('DELETE FROM despesas_viagem WHERE id = ?').run(req.params.despesaId);
+    if (contaPagar) db.prepare('DELETE FROM contas_pagar WHERE id = ?').run(contaPagar.id);
   });
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'despesas_viagem', registroId: antes.id, acao: 'DELETE', antes });
   res.status(204).send();
