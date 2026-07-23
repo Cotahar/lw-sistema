@@ -86,9 +86,12 @@ function renderShellHtml() {
   return `
     <div class="flex min-h-screen">
       <aside class="fixed inset-y-0 left-0 z-30 w-64 -translate-x-full transform overflow-y-auto border-r border-slate-200 bg-white p-3 transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0" data-sidebar>
-        <div class="mb-4 px-3 py-2">
-          <p class="text-lg font-bold text-slate-900">Frottex</p>
-          <p class="text-xs text-slate-500">Gestao de Frota</p>
+        <div class="mb-4 flex items-center gap-2 px-3 py-2">
+          <img src="/img/favicon.png" alt="" class="h-8 w-8 shrink-0" />
+          <div>
+            <p class="text-lg font-bold leading-tight text-slate-900">Frottex</p>
+            <p class="text-xs leading-tight text-slate-500">Gestao de Frota</p>
+          </div>
         </div>
         <nav data-menu>${montarSidebarHtml()}</nav>
       </aside>
