@@ -48,9 +48,9 @@ export async function render(container) {
     <div class="mb-3 flex gap-2">
       <input type="text" data-filtro-tabela class="input max-w-xs" placeholder="Filtrar por tabela (ex.: viagens, pneus)..." />
     </div>
-    <div class="card overflow-x-auto p-0">
+    <div class="card overflow-x-auto border-gray-300 p-0">
       <table class="w-full min-w-max border-collapse">
-        <thead class="border-b border-slate-200 bg-slate-50"><tr>
+        <thead class="bg-brand-black"><tr>
           <th class="table-th">Data</th><th class="table-th">Tabela</th><th class="table-th">Registro</th>
           <th class="table-th">Acao</th><th class="table-th">Usuario</th><th class="table-th">Status</th><th class="table-th"></th>
         </tr></thead>
@@ -76,7 +76,7 @@ export async function render(container) {
           <td class="table-td">${l.usuario_nome || '-'}</td>
           <td class="table-td">${l.revertido_em ? `Revertido (${l.revertido_por_nome || ''} &middot; ${formatarDataHoraBr(l.revertido_em)})` : '-'}</td>
           <td class="table-td text-right whitespace-nowrap">
-            <button type="button" class="text-xs text-brand-800 hover:underline" data-detalhes="${l.id}">Detalhes</button>
+            <button type="button" class="text-xs text-brand-black hover:underline" data-detalhes="${l.id}">Detalhes</button>
             ${l.revertido_em ? '' : `<button type="button" class="ml-2 text-xs text-red-600 hover:underline" data-reverter="${l.id}">Reverter</button>`}
           </td>
         </tr>

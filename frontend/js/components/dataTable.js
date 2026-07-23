@@ -18,12 +18,12 @@ export function criarDataTable({
   ordenacaoInicial = null, // { chave, direcao: 'asc'|'desc' } - ordenacao padrao ao carregar
 }) {
   const el = document.createElement('div');
-  el.className = 'card';
+  el.className = 'card border-gray-300';
   const temSelecao = Boolean(onExcluirLote);
   let ordenacao = ordenacaoInicial ? { ...ordenacaoInicial } : null;
 
   el.innerHTML = `
-    <div class="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex flex-col gap-3 border-b border-gray-200 p-4 sm:flex-row sm:items-center sm:justify-between">
       <input type="text" class="input sm:max-w-xs ${mostrarBusca ? '' : 'hidden'}" placeholder="Pesquisar..." data-busca />
       <div class="flex items-center gap-2">
         <button type="button" class="btn-danger hidden" data-excluir-lote>Excluir selecionados</button>
@@ -32,12 +32,12 @@ export function criarDataTable({
     </div>
     <div class="overflow-x-auto">
       <table class="w-full min-w-max border-collapse">
-        <thead class="border-b border-slate-200 bg-slate-50">
+        <thead class="bg-brand-black">
           <tr>
             ${temSelecao ? '<th class="table-th w-8"><input type="checkbox" data-marcar-todos /></th>' : ''}
             ${colunas.map((c) => `
-              <th class="table-th cursor-pointer select-none whitespace-nowrap hover:text-slate-700" data-ordenar="${c.chave}">
-                ${c.titulo} <span class="text-slate-400" data-seta></span>
+              <th class="table-th cursor-pointer select-none whitespace-nowrap hover:text-white" data-ordenar="${c.chave}">
+                ${c.titulo} <span class="text-gray-400" data-seta></span>
               </th>
             `).join('')}
             ${onEditar || onExcluir || acoesExtras ? '<th class="table-th text-right">Acoes</th>' : ''}
@@ -101,7 +101,7 @@ export function criarDataTable({
     corpo.innerHTML = '';
     for (const linha of dados) {
       const tr = document.createElement('tr');
-      tr.className = 'border-b border-slate-100 last:border-0 hover:bg-slate-50';
+      tr.className = 'border-b border-gray-200 last:border-0 hover:bg-gray-50';
       let html = '';
       if (temSelecao) html += `<td class="table-td"><input type="checkbox" data-linha-check data-id="${linha.id}" /></td>`;
       for (const c of colunas) {

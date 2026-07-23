@@ -80,7 +80,7 @@ export async function render(container) {
 
   const tabela = criarDataTable({
     colunas: [
-      { chave: 'frete_id', titulo: 'Frete', render: (r) => `<a href="#/viagens/${r.viagem_id}" class="text-brand-800 hover:underline">#${r.frete_id} (viagem #${r.viagem_id})</a>` },
+      { chave: 'frete_id', titulo: 'Frete', render: (r) => `<a href="#/viagens/${r.viagem_id}" class="text-brand-black hover:underline">#${r.frete_id} (viagem #${r.viagem_id})</a>` },
       { chave: 'rota', titulo: 'Rota', render: (r) => `${r.origem_cidade}/${r.origem_uf} &rarr; ${r.destino_cidade}/${r.destino_uf}` },
       { chave: 'transportadora_nome', titulo: 'Transportadora', render: (r) => r.transportadora_nome || '-' },
       { chave: 'valor', titulo: 'Valor', render: (r) => formatarMoeda(r.valor) },

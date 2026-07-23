@@ -9,7 +9,7 @@ function cartaoVeiculoViagem(v) {
     ? `${v.localizacao_cidade}/${v.localizacao_uf} <span class="text-slate-400">(${formatarDataHoraBr(v.localizacao_atualizado_em)})</span>`
     : '-';
   return `
-    <a href="#/viagens/${v.viagem_id}" class="card block p-4 hover:border-brand-300 hover:shadow-sm">
+    <a href="#/viagens/${v.viagem_id}" class="card block p-4 hover:border-brand-yellow hover:shadow-sm">
       <div class="mb-2 flex items-center justify-between">
         <p class="text-base font-bold text-slate-900">${v.placa}</p>
         <span class="text-xs text-slate-500">${v.motorista_nome}</span>
@@ -27,18 +27,30 @@ function cartaoVeiculoViagem(v) {
 }
 
 function cartaoResumo(titulo, valor, { cor = 'text-slate-900', rota } = {}) {
-  const classes = `card block p-4${rota ? ' hover:border-brand-300 hover:shadow-sm' : ''}`;
+  const classes = `card block p-4${rota ? ' hover:border-brand-yellow hover:shadow-sm' : ''}`;
   const tag = rota ? `a href="#${rota}"` : 'div';
   const fechoTag = rota ? 'a' : 'div';
   return `
     <${tag} class="${classes}">
+      <div class="mb-2 h-1 w-8 rounded-full bg-brand-yellow"></div>
       <p class="text-xs font-medium uppercase tracking-wide text-slate-500">${titulo}</p>
       <p class="mt-1 text-2xl font-bold ${cor}">${valor}</p>
     </${fechoTag}>
   `;
 }
 
+let intervaloAtualizacao = null;
+
 export async function render(container) {
+  // Onixsat sincroniza sozinho a cada 5min no backend, mas sem isso a tela
+  // so refletiria os dados novos depois de um F5 ou clique manual no botao.
+  if (intervaloAtualizacao) clearInterval(intervaloAtualizacao);
+  const hashInicio = window.location.hash;
+  intervaloAtualizacao = setInterval(() => {
+    if (window.location.hash !== hashInicio) { clearInterval(intervaloAtualizacao); return; }
+    render(container);
+  }, 5 * 60 * 1000);
+
   container.innerHTML = '<p class="text-slate-400">Carregando...</p>';
   try {
     const resumo = await get('/dashboard/resumo');

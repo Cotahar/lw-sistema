@@ -14,10 +14,10 @@ export function abrirModal({ titulo, conteudo, largura = 'max-w-lg' }) {
   const overlay = document.createElement('div');
   overlay.className = 'fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 px-4 py-8';
   overlay.innerHTML = `
-    <div class="w-full ${largura} rounded-xl bg-white shadow-xl">
-      <div class="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-        <h3 class="text-base font-semibold text-slate-900">${titulo}</h3>
-        <button type="button" data-fechar-modal class="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+    <div class="w-full ${largura} rounded-2xl bg-white shadow-xl">
+      <div class="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+        <h3 class="text-base font-semibold text-brand-black">${titulo}</h3>
+        <button type="button" data-fechar-modal class="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-brand-black">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
         </button>
       </div>

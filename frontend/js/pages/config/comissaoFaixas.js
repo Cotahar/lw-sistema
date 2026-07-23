@@ -39,9 +39,9 @@ export async function render(container) {
     <h1 class="mb-1 text-xl font-bold text-slate-900">Faixas de Comissao por Media (KM/L)</h1>
     <p class="mb-4 text-sm text-slate-500">A comissao do motorista varia pela media de consumo do veiculo (km/l). Cadastre faixas gerais (marca em branco) ou especificas por marca - uma faixa especifica tem prioridade sobre a generica na mesma media.</p>
     <datalist id="lista-marcas"></datalist>
-    <div class="card overflow-x-auto p-0">
+    <div class="card overflow-x-auto border-gray-300 p-0">
       <table class="w-full min-w-max border-collapse">
-        <thead class="border-b border-slate-200 bg-slate-50"><tr>
+        <thead class="bg-brand-black"><tr>
           <th class="table-th">Marca</th><th class="table-th">KM/L de</th><th class="table-th">KM/L ate</th><th class="table-th">Comissao %</th><th class="table-th">Ativa</th><th class="table-th"></th>
         </tr></thead>
         <tbody data-linhas></tbody>

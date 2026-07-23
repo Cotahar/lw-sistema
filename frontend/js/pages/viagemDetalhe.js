@@ -559,12 +559,12 @@ async function abrirFinalizar(viagem, recarregarPagina) {
 // nao atualizava de forma confiavel dentro do <summary>.
 function resumoSecao(titulo, contagem, aberto) {
   return `
-    <summary class="-mx-2 mb-3 flex cursor-pointer list-none items-center justify-between rounded-lg px-2 py-1.5 hover:bg-slate-50">
-      <h2 class="font-semibold text-slate-900">${titulo} <span class="text-sm font-normal text-slate-400">(${contagem})</span></h2>
-      <svg data-chevron-fechado class="h-4 w-4 shrink-0 text-slate-400 ${aberto ? 'hidden' : ''}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <summary class="mb-3 flex cursor-pointer list-none items-center justify-between rounded-lg bg-brand-black px-4 py-2.5 hover:bg-gray-800">
+      <h2 class="font-semibold text-white">${titulo} <span class="text-sm font-normal text-gray-400">(${contagem})</span></h2>
+      <svg data-chevron-fechado class="h-4 w-4 shrink-0 text-brand-yellow ${aberto ? 'hidden' : ''}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
       </svg>
-      <svg data-chevron-aberto class="h-4 w-4 shrink-0 text-slate-400 ${aberto ? '' : 'hidden'}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <svg data-chevron-aberto class="h-4 w-4 shrink-0 text-brand-yellow ${aberto ? '' : 'hidden'}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
       </svg>
     </summary>
@@ -577,6 +577,8 @@ function ligarChevronSecao(details) {
     details.querySelector('[data-chevron-aberto]').classList.toggle('hidden', !details.open);
   });
 }
+
+let intervaloAtualizacao = null;
 
 export async function render(container, params) {
   const viagemId = params.id;
@@ -622,7 +624,7 @@ export async function render(container, params) {
     container.innerHTML = `
       <div class="mb-4 flex items-center justify-between">
         <div>
-          <button type="button" class="mb-2 text-sm text-brand-800 hover:underline" data-voltar>&larr; Voltar para Viagens</button>
+          <button type="button" class="mb-2 text-sm text-brand-black hover:underline" data-voltar>&larr; Voltar para Viagens</button>
           <h1 class="text-xl font-bold text-slate-900">Viagem #${viagem.id} - ${motorista.nome}</h1>
           <p class="text-sm text-slate-500">${conjunto.itens.map((i) => i.placa).join(' + ')} · ${formatarDataBr(viagem.data_inicio)}${viagem.data_fim ? ` a ${formatarDataBr(viagem.data_fim)}` : ''}</p>
         </div>
@@ -642,7 +644,7 @@ export async function render(container, params) {
               <summary class="inline cursor-pointer text-sm font-semibold text-slate-900">${tratora.localizacao_cidade}/${tratora.localizacao_uf}</summary>
               <div class="mt-1 text-xs text-slate-500">
                 Atualizado em ${formatarDataHoraBr(tratora.localizacao_atualizado_em)}<br />
-                <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${tratora.localizacao_cidade}, ${tratora.localizacao_uf}`)}" target="_blank" rel="noopener" class="text-brand-800 hover:underline">Google Maps</a>
+                <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${tratora.localizacao_cidade}, ${tratora.localizacao_uf}`)}" target="_blank" rel="noopener" class="text-brand-black hover:underline">Google Maps</a>
               </div>
             </details>
           ` : '<p class="text-sm text-slate-400">Nao informada</p>'}
@@ -677,31 +679,20 @@ export async function render(container, params) {
 
       <details class="mb-6" data-secao-fretes open>
         ${resumoSecao('Fretes', (viagem.fretes || []).length, true)}
-        ${gerenciar && viagem.status !== 'Finalizada' ? '<div class="mb-3 flex justify-end"><button type="button" class="btn-primary btn-sm" data-novo-frete>+ Frete</button></div>' : ''}
         <div data-tabela-fretes></div>
       </details>
 
       <details class="mb-6" data-secao-despesas>
         ${resumoSecao('Despesas', despesas.length, false)}
-        ${gerenciar && viagem.status !== 'Finalizada' ? '<div class="mb-3 flex justify-end"><button type="button" class="btn-primary btn-sm" data-nova-despesa>+ Despesa</button></div>' : ''}
-        <div class="card overflow-x-auto p-0">
-          <table class="w-full min-w-max border-collapse">
-            <thead class="border-b border-slate-200 bg-slate-50"><tr>
-              <th class="table-th">Data</th><th class="table-th">Categoria</th><th class="table-th">Valor</th><th class="table-th">Pago por</th><th class="table-th">Vencimento</th><th class="table-th"></th>
-            </tr></thead>
-            <tbody>
-              ${despesas.map((d) => `<tr class="border-b border-slate-100" data-despesa-id="${d.id}"><td class="table-td">${formatarDataBr(d.data)}</td><td class="table-td">${nomeCategoriasPorId[d.categoria_id] || d.categoria_id}</td><td class="table-td">${formatarMoeda(d.valor)}</td><td class="table-td">${d.pago_por}</td><td class="table-td">${d.data_vencimento ? formatarDataBr(d.data_vencimento) : '-'}${d.contas_pagar_id ? ' <a href="#/contas-pagar" class="text-xs text-brand-800 hover:underline">(ver conta)</a>' : ''}</td><td class="table-td text-right"><button type="button" class="text-xs text-brand-800 hover:underline" data-ocorrencias-despesa="${d.id}">Ocorrencias</button></td></tr>`).join('') || '<tr><td colspan="6" class="table-td py-6 text-center text-slate-400">Nenhuma despesa lancada.</td></tr>'}
-            </tbody>
-          </table>
-        </div>
+        <div data-tabela-despesas></div>
       </details>
 
       <details data-secao-adiantamentos>
         ${resumoSecao('Adiantamentos ao Motorista', adiantamentos.length, false)}
         ${gerenciar && viagem.status !== 'Finalizada' ? '<div class="mb-3 flex justify-end"><button type="button" class="btn-primary btn-sm" data-novo-adiantamento>+ Adiantamento</button></div>' : ''}
-        <div class="card overflow-x-auto p-0">
+        <div class="card overflow-x-auto border-gray-300 p-0">
           <table class="w-full min-w-max border-collapse">
-            <thead class="border-b border-slate-200 bg-slate-50"><tr>
+            <thead class="bg-brand-black"><tr>
               <th class="table-th">Data</th><th class="table-th">Valor</th><th class="table-th">Descricao</th><th class="table-th"></th>
             </tr></thead>
             <tbody>
@@ -724,23 +715,17 @@ export async function render(container, params) {
     if (gerenciar) {
       container.querySelector('[data-onixsat-botao]').appendChild(criarBotaoSincronizarOnixsat({ onAtualizar: recarregarPagina }));
     }
-    const btnNovoFrete = container.querySelector('[data-novo-frete]');
-    if (btnNovoFrete) btnNovoFrete.addEventListener('click', () => abrirNovoFrete(viagemId, recarregarPagina));
     const btnNovoAdiantamento = container.querySelector('[data-novo-adiantamento]');
     if (btnNovoAdiantamento) btnNovoAdiantamento.addEventListener('click', () => abrirNovoAdiantamento(viagemId, recarregarPagina));
     container.querySelectorAll('[data-remover-adiantamento]').forEach((btn) => {
       const adiantamento = adiantamentos.find((a) => String(a.id) === btn.dataset.removerAdiantamento);
       btn.addEventListener('click', () => removerAdiantamento(adiantamento, recarregarPagina));
     });
-    const btnNovaDespesa = container.querySelector('[data-nova-despesa]');
-    if (btnNovaDespesa) btnNovaDespesa.addEventListener('click', () => abrirNovaDespesa(viagemId, recarregarPagina));
-    container.querySelectorAll('[data-ocorrencias-despesa]').forEach((btn) => {
-      const despesa = despesas.find((d) => String(d.id) === btn.dataset.ocorrenciasDespesa);
-      btn.addEventListener('click', () => abrirOcorrenciasDespesa(despesa, gerenciar));
-    });
     container.querySelector('[data-ocorrencias-viagem]').appendChild(
       criarOcorrencias({ entidadeTipo: 'Viagem', entidadeId: Number(viagemId), podeGerenciar: gerenciar, resumida: true }).el,
     );
+
+    const podeEditar = gerenciar && viagem.status !== 'Finalizada';
 
     const fretes = await get(`/viagens/${viagemId}/fretes`);
     const tabelaFretes = criarDataTable({
@@ -751,12 +736,54 @@ export async function render(container, params) {
         { chave: 'peso_carga_kg', titulo: 'Peso', render: (r) => (r.peso_carga_kg ? `${r.peso_carga_kg.toLocaleString('pt-BR')} kg` : '-') },
         { chave: 'frete_bruto', titulo: 'Frete Bruto', render: (r) => formatarMoeda(r.frete_bruto) },
       ],
-      buscarDados: () => Promise.resolve(fretes),
+      buscarDados: (termo) => {
+        if (!termo) return Promise.resolve(fretes);
+        const t = termo.toLowerCase();
+        return Promise.resolve(fretes.filter((r) => {
+          const transportadora = (r.transportadora_id ? nomeFornecedoresPorId[r.transportadora_id] || '' : '').toLowerCase();
+          const rota = `${r.origem_cidade}/${r.origem_uf} ${r.destino_cidade}/${r.destino_uf}`.toLowerCase();
+          return transportadora.includes(t) || rota.includes(t);
+        }));
+      },
+      onNovo: podeEditar ? () => abrirNovoFrete(viagemId, recarregarPagina) : undefined,
+      tituloNovo: 'Frete',
       acoesExtras: () => [{ label: 'Recebivel/Baixas', onClick: (f) => abrirBaixasFrete(f, recarregarPagina, gerenciar) }],
       vazio: 'Nenhum frete cadastrado nesta viagem.',
     });
     container.querySelector('[data-tabela-fretes]').appendChild(tabelaFretes.el);
+
+    const tabelaDespesas = criarDataTable({
+      colunas: [
+        { chave: 'data', titulo: 'Data', render: (d) => formatarDataBr(d.data) },
+        { chave: 'categoria', titulo: 'Categoria', render: (d) => nomeCategoriasPorId[d.categoria_id] || d.categoria_id },
+        { chave: 'valor', titulo: 'Valor', render: (d) => formatarMoeda(d.valor) },
+        { chave: 'pago_por', titulo: 'Pago por' },
+        { chave: 'vencimento', titulo: 'Vencimento', render: (d) => (d.data_vencimento ? formatarDataBr(d.data_vencimento) : '-') + (d.contas_pagar_id ? ' <a href="#/contas-pagar" class="text-xs text-brand-black hover:underline">(ver conta)</a>' : '') },
+      ],
+      buscarDados: (termo) => {
+        if (!termo) return Promise.resolve(despesas);
+        const t = termo.toLowerCase();
+        return Promise.resolve(despesas.filter((d) => {
+          const categoria = (nomeCategoriasPorId[d.categoria_id] || '').toLowerCase();
+          return categoria.includes(t) || (d.pago_por || '').toLowerCase().includes(t);
+        }));
+      },
+      onNovo: podeEditar ? () => abrirNovaDespesa(viagemId, recarregarPagina) : undefined,
+      tituloNovo: 'Despesa',
+      acoesExtras: (d) => [{ label: 'Ocorrencias', onClick: () => abrirOcorrenciasDespesa(d, gerenciar) }],
+      vazio: 'Nenhuma despesa lancada.',
+    });
+    container.querySelector('[data-tabela-despesas]').appendChild(tabelaDespesas.el);
   }
 
   await recarregarPagina();
+
+  // Onixsat sincroniza sozinho a cada 5min no backend, mas sem isso a tela
+  // so refletiria os dados novos depois de um F5 ou clique manual no botao.
+  if (intervaloAtualizacao) clearInterval(intervaloAtualizacao);
+  const hashInicio = window.location.hash;
+  intervaloAtualizacao = setInterval(() => {
+    if (window.location.hash !== hashInicio) { clearInterval(intervaloAtualizacao); return; }
+    recarregarPagina();
+  }, 5 * 60 * 1000);
 }

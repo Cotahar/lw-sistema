@@ -25,7 +25,7 @@ function renderGrupoAccordion(chave, titulo, itens) {
   const aberto = itens.some((item) => rotaEstaAtiva(item.rota));
   return `
     <div data-grupo="${chave}">
-      <button type="button" data-grupo-toggle="${chave}" class="flex w-full items-center justify-between rounded-lg px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide ${aberto ? 'text-brand-700' : 'text-slate-400 hover:text-slate-600'}">
+      <button type="button" data-grupo-toggle="${chave}" class="flex w-full items-center justify-between rounded-lg px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide ${aberto ? 'text-brand-yellow' : 'text-gray-400 hover:text-gray-300'}">
         <span>${titulo}</span>
         <svg data-grupo-chevron class="h-3 w-3 shrink-0 transition-transform duration-150 ${aberto ? 'rotate-90' : ''}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
@@ -33,7 +33,7 @@ function renderGrupoAccordion(chave, titulo, itens) {
       </button>
       <div data-grupo-body class="space-y-0.5 ${aberto ? '' : 'hidden'}">
         ${itens.map((item) => `
-          <a href="#${item.rota}" data-rota="${item.rota}" data-peso-base="font-medium" class="menu-link block rounded-lg px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-100">
+          <a href="#${item.rota}" data-rota="${item.rota}" data-cor-base="text-gray-300" data-peso-base="font-medium" class="menu-link flex items-center rounded-lg border-l-4 border-transparent px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white">
             ${item.label}
           </a>
         `).join('')}
@@ -54,7 +54,7 @@ function montarSidebarHtml() {
     : '';
 
   return `
-    <a href="#${ROTA_PAINEL}" data-rota="${ROTA_PAINEL}" data-peso-base="font-semibold" class="menu-link mb-2 block rounded-lg px-3 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-100">
+    <a href="#${ROTA_PAINEL}" data-rota="${ROTA_PAINEL}" data-cor-base="text-gray-300" data-peso-base="font-semibold" class="menu-link mb-2 flex items-center rounded-lg border-l-4 border-transparent px-3 py-2 text-sm font-semibold text-gray-300 hover:bg-gray-800 hover:text-white">
       Painel
     </a>
     ${grupos}
@@ -85,27 +85,35 @@ function renderShellHtml() {
   const usuario = getUsuario();
   return `
     <div class="flex min-h-screen">
-      <aside class="fixed inset-y-0 left-0 z-30 w-64 -translate-x-full transform overflow-y-auto border-r border-slate-200 bg-white p-3 transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0" data-sidebar>
+      <aside class="fixed inset-y-0 left-0 z-30 w-64 -translate-x-full transform overflow-y-auto border-r border-gray-800 bg-brand-black p-3 transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0" data-sidebar>
         <div class="mb-4 flex items-center gap-2 px-3 py-2">
           <img src="/img/favicon.png" alt="" class="h-8 w-8 shrink-0" />
           <div>
-            <p class="text-lg font-bold leading-tight text-slate-900">Frottex</p>
-            <p class="text-xs leading-tight text-slate-500">Gestao de Frota</p>
+            <p class="text-lg font-bold leading-tight text-white">Frottex</p>
+            <p class="text-xs leading-tight text-gray-400">Gestao de Frota</p>
           </div>
         </div>
         <nav data-menu>${montarSidebarHtml()}</nav>
       </aside>
       <div class="fixed inset-0 z-20 hidden bg-slate-900/40 lg:hidden" data-overlay></div>
       <div class="flex min-h-screen flex-1 flex-col lg:pl-0">
-        <header class="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
+        <header class="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 shadow-sm">
           <button type="button" class="rounded-lg p-2 text-slate-500 hover:bg-slate-100 lg:hidden" data-abrir-menu>
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
           </button>
           <div class="ml-auto flex items-center gap-3">
             ${montarSeletorEmpresaHtml()}
-            <div class="text-right">
-              <p class="text-sm font-medium text-slate-900">${usuario ? usuario.nome : ''}</p>
-              <p class="text-xs text-slate-500">${usuario ? usuario.perfil : ''}</p>
+            <button type="button" class="rounded-lg p-2 text-slate-500 hover:bg-slate-100" title="Notificacoes">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.4-1.4a2 2 0 01-.6-1.4V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5m6 0a3 3 0 11-6 0m6 0H9" /></svg>
+            </button>
+            <div class="flex items-center gap-2">
+              <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-black text-sm font-bold text-brand-yellow">
+                ${usuario && usuario.nome ? usuario.nome.charAt(0).toUpperCase() : '?'}
+              </span>
+              <div class="text-right">
+                <p class="text-sm font-medium text-slate-900">${usuario ? usuario.nome : ''}</p>
+                <p class="text-xs text-slate-500">${usuario ? usuario.perfil : ''}</p>
+              </div>
             </div>
             <button type="button" class="btn-secondary btn-sm" data-sair>Sair</button>
           </div>
@@ -163,8 +171,10 @@ function atualizarLinkAtivo() {
   appEl.querySelectorAll('.menu-link').forEach((link) => {
     const rota = link.dataset.rota;
     const ativo = hash === rota || hash.startsWith(`${rota}/`);
-    link.classList.toggle('bg-brand-50', ativo);
-    link.classList.toggle('text-slate-900', ativo);
+    link.classList.toggle('bg-gray-800', ativo);
+    link.classList.toggle('border-brand-yellow', ativo);
+    link.classList.toggle('border-transparent', !ativo);
+    link.classList.toggle('text-brand-yellow', ativo);
     link.classList.toggle('font-bold', ativo);
     if (link.dataset.corBase) link.classList.toggle(link.dataset.corBase, !ativo);
     if (link.dataset.pesoBase) link.classList.toggle(link.dataset.pesoBase, !ativo);
@@ -172,10 +182,10 @@ function atualizarLinkAtivo() {
   appEl.querySelectorAll('[data-grupo]').forEach((grupo) => {
     const btn = grupo.querySelector('[data-grupo-toggle]');
     if (!btn) return;
-    const algumAtivo = grupo.querySelector('.menu-link.bg-brand-50') !== null;
-    btn.classList.toggle('text-brand-700', algumAtivo);
-    btn.classList.toggle('text-slate-400', !algumAtivo);
-    btn.classList.toggle('hover:text-slate-600', !algumAtivo);
+    const algumAtivo = grupo.querySelector('.menu-link.text-brand-yellow') !== null;
+    btn.classList.toggle('text-brand-yellow', algumAtivo);
+    btn.classList.toggle('text-gray-400', !algumAtivo);
+    btn.classList.toggle('hover:text-gray-300', !algumAtivo);
   });
 }
 

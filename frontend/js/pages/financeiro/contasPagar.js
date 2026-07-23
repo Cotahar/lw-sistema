@@ -161,9 +161,9 @@ export async function render(container, params, query) {
   container.innerHTML = `
     <h1 class="mb-4 text-xl font-bold text-slate-900">Contas a Pagar</h1>
     ${origemFiltrada ? `
-      <div class="card mb-4 flex items-center justify-between border-brand-300 bg-brand-50 p-3 text-sm">
+      <div class="card mb-4 flex items-center justify-between border-yellow-300 bg-yellow-50 p-3 text-sm">
         <span>Filtrado pelas parcelas do ${origemFiltrada.label}.</span>
-        <a href="#/contas-pagar" class="text-brand-800 hover:underline">Limpar filtro</a>
+        <a href="#/contas-pagar" class="text-brand-black hover:underline">Limpar filtro</a>
       </div>
     ` : ''}
     <div class="card mb-4 grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -212,7 +212,7 @@ export async function render(container, params, query) {
 
   const tabela = criarDataTable({
     colunas: [
-      { chave: 'descricao', titulo: 'Descricao', render: (r) => (r.viagem_id ? `${r.descricao} <a href="#/viagens/${r.viagem_id}" class="ml-1 text-xs text-brand-800 hover:underline">(viagem #${r.viagem_id})</a>` : r.descricao) },
+      { chave: 'descricao', titulo: 'Descricao', render: (r) => (r.viagem_id ? `${r.descricao} <a href="#/viagens/${r.viagem_id}" class="ml-1 text-xs text-brand-black hover:underline">(viagem #${r.viagem_id})</a>` : r.descricao) },
       { chave: 'categoria_nome', titulo: 'Categoria', render: (r) => r.categoria_nome || '-' },
       { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => r.veiculo_placa || '-' },
       { chave: 'valor', titulo: 'Valor', render: (r) => formatarMoeda(r.valor) },

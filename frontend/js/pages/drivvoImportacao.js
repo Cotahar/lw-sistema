@@ -228,9 +228,9 @@ export async function render(container) {
       <p class="mt-2 hidden text-sm" data-resumo></p>
     </div>
     <h2 class="mb-3 font-semibold text-slate-900">Pendentes de revisao</h2>
-    <div class="card overflow-x-auto p-0">
+    <div class="card overflow-x-auto border-gray-300 p-0">
       <table class="w-full min-w-max border-collapse">
-        <thead class="border-b border-slate-200 bg-slate-50"><tr>
+        <thead class="bg-brand-black"><tr>
           <th class="table-th">Data</th><th class="table-th">Secao</th><th class="table-th">Descricao</th>
           <th class="table-th">Valor</th><th class="table-th">Motivo</th><th class="table-th"></th>
         </tr></thead>

@@ -23,9 +23,9 @@ async function renderGeral(resultadoEl, inicio, fim) {
       ${cartao('Despesas Base/Admin', formatarMoeda(dre.despesasBase.total))}
       ${cartao('Lucro Liquido', formatarMoeda(dre.lucroLiquido), dre.lucroLiquido >= 0 ? 'text-emerald-600' : 'text-red-600')}
     </div>
-    <div class="card mt-6 overflow-x-auto p-0">
+    <div class="card mt-6 overflow-x-auto border-gray-300 p-0">
       <table class="w-full min-w-max border-collapse">
-        <thead class="border-b border-slate-200 bg-slate-50"><tr>
+        <thead class="bg-brand-black"><tr>
           <th class="table-th">Placa</th><th class="table-th text-right">Receita</th><th class="table-th text-right">Custo</th><th class="table-th text-right">Lucro</th>
         </tr></thead>
         <tbody>

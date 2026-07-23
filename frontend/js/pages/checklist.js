@@ -40,7 +40,7 @@ async function carregarItensVistoria(vistoriaId, container, gerenciar, recarrega
       bloco.innerHTML = `
         <h3 class="mb-2 text-sm font-semibold text-slate-900">${grupo.placa} <span class="font-normal text-slate-400">(${grupo.tipo})</span></h3>
         <table class="w-full text-sm">
-          <thead><tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
+          <thead><tr class="bg-brand-black text-left text-xs uppercase">
             <th class="table-th">Presente</th><th class="table-th">Item</th><th class="table-th">Observacao</th>
           </tr></thead>
           <tbody>

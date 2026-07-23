@@ -11,7 +11,7 @@ export function renderLogin(root) {
         <img src="/img/logo-frottex.png" alt="Frottex" class="mx-auto h-24 w-auto" />
         <p class="mt-2 text-sm text-slate-500">Gestao de Frota e Transporte Rodoviario</p>
       </div>
-      <form class="card space-y-4 border-t-4 border-brand-400 p-6">
+      <form class="card space-y-4 border-t-4 border-brand-yellow p-6">
         <div>
           <label class="label">E-mail</label>
           <input type="email" name="email" class="input" required autofocus />

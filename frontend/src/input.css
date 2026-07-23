@@ -7,10 +7,10 @@
     @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-primary {
-    @apply btn bg-brand-400 text-slate-900 hover:bg-brand-500;
+    @apply btn bg-brand-yellow text-brand-black font-bold shadow-sm hover:bg-brand-yellow-hover;
   }
   .btn-secondary {
-    @apply btn bg-slate-100 text-slate-700 hover:bg-slate-200;
+    @apply btn bg-brand-black text-white font-semibold hover:bg-brand-dark;
   }
   .btn-danger {
     @apply btn bg-red-600 text-white hover:bg-red-700;
@@ -19,16 +19,16 @@
     @apply px-2.5 py-1.5 text-xs;
   }
   .input {
-    @apply w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500;
+    @apply block w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm text-brand-black placeholder-gray-400 focus:border-brand-yellow focus:outline-none focus:ring-1 focus:ring-brand-yellow;
   }
   .label {
     @apply mb-1 block text-sm font-medium text-slate-700;
   }
   .card {
-    @apply rounded-xl border border-slate-200 bg-white shadow-sm;
+    @apply rounded-xl border border-gray-100 bg-white shadow-sm;
   }
   .table-th {
-    @apply px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500;
+    @apply px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-brand-yellow;
   }
   .table-td {
     @apply px-3 py-2 text-sm text-slate-700;

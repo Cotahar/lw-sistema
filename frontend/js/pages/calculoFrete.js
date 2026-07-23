@@ -59,6 +59,7 @@ export async function render(container) {
         <div class="hidden mt-2 border-t border-dashed border-slate-200 pt-2" data-bloco-imposto>
           <p class="text-xs text-slate-400" data-imposto-legenda></p>
           <div class="flex items-center justify-between py-0.5 text-xs text-slate-500"><span>Resultado considerando imposto</span><span data-out-resultado-imposto>R$ 0,00</span></div>
+          <div class="flex items-center justify-between py-0.5 text-xs text-slate-500"><span>Margem considerando imposto</span><span data-out-percentual-imposto>0%</span></div>
         </div>
       </div>
     </div>
@@ -118,8 +119,10 @@ export async function render(container) {
       const baseComissao = freteTotal - valorImposto;
       const comissaoComImposto = Math.round(baseComissao * (comissaoPct / 100));
       const resultadoComImposto = freteTotal - pedagio - descarga - dieselGasto - comissaoComImposto - valorImposto;
+      const percentualComImposto = (resultadoComImposto / freteTotal) * 100;
       container.querySelector('[data-imposto-legenda]').textContent = `Com imposto de ${pctImposto}% (${empresaImposto.razao_social}) descontado do bruto antes da comissao:`;
       container.querySelector('[data-out-resultado-imposto]').textContent = formatarMoeda(resultadoComImposto);
+      container.querySelector('[data-out-percentual-imposto]').textContent = `${percentualComImposto.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`;
       blocoImposto.classList.remove('hidden');
     } else {
       blocoImposto.classList.add('hidden');

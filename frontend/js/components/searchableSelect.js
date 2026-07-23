@@ -37,7 +37,7 @@ export function criarSearchableSelect({ buscar, valorInicial = null, labelInicia
       for (const opcao of opcoes) {
         const item = document.createElement('button');
         item.type = 'button';
-        item.className = 'block w-full px-3 py-2 text-left text-sm hover:bg-brand-50';
+        item.className = 'block w-full px-3 py-2 text-left text-sm hover:bg-slate-100';
         item.textContent = opcao.label;
         item.addEventListener('click', () => selecionar(opcao));
         lista.appendChild(item);

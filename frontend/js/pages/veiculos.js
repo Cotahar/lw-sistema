@@ -191,6 +191,8 @@ export async function abrirLocalizacao(veiculo, recarregar) {
   }
 }
 
+let intervaloAtualizacao = null;
+
 export async function render(container) {
   const gerenciar = podeGerenciar('veiculos');
   container.innerHTML = `
@@ -235,4 +237,13 @@ export async function render(container) {
   if (gerenciar) {
     container.querySelector('[data-onixsat-botao]').appendChild(criarBotaoSincronizarOnixsat({ onAtualizar: tabela.recarregar }));
   }
+
+  // Onixsat sincroniza sozinho a cada 5min no backend, mas sem isso a tela
+  // so refletiria os dados novos depois de um F5 ou clique manual no botao.
+  if (intervaloAtualizacao) clearInterval(intervaloAtualizacao);
+  const hashInicio = window.location.hash;
+  intervaloAtualizacao = setInterval(() => {
+    if (window.location.hash !== hashInicio) { clearInterval(intervaloAtualizacao); return; }
+    tabela.recarregar();
+  }, 5 * 60 * 1000);
 }

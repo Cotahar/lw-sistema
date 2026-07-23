@@ -44,7 +44,7 @@ export function criarOcorrencias({ entidadeTipo, entidadeId, podeGerenciar, resu
         const restantes = ocorrencias.slice(1);
         lista.innerHTML = `
           ${renderItem(ocorrencias[0])}
-          <button type="button" class="text-xs text-brand-800 hover:underline" data-ver-todas>Ver mais ${restantes.length} ocorrencia${restantes.length > 1 ? 's' : ''}</button>
+          <button type="button" class="text-xs text-brand-black hover:underline" data-ver-todas>Ver mais ${restantes.length} ocorrencia${restantes.length > 1 ? 's' : ''}</button>
           <div class="hidden space-y-2" data-restantes>${restantes.map(renderItem).join('')}</div>
         `;
         lista.querySelector('[data-ver-todas]').addEventListener('click', (ev) => {

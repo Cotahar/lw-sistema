@@ -135,10 +135,10 @@ export async function render(container) {
           const consulta = encodeURIComponent(`${r.localizacao_cidade}, ${r.localizacao_uf}`);
           return `
             <details>
-              <summary class="inline cursor-pointer text-brand-800 hover:underline">${r.localizacao_cidade}/${r.localizacao_uf}</summary>
+              <summary class="inline cursor-pointer text-brand-black hover:underline">${r.localizacao_cidade}/${r.localizacao_uf}</summary>
               <div class="mt-1 text-xs text-slate-500">
                 Atualizado em ${formatarDataHoraBr(r.localizacao_atualizado_em)}<br />
-                <a href="https://www.google.com/maps/search/?api=1&query=${consulta}" target="_blank" rel="noopener" class="text-brand-800 hover:underline">Abrir no Google Maps</a>
+                <a href="https://www.google.com/maps/search/?api=1&query=${consulta}" target="_blank" rel="noopener" class="text-brand-black hover:underline">Abrir no Google Maps</a>
               </div>
             </details>
           `;
