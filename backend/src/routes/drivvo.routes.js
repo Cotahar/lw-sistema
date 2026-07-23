@@ -90,7 +90,7 @@ function registrarPendencia({ chave, secao, dadosBrutos, motivo, empresaId }) {
 function registrarImportado({ chave, secao, entidadeTipo, entidadeId, dadosBrutos, usuarioId, empresaId }) {
   db.prepare(`
     INSERT INTO importacoes_drivvo (empresa_id, chave_externa, secao, status, entidade_tipo, entidade_id, dados_brutos, resolvido_em, resolvido_por)
-    VALUES (?, ?, ?, 'Importado', ?, ?, ?, datetime('now'), ?)
+    VALUES (?, ?, ?, 'Importado', ?, ?, ?, datetime('now', '-3 hours'), ?)
   `).run(empresaId, chave, secao, entidadeTipo, entidadeId, JSON.stringify(dadosBrutos), usuarioId);
 }
 
@@ -229,7 +229,7 @@ router.post('/pendencias/:id/resolver', requerAcessoModulo('viagens', 'Gerenciar
   const pendencia = db.prepare("SELECT * FROM importacoes_drivvo WHERE id = ? AND status = 'PendenteRevisao' AND empresa_id = ?").get(req.params.id, req.empresaId);
   if (!pendencia) throw new ApiError(404, 'Pendencia nao encontrada (ou ja resolvida).');
   db.prepare(`
-    UPDATE importacoes_drivvo SET status = 'Importado', entidade_tipo = ?, entidade_id = ?, resolvido_em = datetime('now'), resolvido_por = ?
+    UPDATE importacoes_drivvo SET status = 'Importado', entidade_tipo = ?, entidade_id = ?, resolvido_em = datetime('now', '-3 hours'), resolvido_por = ?
     WHERE id = ?
   `).run(entidade_tipo, entidade_id, req.usuario.id, pendencia.id);
   res.json({ ok: true });
@@ -238,7 +238,7 @@ router.post('/pendencias/:id/resolver', requerAcessoModulo('viagens', 'Gerenciar
 router.post('/pendencias/:id/ignorar', requerAcessoModulo('viagens', 'Gerenciar'), asyncHandler(async (req, res) => {
   const pendencia = db.prepare("SELECT * FROM importacoes_drivvo WHERE id = ? AND status = 'PendenteRevisao' AND empresa_id = ?").get(req.params.id, req.empresaId);
   if (!pendencia) throw new ApiError(404, 'Pendencia nao encontrada (ou ja resolvida).');
-  db.prepare(`UPDATE importacoes_drivvo SET status = 'Ignorado', resolvido_em = datetime('now'), resolvido_por = ? WHERE id = ?`).run(req.usuario.id, pendencia.id);
+  db.prepare(`UPDATE importacoes_drivvo SET status = 'Ignorado', resolvido_em = datetime('now', '-3 hours'), resolvido_por = ? WHERE id = ?`).run(req.usuario.id, pendencia.id);
   res.json({ ok: true });
 }));
 

@@ -4,7 +4,7 @@ import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { abrirModal, fecharModal, confirmarAcao } from '../../components/modal.js';
 import { mostrarToast, mostrarErro } from '../../components/toast.js';
 import { criarOcorrencias } from '../../components/ocorrencias.js';
-import { formatarMoeda, attachMoedaMask, getMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr } from '../../masks.js';
+import { formatarMoeda, attachMoedaMask, getMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr, hojeIsoLocal } from '../../masks.js';
 
 const STATUS_BADGE = { Pendente: 'bg-amber-100 text-amber-700', Parcial: 'bg-amber-100 text-amber-700', Pago: 'bg-emerald-100 text-emerald-700', Atrasado: 'bg-red-100 text-red-700' };
 const STATUS_OPCOES = [
@@ -32,7 +32,7 @@ async function buscarVeiculos(termo) {
 
 function badgePrazo(conta) {
   if (conta.status === 'Pago') return '';
-  const hoje = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z');
+  const hoje = new Date(`${hojeIsoLocal()}T00:00:00Z`);
   const venc = new Date(`${conta.data_vencimento}T00:00:00Z`);
   const dias = Math.round((venc - hoje) / 86400000);
   const cor = dias < 0 ? 'bg-red-100 text-red-700' : dias <= 5 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500';

@@ -32,14 +32,14 @@ router.post('/', requerAcessoModulo('despesas_fixas', 'Gerenciar'), exigirEmpres
   const despesa = withTransaction(db, () => {
     const info = db.prepare(`
       INSERT INTO despesas_fixas (empresa_id, centro_custo_id, categoria_id, valor, data, recorrente, descricao, criado_por)
-      VALUES (?, ?, ?, ?, COALESCE(?, date('now')), ?, ?, ?)
+      VALUES (?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), ?, ?, ?)
     `).run(req.empresaId, centro_custo_id, categoria_id, valor, data || null, recorrente ? 1 : 0, descricao || null, req.usuario.id);
     const nova = db.prepare('SELECT * FROM despesas_fixas WHERE id = ?').get(info.lastInsertRowid);
 
     const categoria = db.prepare('SELECT nome FROM categorias_despesa WHERE id = ?').get(categoria_id);
     db.prepare(`
       INSERT INTO contas_pagar (empresa_id, centro_custo_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
-      VALUES (?, ?, ?, ?, COALESCE(?, date('now')), 'Pendente', 'DespesaFixa', ?)
+      VALUES (?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), 'Pendente', 'DespesaFixa', ?)
     `).run(req.empresaId, centro_custo_id, `${categoria ? categoria.nome : 'Despesa fixa'} - ${centroCusto.nome}`, valor, data || null, nova.id);
 
     return nova;

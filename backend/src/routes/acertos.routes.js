@@ -35,6 +35,13 @@ function calcularAcerto(viagemId, empresaId, overrides = {}) {
 
   const fretes = db.prepare('SELECT * FROM fretes WHERE viagem_id = ?').all(viagemId);
   const freteBrutoTotal = somar(fretes.map((f) => f.frete_bruto));
+
+  // Imposto da empresa sobre o frete bruto (variavel por empresa, cadastro
+  // de Empresas). So informativo/lancado a parte - NAO reduz a comissao nem
+  // o saldo do motorista, que continuam batendo em cima do frete bruto cheio.
+  const empresa = db.prepare('SELECT razao_social, percentual_desconto_geral FROM empresas WHERE id = ?').get(empresaId);
+  const percentualImposto = empresa.percentual_desconto_geral || null;
+  const valorImposto = percentualImposto ? Math.round(freteBrutoTotal * (percentualImposto / 100)) : 0;
   const adiantamentos = db.prepare('SELECT * FROM viagem_adiantamentos WHERE viagem_id = ?').all(viagemId);
   const adiantamentosTotal = somar(adiantamentos.map((a) => a.valor));
 
@@ -64,9 +71,10 @@ function calcularAcerto(viagemId, empresaId, overrides = {}) {
   const saldoFinal = valorComissao + valorReembolsos - adiantamentosTotal - valorDescontos - saldoContaCorrenteAnterior;
 
   return {
-    viagem, motorista, fretes, despesas,
+    viagem, motorista, fretes, despesas, empresa,
     freteBrutoTotal, kmTotal, litrosTotal, mediaConsumoKmL,
     percentualSugerido, percentualAplicado, valorComissao,
+    percentualImposto, valorImposto,
     valorReembolsos, adiantamentosTotal, valorDescontosSugerido, valorDescontos,
     saldoContaCorrenteAnterior, saldoFinal,
   };
@@ -119,12 +127,12 @@ router.post('/viagem/:viagemId/fechar', requerAcessoModulo('acertos', 'Gerenciar
     const info = db.prepare(`
       INSERT INTO acertos_viagem (
         empresa_id, viagem_id, media_consumo_km_l, percentual_comissao_sugerido, percentual_comissao_aplicado,
-        valor_comissao, valor_reembolsos, valor_adiantamentos, valor_descontos,
+        valor_comissao, percentual_imposto_aplicado, valor_imposto, valor_reembolsos, valor_adiantamentos, valor_descontos,
         saldo_conta_corrente_anterior, saldo_final, status, observacoes_ajustes, criado_por
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Fechado', ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Fechado', ?, ?)
     `).run(
       req.empresaId, req.params.viagemId, calculo.mediaConsumoKmL, calculo.percentualSugerido, calculo.percentualAplicado,
-      calculo.valorComissao, calculo.valorReembolsos, calculo.adiantamentosTotal, calculo.valorDescontos,
+      calculo.valorComissao, calculo.percentualImposto, calculo.valorImposto, calculo.valorReembolsos, calculo.adiantamentosTotal, calculo.valorDescontos,
       calculo.saldoContaCorrenteAnterior, calculo.saldoFinal, observacoes_ajustes || null, req.usuario.id
     );
     const acertoId = info.lastInsertRowid;
@@ -152,8 +160,17 @@ router.post('/viagem/:viagemId/fechar', requerAcessoModulo('acertos', 'Gerenciar
     if (calculo.saldoFinal > 0) {
       db.prepare(`
         INSERT INTO contas_pagar (empresa_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
-        VALUES (?, ?, ?, date('now'), 'Pendente', 'AcertoViagem', ?)
+        VALUES (?, ?, ?, date('now', '-3 hours'), 'Pendente', 'AcertoViagem', ?)
       `).run(req.empresaId, `Acerto viagem #${req.params.viagemId} - pagamento a ${calculo.motorista.nome}`, calculo.saldoFinal, acertoId);
+    }
+
+    // Imposto da empresa sobre o frete bruto - lancamento separado, nao
+    // afeta o saldo do motorista acima (ver comentario em calcularAcerto).
+    if (calculo.valorImposto > 0) {
+      db.prepare(`
+        INSERT INTO contas_pagar (empresa_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
+        VALUES (?, ?, ?, date('now', '-3 hours'), 'Pendente', 'AcertoViagem', ?)
+      `).run(req.empresaId, `Imposto (${calculo.empresa.razao_social}) - viagem #${req.params.viagemId}`, calculo.valorImposto, acertoId);
     }
 
     db.prepare("UPDATE viagens SET status = 'Finalizada' WHERE id = ?").run(req.params.viagemId);

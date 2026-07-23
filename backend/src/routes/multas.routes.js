@@ -5,6 +5,7 @@ const ApiError = require('../utils/ApiError');
 const { requerAcessoModulo } = require('../middleware/auth');
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { registrarAuditoria } = require('../utils/audit');
+const { hojeIsoBrasilia, agoraDataHoraIsoBrasilia } = require('../utils/dataHora');
 
 const router = express.Router();
 
@@ -17,7 +18,7 @@ function somarDias(dataIso, dias) {
 }
 
 function diasRestantes(prazoIso) {
-  const hoje = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z');
+  const hoje = new Date(`${hojeIsoBrasilia()}T00:00:00Z`);
   const prazo = new Date(`${prazoIso}T00:00:00Z`);
   return Math.round((prazo - hoje) / 86400000);
 }
@@ -76,7 +77,7 @@ router.post('/', requerAcessoModulo('multas', 'Gerenciar'), exigirEmpresaEspecif
   `).run(
     req.empresaId, veiculo_id, motorista_id || null, orgao_autuador || null, numero_ait || null, descricao,
     valor_original, data_infracao || null, data_notificacao, prazoIndicacao,
-    motorista_id ? 'CondutorIndicado' : 'AguardandoIndicacao', motorista_id ? new Date().toISOString().slice(0, 19).replace('T', ' ') : null,
+    motorista_id ? 'CondutorIndicado' : 'AguardandoIndicacao', motorista_id ? agoraDataHoraIsoBrasilia() : null,
     observacoes || null, req.usuario.id,
   );
   const multa = db.prepare(`${SELECT_LISTA} WHERE m.id = ?`).get(info.lastInsertRowid);
@@ -99,7 +100,7 @@ router.put('/:id', requerAcessoModulo('multas', 'Gerenciar'), exigirEmpresaEspec
     sets.push('prazo_indicacao = ?');
     valores.push(somarDias(req.body.data_notificacao, PRAZO_INDICACAO_DIAS));
   }
-  sets.push("atualizado_em = datetime('now')");
+  sets.push("atualizado_em = datetime('now', '-3 hours')");
 
   db.prepare(`UPDATE multas SET ${sets.join(', ')} WHERE id = ?`).run(...valores, req.params.id);
   const depois = db.prepare(`${SELECT_LISTA} WHERE m.id = ?`).get(req.params.id);
@@ -116,7 +117,7 @@ router.post('/:id/indicar-condutor', requerAcessoModulo('multas', 'Gerenciar'), 
   if (!motorista) throw new ApiError(400, 'Motorista nao encontrado nesta empresa.');
 
   db.prepare(`
-    UPDATE multas SET motorista_id = ?, condutor_indicado_em = datetime('now'), status = 'CondutorIndicado', atualizado_em = datetime('now')
+    UPDATE multas SET motorista_id = ?, condutor_indicado_em = datetime('now', '-3 hours'), status = 'CondutorIndicado', atualizado_em = datetime('now', '-3 hours')
     WHERE id = ?
   `).run(motorista_id, req.params.id);
   const depois = db.prepare(`${SELECT_LISTA} WHERE m.id = ?`).get(req.params.id);
@@ -136,7 +137,7 @@ router.post('/:id/status', requerAcessoModulo('multas', 'Gerenciar'), exigirEmpr
   // calculado aqui, nao editavel manualmente, pra nao divergir da regra legal.
   const valorNaoIndicacao = status === 'NaoIndicado' ? antes.valor_original * 2 : antes.valor_nao_indicacao;
 
-  db.prepare(`UPDATE multas SET status = ?, valor_nao_indicacao = ?, atualizado_em = datetime('now') WHERE id = ?`)
+  db.prepare(`UPDATE multas SET status = ?, valor_nao_indicacao = ?, atualizado_em = datetime('now', '-3 hours') WHERE id = ?`)
     .run(status, valorNaoIndicacao, req.params.id);
   const depois = db.prepare(`${SELECT_LISTA} WHERE m.id = ?`).get(req.params.id);
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'multas', registroId: depois.id, acao: 'UPDATE', antes, depois });

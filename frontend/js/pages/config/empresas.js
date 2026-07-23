@@ -45,6 +45,11 @@ function abrirFormEmpresa(registro, recarregar) {
         <div><label class="label">Senha Onixsat</label><input type="password" name="onixsat_senha" class="input" autocomplete="new-password" /></div>
       </div>
     </div>
+    <div class="border-t border-slate-200 pt-3">
+      <h3 class="mb-1 text-sm font-semibold text-slate-900">Imposto sobre o frete</h3>
+      <p class="mb-2 text-xs text-slate-500">% a descontar do frete bruto no fechamento do Acerto (deixe em branco se esta empresa nao desconta imposto). Aparece la como "Imposto (nome da empresa)".</p>
+      <div><label class="label">% desconto geral (imposto)</label><input type="number" step="0.01" min="0" max="100" name="percentual_desconto_geral" class="input max-w-[10rem]" placeholder="Ex: 10" /></div>
+    </div>
     <div class="flex items-center gap-2">
       <input type="checkbox" id="empresa-ativo" class="h-4 w-4 rounded border-slate-300" ${registro && !registro.ativo ? '' : 'checked'} />
       <label for="empresa-ativo" class="text-sm text-slate-700">Ativa</label>
@@ -58,7 +63,7 @@ function abrirFormEmpresa(registro, recarregar) {
   const campos = [
     'razao_social', 'nome_fantasia', 'cnpj', 'inscricao_estadual',
     'endereco_logradouro', 'endereco_numero', 'endereco_complemento', 'endereco_bairro', 'endereco_cidade', 'endereco_uf', 'endereco_cep',
-    'telefone', 'email', 'onixsat_usuario', 'onixsat_senha',
+    'telefone', 'email', 'onixsat_usuario', 'onixsat_senha', 'percentual_desconto_geral',
   ];
   for (const nome of campos) {
     if (registro && registro[nome] != null) form.elements[nome].value = registro[nome];
@@ -111,6 +116,7 @@ function abrirFormEmpresa(registro, recarregar) {
     const valores = { ativo: form.querySelector('#empresa-ativo').checked ? 1 : 0 };
     for (const nome of campos) valores[nome] = form.elements[nome].value || null;
     valores.cnpj = cnpjDigitos;
+    valores.percentual_desconto_geral = form.percentual_desconto_geral.value ? Number(form.percentual_desconto_geral.value) : null;
     try {
       if (registro) await put(`/empresas/${registro.id}`, valores);
       else await post('/empresas', valores);

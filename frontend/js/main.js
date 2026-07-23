@@ -218,6 +218,7 @@ registrarPagina('/acertos', () => import('./pages/acertos.js'), 'acertos');
 registrarPagina('/acertos/:viagemId', () => import('./pages/acertoDetalhe.js'), 'acertos');
 registrarPagina('/drivvo', () => import('./pages/drivvoImportacao.js'), 'viagens');
 registrarPagina('/multas', () => import('./pages/multas.js'), 'multas');
+registrarPagina('/calculo-frete', () => import('./pages/calculoFrete.js'), 'viagens');
 registrarPagina('/contas-bancarias', () => import('./pages/financeiro/contasBancarias.js'), 'contas_bancarias');
 registrarPagina('/contas-pagar', () => import('./pages/financeiro/contasPagar.js'), 'contas_pagar');
 registrarPagina('/contas-receber', () => import('./pages/financeiro/contasReceber.js'), 'contas_receber');

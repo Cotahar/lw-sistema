@@ -86,7 +86,7 @@ router.put('/veiculo/:veiculoId/:itemId', requerAcessoModulo('checklist', 'Geren
 
   let depois;
   if (existente) {
-    db.prepare("UPDATE veiculo_checklist SET presente = ?, observacao = ?, atualizado_em = datetime('now') WHERE id = ?")
+    db.prepare("UPDATE veiculo_checklist SET presente = ?, observacao = ?, atualizado_em = datetime('now', '-3 hours') WHERE id = ?")
       .run(presente ? 1 : 0, observacao || null, existente.id);
     depois = db.prepare('SELECT * FROM veiculo_checklist WHERE id = ?').get(existente.id);
   } else {
@@ -161,7 +161,7 @@ router.post('/conjunto/:conjuntoId/vistorias', requerAcessoModulo('checklist', '
 
   const info = db.prepare(`
     INSERT INTO checklist_vistorias (empresa_id, conjunto_id, data_vistoria, criado_por)
-    VALUES (?, ?, COALESCE(?, date('now')), ?)
+    VALUES (?, ?, COALESCE(?, date('now', '-3 hours')), ?)
   `).run(req.empresaId, req.params.conjuntoId, req.body.data_vistoria || null, req.usuario.id);
 
   // Cada item comeca com o ultimo valor conhecido (veiculo_checklist), pra o
@@ -219,7 +219,7 @@ router.put('/vistorias/:vistoriaId/veiculo/:veiculoId/item/:itemId', requerAcess
   // servir de ponto de partida pra proxima vistoria.
   const existente = db.prepare('SELECT id FROM veiculo_checklist WHERE veiculo_id = ? AND item_id = ?').get(req.params.veiculoId, req.params.itemId);
   if (existente) {
-    db.prepare("UPDATE veiculo_checklist SET presente = ?, observacao = ?, atualizado_em = datetime('now') WHERE id = ?")
+    db.prepare("UPDATE veiculo_checklist SET presente = ?, observacao = ?, atualizado_em = datetime('now', '-3 hours') WHERE id = ?")
       .run(presente ? 1 : 0, observacao || null, existente.id);
   } else {
     db.prepare('INSERT INTO veiculo_checklist (empresa_id, veiculo_id, item_id, presente, observacao) VALUES (?, ?, ?, ?, ?)')

@@ -7,6 +7,7 @@ const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { condicaoEmpresa } = require('../utils/empresaScope');
 const { registrarAuditoria } = require('../utils/audit');
 const { withTransaction } = require('../utils/transaction');
+const { hojeIsoBrasilia } = require('../utils/dataHora');
 
 const router = express.Router();
 
@@ -51,11 +52,11 @@ router.post('/', requerAcessoModulo('financiamentos', 'Gerenciar'), exigirEmpres
   const financiamento = withTransaction(db, () => {
     const info = db.prepare(`
       INSERT INTO financiamentos (empresa_id, centro_custo_id, descricao, credor_fornecedor_id, valor_total, qtd_parcelas, data_contrato)
-      VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, date('now')))
+      VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')))
     `).run(req.empresaId, centro_custo_id, descricao, credor_fornecedor_id || null, valor_total, qtd_parcelas, data_contrato || null);
     const financiamentoId = info.lastInsertRowid;
 
-    const primeiroVencimento = primeira_parcela_vencimento || data_contrato || new Date().toISOString().slice(0, 10);
+    const primeiroVencimento = primeira_parcela_vencimento || data_contrato || hojeIsoBrasilia();
     const valorBase = Math.floor(valor_total / qtd_parcelas);
     const resto = valor_total - valorBase * qtd_parcelas; // ajusta o arredondamento na ultima parcela
 

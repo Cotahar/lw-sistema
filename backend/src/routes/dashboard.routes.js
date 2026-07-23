@@ -24,14 +24,21 @@ router.get('/resumo', requerAcessoModulo('dre', 'Visualizar'), asyncHandler(asyn
   const contasPagarVencidas = db.prepare(`
     SELECT cp.*, e.razao_social AS empresa_razao_social FROM contas_pagar cp
     JOIN empresas e ON e.id = cp.empresa_id
-    WHERE cp.status IN ('Pendente', 'Parcial') AND cp.data_vencimento < date('now') ${req.empresaId ? 'AND cp.empresa_id = ?' : ''}
+    WHERE cp.status IN ('Pendente', 'Parcial') AND cp.data_vencimento < date('now', '-3 hours') ${req.empresaId ? 'AND cp.empresa_id = ?' : ''}
     ORDER BY cp.data_vencimento
   `).all(...paramsEmpresa);
 
-  const contasReceberVencidas = db.prepare(`
-    SELECT cr.*, e.razao_social AS empresa_razao_social FROM contas_receber cr
+  // Saldos de frete pendentes: por pedido explicito do usuario, aparece em
+  // destaque desde a CRIACAO do frete (contas_receber nasce 'Pendente' na
+  // hora), nao so quando o prazo ja venceu - diferente de contas_pagar
+  // acima, que continua so mostrando as vencidas.
+  const saldosFretePendentes = db.prepare(`
+    SELECT cr.*, e.razao_social AS empresa_razao_social,
+           f.origem_cidade, f.origem_uf, f.destino_cidade, f.destino_uf, f.viagem_id
+    FROM contas_receber cr
     JOIN empresas e ON e.id = cr.empresa_id
-    WHERE cr.status IN ('Pendente', 'Parcial') AND cr.data_prevista < date('now') ${req.empresaId ? 'AND cr.empresa_id = ?' : ''}
+    JOIN fretes f ON f.id = cr.frete_id
+    WHERE cr.status IN ('Pendente', 'Parcial') ${req.empresaId ? 'AND cr.empresa_id = ?' : ''}
     ORDER BY cr.data_prevista
   `).all(...paramsEmpresa);
 
@@ -90,7 +97,7 @@ router.get('/resumo', requerAcessoModulo('dre', 'Visualizar'), asyncHandler(asyn
   res.json({
     alertasPendentes,
     contasPagarVencidas,
-    contasReceberVencidas,
+    saldosFretePendentes,
     viagensEmAndamento,
     viagensAguardandoAcerto,
     viagensAtivas,

@@ -52,7 +52,7 @@ router.put('/itens/:id', requerAcessoModulo('estoque', 'Gerenciar'), exigirEmpre
     if (req.body[campo] !== undefined) { sets.push(`${campo} = ?`); valores.push(req.body[campo]); }
   }
   if (!sets.length) throw new ApiError(400, 'Nenhum campo valido informado.');
-  sets.push("atualizado_em = datetime('now')");
+  sets.push("atualizado_em = datetime('now', '-3 hours')");
   db.prepare(`UPDATE estoque_itens SET ${sets.join(', ')} WHERE id = ?`).run(...valores, req.params.id);
   const depois = db.prepare('SELECT * FROM estoque_itens WHERE id = ?').get(req.params.id);
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'estoque_itens', registroId: depois.id, acao: 'UPDATE', antes, depois });
@@ -107,15 +107,15 @@ router.post('/movimentacoes', requerAcessoModulo('estoque', 'Gerenciar'), exigir
     if (tipo === 'Entrada') {
       const novoTotal = item.quantidade_atual + quantidade;
       const novoCustoMedio = Math.round((item.quantidade_atual * item.custo_medio + quantidade * custo_unitario) / novoTotal);
-      db.prepare("UPDATE estoque_itens SET quantidade_atual = ?, custo_medio = ?, atualizado_em = datetime('now') WHERE id = ?")
+      db.prepare("UPDATE estoque_itens SET quantidade_atual = ?, custo_medio = ?, atualizado_em = datetime('now', '-3 hours') WHERE id = ?")
         .run(novoTotal, novoCustoMedio, item_id);
 
       db.prepare(`
         INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
-        VALUES (?, ?, ?, ?, date('now'), 'Pendente', 'EstoqueMovimentacao', ?)
+        VALUES (?, ?, ?, ?, date('now', '-3 hours'), 'Pendente', 'EstoqueMovimentacao', ?)
       `).run(req.empresaId, fornecedor_id || null, `Compra de estoque: ${item.nome} x${quantidade}`, Math.round(quantidade * custo_unitario), info.lastInsertRowid);
     } else {
-      db.prepare("UPDATE estoque_itens SET quantidade_atual = quantidade_atual - ?, atualizado_em = datetime('now') WHERE id = ?")
+      db.prepare("UPDATE estoque_itens SET quantidade_atual = quantidade_atual - ?, atualizado_em = datetime('now', '-3 hours') WHERE id = ?")
         .run(quantidade, item_id);
     }
 

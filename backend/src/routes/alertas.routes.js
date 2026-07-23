@@ -85,7 +85,7 @@ router.post('/ocorrencias/:id/resolver', requerAcessoModulo('alertas', 'Gerencia
   if (!ocorrencia) throw new ApiError(404, 'Ocorrencia nao encontrada.');
   if (ocorrencia.status === 'Resolvido') throw new ApiError(400, 'Esta ocorrencia ja esta resolvida.');
 
-  db.prepare("UPDATE alertas_ocorrencias SET status = 'Resolvido', resolvido_em = datetime('now') WHERE id = ?").run(ocorrencia.id);
+  db.prepare("UPDATE alertas_ocorrencias SET status = 'Resolvido', resolvido_em = datetime('now', '-3 hours') WHERE id = ?").run(ocorrencia.id);
   // Reinicia a contagem do intervalo a partir do km em que o alerta foi atendido.
   db.prepare('UPDATE alertas_regras SET km_referencia = ? WHERE id = ?').run(ocorrencia.km_atual_no_disparo, ocorrencia.regra_id);
 

@@ -53,7 +53,7 @@ router.post('/', requerAcessoModulo('pneus', 'Gerenciar'), exigirEmpresaEspecifi
   const pneu = withTransaction(db, () => {
     const info = db.prepare(`
       INSERT INTO pneus (empresa_id, numero_fogo, marca, modelo, medida, custo_unitario, status, custo_pendente_dre, fornecedor_id, data_aquisicao)
-      VALUES (?, ?, ?, ?, ?, ?, 'Estoque', ?, ?, COALESCE(?, date('now')))
+      VALUES (?, ?, ?, ?, ?, ?, 'Estoque', ?, ?, COALESCE(?, date('now', '-3 hours')))
     `).run(req.empresaId, numero_fogo, marca || null, modelo || null, medida, custo_unitario, custo_unitario, fornecedor_id || null, data_aquisicao || null);
     const novoPneu = db.prepare('SELECT * FROM pneus WHERE id = ?').get(info.lastInsertRowid);
 
@@ -63,7 +63,7 @@ router.post('/', requerAcessoModulo('pneus', 'Gerenciar'), exigirEmpresaEspecifi
 
     db.prepare(`
       INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
-      VALUES (?, ?, ?, ?, date('now'), 'Pendente', 'PneuEvento', ?)
+      VALUES (?, ?, ?, ?, date('now', '-3 hours'), 'Pendente', 'PneuEvento', ?)
     `).run(req.empresaId, fornecedor_id || null, `Compra de pneu: ${novoPneu.numero_fogo}`, custo_unitario, evento.id);
 
     return novoPneu;
@@ -191,7 +191,7 @@ router.post('/:id/retornar-recapagem', requerAcessoModulo('pneus', 'Gerenciar'),
 
     db.prepare(`
       INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
-      VALUES (?, ?, ?, ?, date('now'), 'Pendente', 'PneuEvento', ?)
+      VALUES (?, ?, ?, ?, date('now', '-3 hours'), 'Pendente', 'PneuEvento', ?)
     `).run(req.empresaId, fornecedor_id || null, `Recapagem do pneu: ${atual.numero_fogo}`, custo, evento.id);
 
     return db.prepare('SELECT * FROM pneus WHERE id = ?').get(atual.id);

@@ -80,6 +80,15 @@ export function formatarDataHoraBr(isoDataHora) {
   return hora ? `${dataBr} ${hora.slice(0, 5)}` : dataBr;
 }
 
+// "Hoje" no fuso do proprio navegador (local do usuario, que esta no
+// Brasil) - usar isto em vez de `new Date().toISOString().slice(0,10)`, que
+// forca UTC e pode mostrar o dia seguinte entre ~21h e 23h59 no horario de
+// Brasilia (mesma classe de bug do `datetime('now')` sem ajuste no backend).
+export function hojeIsoLocal() {
+  const agora = new Date();
+  return `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-${String(agora.getDate()).padStart(2, '0')}`;
+}
+
 export function parseDataBrParaIso(valorBr) {
   const digitos = apenasDigitos(valorBr);
   if (digitos.length !== 8) return null;

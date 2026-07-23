@@ -119,7 +119,7 @@ router.post('/:id/baixar', requerAcessoModulo('contas_pagar', 'Gerenciar'), exig
     const novoValorDescontado = contaPagar.valor_descontado + valorDesconto;
     const novoStatus = (novoValorPago + novoValorDescontado) >= valorContaFinal ? 'Pago' : 'Parcial';
     db.prepare(`
-      UPDATE contas_pagar SET valor = ?, valor_pago = ?, valor_descontado = ?, status = ?, data_pagamento = COALESCE(?, date('now')), conta_bancaria_id = ?
+      UPDATE contas_pagar SET valor = ?, valor_pago = ?, valor_descontado = ?, status = ?, data_pagamento = COALESCE(?, date('now', '-3 hours')), conta_bancaria_id = ?
       WHERE id = ?
     `).run(valorContaFinal, novoValorPago, novoValorDescontado, novoStatus, data_pagamento || null, conta_bancaria_id, contaPagar.id);
 
@@ -127,14 +127,14 @@ router.post('/:id/baixar', requerAcessoModulo('contas_pagar', 'Gerenciar'), exig
     if (valorBaixa > 0) {
       const movInfo = db.prepare(`
         INSERT INTO movimentacoes_caixa (empresa_id, conta_bancaria_id, tipo, valor, data, descricao, origem_tipo, origem_id, criado_por)
-        VALUES (?, ?, 'Saida', ?, COALESCE(?, date('now')), ?, 'ContaPagar', ?, ?)
+        VALUES (?, ?, 'Saida', ?, COALESCE(?, date('now', '-3 hours')), ?, 'ContaPagar', ?, ?)
       `).run(req.empresaId, conta_bancaria_id, valorBaixa, data_pagamento || null, contaPagar.descricao, contaPagar.id, req.usuario.id);
       db.prepare('UPDATE contas_bancarias SET saldo_atual = saldo_atual - ? WHERE id = ?').run(valorBaixa, conta_bancaria_id);
       movimentacao = db.prepare('SELECT * FROM movimentacoes_caixa WHERE id = ?').get(movInfo.lastInsertRowid);
     }
 
     if (contaPagar.origem_tipo === 'FinanciamentoParcela' && novoStatus === 'Pago') {
-      db.prepare("UPDATE financiamento_parcelas SET status = 'Paga', data_pagamento = COALESCE(?, date('now')) WHERE id = ?")
+      db.prepare("UPDATE financiamento_parcelas SET status = 'Paga', data_pagamento = COALESCE(?, date('now', '-3 hours')) WHERE id = ?")
         .run(data_pagamento || null, contaPagar.origem_id);
     }
 

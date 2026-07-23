@@ -1,5 +1,5 @@
 import { get, getUsuario } from '../api.js';
-import { formatarMoeda, formatarDataBr, formatarPeso } from '../masks.js';
+import { formatarMoeda, formatarDataBr, formatarPeso, hojeIsoLocal } from '../masks.js';
 import { navegar } from '../router.js';
 
 const STATUS_LABEL = { EmAndamento: 'Em Andamento', AguardandoAcerto: 'Aguardando Acerto', Finalizada: 'Finalizada' };
@@ -55,7 +55,7 @@ export async function renderRelatorio(root, params, query) {
       <div class="rounded-xl border border-slate-200 bg-white p-8 print:border-0 print:p-0">
         <div class="mb-6 border-b border-slate-200 pb-4">
           <h1 class="text-xl font-bold text-slate-900">Relatorio de Acerto - Viagem #${viagem.id}</h1>
-          <p class="text-sm text-slate-500">${tipo === 'detalhado' ? 'Detalhado' : 'Resumido'} &middot; Gerado em ${formatarDataBr(new Date().toISOString().slice(0, 10))}${usuario ? ` por ${usuario.nome}` : ''}</p>
+          <p class="text-sm text-slate-500">${tipo === 'detalhado' ? 'Detalhado' : 'Resumido'} &middot; Gerado em ${formatarDataBr(hojeIsoLocal())}${usuario ? ` por ${usuario.nome}` : ''}</p>
         </div>
 
         <div class="mb-6 grid grid-cols-2 gap-3 text-sm">
@@ -84,23 +84,42 @@ export async function renderRelatorio(root, params, query) {
             </tbody>
           </table>
 
-          <h2 class="mb-2 mt-6 font-semibold text-slate-900">Despesas</h2>
-          <table class="mb-4 w-full text-sm">
-            <thead><tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
-              <th class="py-1">Data</th><th class="py-1">Categoria</th><th class="py-1">Pago por</th><th class="py-1 text-right">Valor</th>
-            </tr></thead>
-            <tbody>
-              ${despesas.map((d) => `
-                <tr class="border-b border-slate-100">
-                  <td class="py-1">${formatarDataBr(d.data)}</td>
-                  <td class="py-1">${nomeCategoria[d.categoria_id] || '-'}</td>
-                  <td class="py-1">${d.pago_por}</td>
-                  <td class="py-1 text-right">${formatarMoeda(d.valor)}</td>
-                </tr>
-              `).join('') || '<tr><td colspan="4" class="py-2 text-center text-slate-400">Nenhuma despesa.</td></tr>'}
-              <tr class="font-medium"><td colspan="3" class="py-1 text-right">Total de despesas</td><td class="py-1 text-right">${formatarMoeda(totalDespesas)}</td></tr>
-            </tbody>
-          </table>
+          <h2 class="mb-2 mt-6 font-semibold text-slate-900">Despesas por categoria</h2>
+          ${(() => {
+            const porCategoria = new Map();
+            for (const d of despesas) {
+              const catId = d.categoria_id;
+              if (!porCategoria.has(catId)) porCategoria.set(catId, []);
+              porCategoria.get(catId).push(d);
+            }
+            const categoriasOrdenadas = [...porCategoria.keys()].sort((a, b) => (nomeCategoria[a] || '').localeCompare(nomeCategoria[b] || ''));
+            if (!categoriasOrdenadas.length) return '<p class="mb-4 text-sm text-slate-400">Nenhuma despesa.</p>';
+            return categoriasOrdenadas.map((catId) => {
+              const itens = porCategoria.get(catId);
+              const subtotal = itens.reduce((t, d) => t + d.valor, 0);
+              return `
+                <h3 class="mb-1 mt-3 text-sm font-semibold text-slate-700">${nomeCategoria[catId] || '-'}</h3>
+                <table class="mb-3 w-full text-sm">
+                  <thead><tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
+                    <th class="py-1">Data</th><th class="py-1">Pago por</th><th class="py-1 text-right">Valor</th>
+                  </tr></thead>
+                  <tbody>
+                    ${itens.map((d) => `
+                      <tr class="border-b border-slate-100">
+                        <td class="py-1">${formatarDataBr(d.data)}</td>
+                        <td class="py-1">${d.pago_por}</td>
+                        <td class="py-1 text-right">${formatarMoeda(d.valor)}</td>
+                      </tr>
+                    `).join('')}
+                    <tr class="font-medium"><td colspan="2" class="py-1 text-right">Subtotal ${nomeCategoria[catId] || ''}</td><td class="py-1 text-right">${formatarMoeda(subtotal)}</td></tr>
+                  </tbody>
+                </table>
+              `;
+            }).join('');
+          })()}
+          <div class="mb-4 flex items-center justify-between border-t border-slate-300 pt-2 text-sm font-semibold text-slate-900">
+            <span>Total geral de despesas</span><span>${formatarMoeda(totalDespesas)}</span>
+          </div>
 
           <h2 class="mb-2 mt-6 font-semibold text-slate-900">Adiantamentos ao motorista</h2>
           <table class="mb-4 w-full text-sm">
@@ -131,6 +150,7 @@ export async function renderRelatorio(root, params, query) {
         <div class="rounded-lg bg-slate-50 p-4">
           ${linha('Frete bruto total', formatarMoeda(freteBrutoTotal))}
           ${acerto ? linha(`Comissao (${acerto.percentual_comissao_aplicado}%)`, formatarMoeda(acerto.valor_comissao)) : ''}
+          ${acerto && acerto.valor_imposto > 0 ? linha(`Imposto (${acerto.percentual_imposto_aplicado}%) - nao afeta o motorista`, formatarMoeda(acerto.valor_imposto)) : ''}
           ${acerto && acerto.valor_reembolsos > 0 ? linha('Reembolsos', formatarMoeda(acerto.valor_reembolsos)) : ''}
           ${acerto ? linha('Adiantamentos tomados', formatarMoeda(acerto.valor_adiantamentos)) : linha('Adiantamentos tomados', formatarMoeda(totalAdiantamentos))}
           ${acerto && acerto.valor_descontos > 0 ? linha('Descontos', formatarMoeda(acerto.valor_descontos)) : ''}

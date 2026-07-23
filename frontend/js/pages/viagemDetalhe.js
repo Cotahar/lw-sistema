@@ -4,7 +4,7 @@ import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { abrirModal, fecharModal, confirmarAcao } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
 import { criarOcorrencias } from '../components/ocorrencias.js';
-import { formatarMoeda, attachMoedaMask, getMoedaValue, setMoedaValue, attachPesoMask, getPesoValue, attachDataMask, parseDataBrParaIso, formatarDataBr, formatarDataHoraBr } from '../masks.js';
+import { formatarMoeda, attachMoedaMask, getMoedaValue, setMoedaValue, attachPesoMask, getPesoValue, attachDataMask, parseDataBrParaIso, formatarDataBr, formatarDataHoraBr, hojeIsoLocal } from '../masks.js';
 import { navegar } from '../router.js';
 import { criarBotaoSincronizarOnixsat } from '../components/onixsatSync.js';
 
@@ -446,9 +446,7 @@ async function abrirFinalizar(viagem, recarregarPagina) {
     <p class="hidden text-sm text-red-600" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Finalizar viagem</button></div>
   `;
-  const hoje = new Date();
-  const isoHoje = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
-  attachDataMask(form.data_fim, isoHoje);
+  attachDataMask(form.data_fim, hojeIsoLocal());
   const erro = form.querySelector('[data-erro]');
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
@@ -495,7 +493,7 @@ export async function render(container, params) {
     // percorrido negativo sem essa checagem.
     const kmAtualConfiavel = viagem.km_final ?? (tratora && tratora.hodometro_atual > viagem.km_inicial ? tratora.hodometro_atual : null);
     const kmPercorrido = kmAtualConfiavel !== null ? kmAtualConfiavel - viagem.km_inicial : null;
-    const dataFimOuHoje = viagem.data_fim || new Date().toISOString().slice(0, 10);
+    const dataFimOuHoje = viagem.data_fim || hojeIsoLocal();
     const diasDecorridos = Math.max(1, Math.round((new Date(dataFimOuHoje) - new Date(viagem.data_inicio)) / 86400000));
     const distanciaDiaria = kmPercorrido !== null ? kmPercorrido / diasDecorridos : null;
     const totalFaturado = (viagem.fretes || []).reduce((t, f) => t + f.frete_bruto, 0);

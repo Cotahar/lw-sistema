@@ -67,7 +67,7 @@ router.post('/:id/movimentacoes', requerAcessoModulo('contas_bancarias', 'Gerenc
   const movimentacao = withTransaction(db, () => {
     const info = db.prepare(`
       INSERT INTO movimentacoes_caixa (empresa_id, conta_bancaria_id, tipo, valor, data, descricao, origem_tipo, criado_por)
-      VALUES (?, ?, ?, ?, COALESCE(?, date('now')), ?, 'Ajuste', ?)
+      VALUES (?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), ?, 'Ajuste', ?)
     `).run(req.empresaId, conta.id, tipo, valor, data || null, descricao || null, req.usuario.id);
     const delta = tipo === 'Entrada' ? valor : -valor;
     db.prepare('UPDATE contas_bancarias SET saldo_atual = saldo_atual + ? WHERE id = ?').run(delta, conta.id);

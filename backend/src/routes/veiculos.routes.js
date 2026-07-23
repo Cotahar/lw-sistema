@@ -144,7 +144,7 @@ router.post('/:id/localizacao', requerAcessoModulo('veiculos', 'Gerenciar'), exi
       VALUES (?, ?, ?, ?, 'Manual', ?, ?)
     `).run(req.empresaId, veiculo.id, cidade, uf.toUpperCase(), req.usuario.id, observacao || null);
     db.prepare(`
-      UPDATE veiculos SET localizacao_cidade = ?, localizacao_uf = ?, localizacao_atualizado_em = datetime('now') WHERE id = ?
+      UPDATE veiculos SET localizacao_cidade = ?, localizacao_uf = ?, localizacao_atualizado_em = datetime('now', '-3 hours') WHERE id = ?
     `).run(cidade, uf.toUpperCase(), veiculo.id);
     return db.prepare('SELECT * FROM localizacao_eventos WHERE id = ?').get(info.lastInsertRowid);
   });

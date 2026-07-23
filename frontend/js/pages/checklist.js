@@ -2,7 +2,7 @@ import { get, post, put, del, authHeaders, podeGerenciar } from '../api.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { abrirModal, confirmarAcao } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
-import { formatarDataBr } from '../masks.js';
+import { formatarDataBr, hojeIsoLocal } from '../masks.js';
 
 async function buscarConjuntos(termo) {
   const conjuntos = await get('/conjuntos');
@@ -13,7 +13,7 @@ async function buscarConjuntos(termo) {
 }
 
 function diasDesde(dataIso) {
-  const hoje = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z');
+  const hoje = new Date(`${hojeIsoLocal()}T00:00:00Z`);
   const data = new Date(`${dataIso}T00:00:00Z`);
   return Math.round((hoje - data) / 86400000);
 }

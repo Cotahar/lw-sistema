@@ -5,6 +5,7 @@ const ApiError = require('../utils/ApiError');
 const { requerAcessoModulo } = require('../middleware/auth');
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
+const { hojeIsoBrasilia } = require('../utils/dataHora');
 
 const router = express.Router();
 
@@ -84,7 +85,7 @@ router.get('/viagem/:viagemId', requerAcessoModulo('dre', 'Visualizar'), exigirE
   const custosVariaveis = somar(despesas.map((d) => d.valor));
   const resultadoOperacional = receita - custosVariaveis;
 
-  const dataFimOuHoje = viagem.data_fim || new Date().toISOString().slice(0, 10);
+  const dataFimOuHoje = viagem.data_fim || hojeIsoBrasilia();
   const dias = Math.max(1, Math.round((new Date(dataFimOuHoje) - new Date(viagem.data_inicio)) / 86400000) + 1);
   const faturamentoPorDia = Math.round(receita / dias);
 

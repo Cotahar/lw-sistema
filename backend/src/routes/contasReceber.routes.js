@@ -4,17 +4,28 @@ const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const { requerAcessoModulo } = require('../middleware/auth');
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
-const { condicaoEmpresa } = require('../utils/empresaScope');
 const { registrarAuditoria } = require('../utils/audit');
 
 const router = express.Router();
 
+// Join com fretes/viagens/transportadora - a tela de gestao de saldos precisa
+// de contexto (rota, viagem, transportadora) alem do id do frete pra o
+// usuario identificar do que se trata sem precisar abrir a viagem.
+const SELECT_LISTA = `
+  SELECT cr.*,
+         f.origem_cidade, f.origem_uf, f.destino_cidade, f.destino_uf, f.viagem_id,
+         t.nome AS transportadora_nome
+  FROM contas_receber cr
+  JOIN fretes f ON f.id = cr.frete_id
+  LEFT JOIN fornecedores t ON t.id = f.transportadora_id
+`;
+
 router.get('/', requerAcessoModulo('contas_receber', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const { status } = req.query;
-  const condicoes = []; const params = [];
-  condicaoEmpresa(condicoes, params, req);
-  if (status) { condicoes.push('status = ?'); params.push(status); }
-  const rows = db.prepare(`SELECT * FROM contas_receber WHERE ${condicoes.join(' AND ')} ORDER BY data_prevista`).all(...params);
+  const condicoes = ['cr.empresa_id = ?'];
+  const params = [req.empresaId];
+  if (status) { condicoes.push('cr.status = ?'); params.push(status); }
+  const rows = db.prepare(`${SELECT_LISTA} WHERE ${condicoes.join(' AND ')} ORDER BY cr.data_prevista`).all(...params);
   res.json(rows);
 }));
 

@@ -47,7 +47,7 @@ router.post('/', requerAcessoModulo('manutencao', 'Gerenciar'), exigirEmpresaEsp
 
     const info = db.prepare(`
       INSERT INTO ordens_servico (empresa_id, data, veiculo_id, hodometro, tipo, fornecedor_id, valor_pecas, valor_mao_obra, descricao, criado_por)
-      VALUES (?, COALESCE(?, date('now')), ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, COALESCE(?, date('now', '-3 hours')), ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(req.empresaId, data || null, veiculo_id, hodometro, tipo, fornecedor_id || null, valor_pecas || 0, valor_mao_obra || 0, descricao || null, req.usuario.id);
     const osId = info.lastInsertRowid;
 
@@ -70,7 +70,7 @@ router.post('/', requerAcessoModulo('manutencao', 'Gerenciar'), exigirEmpresaEsp
           INSERT INTO estoque_movimentacoes (empresa_id, item_id, tipo, quantidade, custo_unitario, veiculo_destino_id, os_id, criado_por)
           VALUES (?, ?, 'Saida', ?, ?, ?, ?, ?)
         `).run(req.empresaId, item.estoque_item_id, item.quantidade, item.valor_unitario, veiculo_id, osId, req.usuario.id);
-        db.prepare("UPDATE estoque_itens SET quantidade_atual = quantidade_atual - ?, atualizado_em = datetime('now') WHERE id = ?")
+        db.prepare("UPDATE estoque_itens SET quantidade_atual = quantidade_atual - ?, atualizado_em = datetime('now', '-3 hours') WHERE id = ?")
           .run(item.quantidade, item.estoque_item_id);
       }
     }
@@ -78,7 +78,7 @@ router.post('/', requerAcessoModulo('manutencao', 'Gerenciar'), exigirEmpresaEsp
     if ((valor_pecas || valor_mao_obra) && (valor_pecas + valor_mao_obra) > 0) {
       db.prepare(`
         INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
-        VALUES (?, ?, ?, ?, COALESCE(?, date('now')), 'Pendente', 'OrdemServico', ?)
+        VALUES (?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), 'Pendente', 'OrdemServico', ?)
       `).run(req.empresaId, fornecedor_id || null, `Ordem de servico #${osId}`, Math.round((valor_pecas || 0) + (valor_mao_obra || 0)), data || null, osId);
     }
 

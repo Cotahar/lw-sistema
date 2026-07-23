@@ -9,6 +9,7 @@ const { registrarAuditoria } = require('../utils/audit');
 const { withTransaction } = require('../utils/transaction');
 const { verificarAlertasDoVeiculo } = require('../utils/alertaEngine');
 const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
+const { hojeIsoBrasilia } = require('../utils/dataHora');
 
 const router = express.Router();
 
@@ -132,7 +133,7 @@ router.post('/:id/finalizar', requerAcessoModulo('viagens', 'Gerenciar'), exigir
     viagemAntes = atual;
 
     db.prepare(`
-      UPDATE viagens SET km_final = ?, data_fim = COALESCE(?, date('now')), status = 'AguardandoAcerto' WHERE id = ?
+      UPDATE viagens SET km_final = ?, data_fim = COALESCE(?, date('now', '-3 hours')), status = 'AguardandoAcerto' WHERE id = ?
     `).run(km_final, data_fim || null, atual.id);
 
     const tratora = buscarUnidadeTratora(atual.conjunto_id);
@@ -175,7 +176,7 @@ router.get('/:id/fretes', requerAcessoModulo('viagens', 'Visualizar'), exigirEmp
 }));
 
 function dataOuHoje(data) {
-  return data || new Date().toISOString().slice(0, 10);
+  return data || hojeIsoBrasilia();
 }
 
 router.post('/:id/fretes', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
@@ -456,7 +457,7 @@ router.post('/:id/despesas', requerAcessoModulo('viagens', 'Gerenciar'), exigirE
       INSERT INTO despesas_viagem (
         empresa_id, viagem_id, centro_custo_id, categoria_id, valor, data, pago_por, pago_por_usuario_id,
         posto_fornecedor_id, preco_litro, litragem, km_abastecimento, descricao, criado_por
-      ) VALUES (?, ?, ?, ?, ?, COALESCE(?, date('now')), ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       req.empresaId, req.params.id, centroCusto.id, categoria_id, valor, data || null, pago_por, pago_por_usuario_id || null,
       posto_fornecedor_id || null, preco_litro || null, litragem || null, km_abastecimento || null, descricao || null, req.usuario.id
@@ -473,7 +474,7 @@ router.post('/:id/despesas', requerAcessoModulo('viagens', 'Gerenciar'), exigirE
         : `${categoria ? categoria.nome : 'Despesa'} - viagem #${viagem.id}`;
       db.prepare(`
         INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
-        VALUES (?, ?, ?, ?, COALESCE(?, date('now')), 'Pendente', 'DespesaViagem', ?)
+        VALUES (?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), 'Pendente', 'DespesaViagem', ?)
       `).run(req.empresaId, posto_fornecedor_id || null, descricaoConta, valor, data || null, novaDespesa.id);
     }
 

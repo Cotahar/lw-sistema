@@ -41,7 +41,7 @@ CREATE TABLE usuarios (
     -- padrao em um modulo especifico (ex.: sem acesso nenhum a Financeiro).
     perfil          TEXT NOT NULL CHECK (perfil IN ('Admin', 'Comum', 'Visualizacao')),
     ativo           INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1)),
-    criado_em       TEXT NOT NULL DEFAULT (datetime('now')),
+    criado_em       TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     atualizado_em   TEXT
 );
 
@@ -114,7 +114,7 @@ CREATE TABLE logs_auditoria (
     -- registrada para aquele registro_id (evita sobrescrever mudancas mais novas).
     revertido_em    TEXT,
     revertido_por   INTEGER REFERENCES usuarios(id),
-    criado_em       TEXT NOT NULL DEFAULT (datetime('now'))
+    criado_em       TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
 );
 CREATE INDEX idx_logs_auditoria_tabela_registro ON logs_auditoria(tabela_afetada, registro_id);
 
@@ -137,7 +137,7 @@ CREATE TABLE fornecedores (
     tipo_id         INTEGER NOT NULL REFERENCES fornecedor_tipos(id),
     telefone        TEXT,
     ativo           INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1)),
-    criado_em       TEXT NOT NULL DEFAULT (datetime('now')),
+    criado_em       TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     atualizado_em   TEXT
 );
 CREATE INDEX idx_fornecedores_nome ON fornecedores(nome);
@@ -155,7 +155,7 @@ CREATE TABLE motoristas (
     -- ver secao 7 para o razao completo (auditavel) desse saldo.
     saldo_conta_corrente    INTEGER NOT NULL DEFAULT 0,
     ativo                   INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1)),
-    criado_em               TEXT NOT NULL DEFAULT (datetime('now')),
+    criado_em               TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     atualizado_em           TEXT
 );
 CREATE INDEX idx_motoristas_nome ON motoristas(nome);
@@ -180,7 +180,7 @@ CREATE TABLE veiculos (
     localizacao_uf          TEXT,
     localizacao_atualizado_em TEXT,
     ativo               INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1)),
-    criado_em           TEXT NOT NULL DEFAULT (datetime('now')),
+    criado_em           TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     atualizado_em       TEXT,
     CHECK (tipo = 'Cavalo' OR carreta_padrao_id IS NULL)
 );
@@ -199,7 +199,7 @@ CREATE TABLE conjuntos (
     empresa_id  INTEGER NOT NULL REFERENCES empresas(id),
     nome        TEXT,               -- rotulo opcional, ex.: "Rodotrem 01"
     ativo       INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1)),
-    criado_em   TEXT NOT NULL DEFAULT (datetime('now'))
+    criado_em   TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
 );
 
 -- Itens do conjunto. O "papel" de cada veiculo (Cavalo, Carreta 1,
@@ -231,7 +231,7 @@ CREATE TABLE estoque_itens (
     custo_medio         INTEGER NOT NULL DEFAULT 0,  -- centavos
     estoque_minimo      REAL NOT NULL DEFAULT 0,
     ativo               INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1)),
-    criado_em           TEXT NOT NULL DEFAULT (datetime('now')),
+    criado_em           TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     atualizado_em       TEXT
 );
 CREATE INDEX idx_estoque_itens_nome ON estoque_itens(nome);
@@ -255,7 +255,7 @@ CREATE TABLE estoque_movimentacoes (
     -- no DRE (evita contar o mesmo custo duas vezes).
     veiculo_destino_id  INTEGER REFERENCES veiculos(id),
     os_id               INTEGER REFERENCES ordens_servico(id),
-    data                TEXT NOT NULL DEFAULT (datetime('now')),
+    data                TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     observacao          TEXT,
     criado_por          INTEGER REFERENCES usuarios(id)
 );
@@ -288,8 +288,8 @@ CREATE TABLE pneus (
     -- reconhecido na primeira instalacao).
     custo_pendente_dre  INTEGER NOT NULL DEFAULT 0,
     fornecedor_id       INTEGER REFERENCES fornecedores(id),  -- fornecedor da compra original
-    data_aquisicao      TEXT NOT NULL DEFAULT (date('now')),
-    criado_em           TEXT NOT NULL DEFAULT (datetime('now')),
+    data_aquisicao      TEXT NOT NULL DEFAULT (date('now', '-3 hours')),
+    criado_em           TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     CHECK (status = 'Instalado' OR (veiculo_id IS NULL AND eixo IS NULL AND lado IS NULL))
 );
 CREATE INDEX idx_pneus_veiculo ON pneus(veiculo_id);
@@ -313,7 +313,7 @@ CREATE TABLE pneu_eventos (
     km_veiculo      INTEGER,
     fornecedor_id   INTEGER REFERENCES fornecedores(id),  -- recapadora, no caso de Envio/RetornoRecapagem
     custo           INTEGER,   -- centavos; ver regra de custo_pendente_dre acima
-    data            TEXT NOT NULL DEFAULT (datetime('now')),
+    data            TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     observacao      TEXT,
     criado_por      INTEGER REFERENCES usuarios(id)
 );
@@ -326,7 +326,7 @@ CREATE INDEX idx_pneu_eventos_pneu ON pneu_eventos(pneu_id);
 CREATE TABLE ordens_servico (
     id              INTEGER PRIMARY KEY,
     empresa_id      INTEGER NOT NULL REFERENCES empresas(id),
-    data            TEXT NOT NULL DEFAULT (date('now')),
+    data            TEXT NOT NULL DEFAULT (date('now', '-3 hours')),
     veiculo_id      INTEGER NOT NULL REFERENCES veiculos(id),
     hodometro       INTEGER NOT NULL,
     tipo            TEXT NOT NULL CHECK (tipo IN ('Preventiva', 'Corretiva')),
@@ -335,7 +335,7 @@ CREATE TABLE ordens_servico (
     valor_mao_obra  INTEGER NOT NULL DEFAULT 0,   -- centavos
     descricao       TEXT,
     criado_por      INTEGER REFERENCES usuarios(id),
-    criado_em       TEXT NOT NULL DEFAULT (datetime('now'))
+    criado_em       TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
 );
 CREATE INDEX idx_os_veiculo ON ordens_servico(veiculo_id);
 CREATE INDEX idx_os_data ON ordens_servico(data);
@@ -375,7 +375,7 @@ CREATE TABLE alertas_ocorrencias (
     regra_id            INTEGER NOT NULL REFERENCES alertas_regras(id),
     veiculo_id          INTEGER NOT NULL REFERENCES veiculos(id),
     km_atual_no_disparo INTEGER NOT NULL,
-    data_disparo        TEXT NOT NULL DEFAULT (datetime('now')),
+    data_disparo        TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     status              TEXT NOT NULL DEFAULT 'Pendente' CHECK (status IN ('Pendente', 'Resolvido')),
     resolvido_em        TEXT
 );
@@ -398,7 +398,7 @@ CREATE TABLE veiculo_checklist (
     item_id         INTEGER NOT NULL REFERENCES checklist_itens_catalogo(id),
     presente        INTEGER NOT NULL DEFAULT 1 CHECK (presente IN (0, 1)),
     observacao      TEXT,
-    atualizado_em   TEXT NOT NULL DEFAULT (datetime('now')),
+    atualizado_em   TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     UNIQUE (veiculo_id, item_id)
 );
 
@@ -412,9 +412,9 @@ CREATE TABLE checklist_vistorias (
     id              INTEGER PRIMARY KEY,
     empresa_id      INTEGER NOT NULL REFERENCES empresas(id),
     conjunto_id     INTEGER NOT NULL REFERENCES conjuntos(id),
-    data_vistoria   TEXT NOT NULL DEFAULT (date('now')),
+    data_vistoria   TEXT NOT NULL DEFAULT (date('now', '-3 hours')),
     criado_por      INTEGER REFERENCES usuarios(id),
-    criado_em       TEXT NOT NULL DEFAULT (datetime('now'))
+    criado_em       TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
 );
 CREATE INDEX idx_checklist_vistorias_conjunto ON checklist_vistorias(conjunto_id, data_vistoria);
 
@@ -448,7 +448,7 @@ CREATE TABLE veiculo_checklist_fotos (
     momento         TEXT NOT NULL CHECK (momento IN ('Recebimento', 'Entrega')),
     arquivo         TEXT NOT NULL,
     criado_por      INTEGER REFERENCES usuarios(id),
-    criado_em       TEXT NOT NULL DEFAULT (datetime('now'))
+    criado_em       TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
 );
 CREATE INDEX idx_checklist_fotos_veiculo ON veiculo_checklist_fotos(veiculo_id, momento);
 
@@ -469,7 +469,7 @@ CREATE TABLE viagens (
     km_inicial      INTEGER NOT NULL,
     km_final        INTEGER,   -- preenchido no fechamento; diferenca = km_total (absorve trechos vazios)
     criado_por      INTEGER REFERENCES usuarios(id),
-    criado_em       TEXT NOT NULL DEFAULT (datetime('now')),
+    criado_em       TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     CHECK (km_final IS NULL OR km_final >= km_inicial)
 );
 CREATE INDEX idx_viagens_conjunto ON viagens(conjunto_id);
@@ -486,7 +486,7 @@ CREATE TABLE hodometro_eventos (
     km              INTEGER NOT NULL,
     origem          TEXT NOT NULL CHECK (origem IN ('Onixsat', 'Manual')),
     usuario_id      INTEGER REFERENCES usuarios(id),  -- obrigatorio quando origem='Manual'
-    data_hora       TEXT NOT NULL DEFAULT (datetime('now')),
+    data_hora       TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     observacao      TEXT
 );
 CREATE INDEX idx_hodometro_eventos_veiculo ON hodometro_eventos(veiculo_id, data_hora);
@@ -505,7 +505,7 @@ CREATE TABLE localizacao_eventos (
     longitude       REAL,
     origem          TEXT NOT NULL CHECK (origem IN ('Onixsat', 'Manual')),
     usuario_id      INTEGER REFERENCES usuarios(id),  -- obrigatorio quando origem='Manual'
-    data_hora       TEXT NOT NULL DEFAULT (datetime('now')),
+    data_hora       TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     observacao      TEXT
 );
 CREATE INDEX idx_localizacao_eventos_veiculo ON localizacao_eventos(veiculo_id, data_hora);
@@ -524,7 +524,7 @@ CREATE TABLE fretes (
     destino_uf                  TEXT NOT NULL,
     peso_carga_kg               INTEGER,
     frete_bruto                 INTEGER NOT NULL,  -- centavos; valor base do recebivel (ver contas_receber_baixas)
-    criado_em                    TEXT NOT NULL DEFAULT (datetime('now'))
+    criado_em                    TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
 );
 CREATE INDEX idx_fretes_viagem ON fretes(viagem_id);
 
@@ -540,11 +540,11 @@ CREATE TABLE viagem_adiantamentos (
     empresa_id          INTEGER NOT NULL REFERENCES empresas(id),
     viagem_id           INTEGER NOT NULL REFERENCES viagens(id) ON DELETE CASCADE,
     valor               INTEGER NOT NULL,  -- centavos
-    data                TEXT NOT NULL DEFAULT (date('now')),
+    data                TEXT NOT NULL DEFAULT (date('now', '-3 hours')),
     conta_bancaria_id   INTEGER REFERENCES contas_bancarias(id),
     descricao           TEXT,
     criado_por          INTEGER REFERENCES usuarios(id),
-    criado_em           TEXT NOT NULL DEFAULT (datetime('now'))
+    criado_em           TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
 );
 CREATE INDEX idx_viagem_adiantamentos_viagem ON viagem_adiantamentos(viagem_id);
 
@@ -594,7 +594,7 @@ CREATE TABLE despesas_viagem (
     centro_custo_id     INTEGER NOT NULL REFERENCES centros_custo(id),
     categoria_id        INTEGER NOT NULL REFERENCES categorias_despesa(id),
     valor               INTEGER NOT NULL,  -- centavos
-    data                TEXT NOT NULL DEFAULT (date('now')),
+    data                TEXT NOT NULL DEFAULT (date('now', '-3 hours')),
     pago_por            TEXT NOT NULL CHECK (pago_por IN ('Empresa', 'Motorista', 'AdminOutros')),
     pago_por_usuario_id INTEGER REFERENCES usuarios(id),  -- obrigatorio quando pago_por='AdminOutros'
     -- Campos especificos de Abastecimento (NULL para as demais categorias):
@@ -604,7 +604,7 @@ CREATE TABLE despesas_viagem (
     km_abastecimento    INTEGER,
     descricao           TEXT,
     criado_por          INTEGER REFERENCES usuarios(id),
-    criado_em           TEXT NOT NULL DEFAULT (datetime('now'))
+    criado_em           TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
 );
 CREATE INDEX idx_despesas_viagem_viagem ON despesas_viagem(viagem_id);
 CREATE INDEX idx_despesas_viagem_centro ON despesas_viagem(centro_custo_id);
@@ -617,11 +617,11 @@ CREATE TABLE despesas_fixas (
     centro_custo_id     INTEGER NOT NULL REFERENCES centros_custo(id),
     categoria_id        INTEGER NOT NULL REFERENCES categorias_despesa(id),
     valor               INTEGER NOT NULL,  -- centavos
-    data                TEXT NOT NULL DEFAULT (date('now')),
+    data                TEXT NOT NULL DEFAULT (date('now', '-3 hours')),
     recorrente          INTEGER NOT NULL DEFAULT 0 CHECK (recorrente IN (0, 1)),
     descricao           TEXT,
     criado_por          INTEGER REFERENCES usuarios(id),
-    criado_em           TEXT NOT NULL DEFAULT (datetime('now'))
+    criado_em           TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
 );
 CREATE INDEX idx_despesas_fixas_centro ON despesas_fixas(centro_custo_id);
 
@@ -633,7 +633,7 @@ CREATE TABLE financiamentos (
     credor_fornecedor_id INTEGER REFERENCES fornecedores(id),
     valor_total         INTEGER NOT NULL,  -- centavos
     qtd_parcelas        INTEGER NOT NULL,
-    data_contrato       TEXT NOT NULL DEFAULT (date('now'))
+    data_contrato       TEXT NOT NULL DEFAULT (date('now', '-3 hours'))
 );
 
 -- Por decisao do usuario, nao separamos juros de principal: o valor
@@ -685,7 +685,7 @@ CREATE TABLE contas_pagar (
     origem_tipo         TEXT CHECK (origem_tipo IN ('EstoqueMovimentacao', 'PneuEvento', 'OrdemServico', 'DespesaViagem', 'DespesaFixa', 'FinanciamentoParcela', 'ReembolsoMotorista', 'AcertoViagem', 'Outro')),
     origem_id           INTEGER,
     conta_bancaria_id   INTEGER REFERENCES contas_bancarias(id),
-    criado_em           TEXT NOT NULL DEFAULT (datetime('now'))
+    criado_em           TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
 );
 CREATE INDEX idx_contas_pagar_status ON contas_pagar(status);
 CREATE INDEX idx_contas_pagar_origem ON contas_pagar(origem_tipo, origem_id);
@@ -706,7 +706,7 @@ CREATE TABLE contas_receber (
     valor_recebido      INTEGER NOT NULL DEFAULT 0,   -- centavos; soma das baixas exceto tipo Desconto
     valor_descontado    INTEGER NOT NULL DEFAULT 0,   -- centavos; soma das baixas tipo Desconto
     status              TEXT NOT NULL DEFAULT 'Pendente' CHECK (status IN ('Pendente', 'Parcial', 'Recebido', 'Atrasado')),
-    criado_em           TEXT NOT NULL DEFAULT (datetime('now'))
+    criado_em           TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
 );
 CREATE INDEX idx_contas_receber_status ON contas_receber(status);
 CREATE INDEX idx_contas_receber_frete ON contas_receber(frete_id);
@@ -722,11 +722,11 @@ CREATE TABLE contas_receber_baixas (
     contas_receber_id   INTEGER NOT NULL REFERENCES contas_receber(id) ON DELETE CASCADE,
     tipo                TEXT NOT NULL CHECK (tipo IN ('Adiantamento', 'Pedagio', 'Saldo', 'Desconto', 'Outro')),
     valor               INTEGER NOT NULL,  -- centavos
-    data                TEXT NOT NULL DEFAULT (date('now')),
+    data                TEXT NOT NULL DEFAULT (date('now', '-3 hours')),
     conta_bancaria_id   INTEGER REFERENCES contas_bancarias(id),
     descricao           TEXT,
     criado_por          INTEGER REFERENCES usuarios(id),
-    criado_em           TEXT NOT NULL DEFAULT (datetime('now')),
+    criado_em           TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     CHECK (tipo != 'Desconto' OR conta_bancaria_id IS NULL)
 );
 CREATE INDEX idx_contas_receber_baixas_receber ON contas_receber_baixas(contas_receber_id);
@@ -742,7 +742,7 @@ CREATE TABLE movimentacoes_caixa (
     conta_bancaria_id   INTEGER NOT NULL REFERENCES contas_bancarias(id),
     tipo                TEXT NOT NULL CHECK (tipo IN ('Entrada', 'Saida')),
     valor               INTEGER NOT NULL,  -- centavos
-    data                TEXT NOT NULL DEFAULT (date('now')),
+    data                TEXT NOT NULL DEFAULT (date('now', '-3 hours')),
     descricao           TEXT,
     origem_tipo         TEXT CHECK (origem_tipo IN ('ContaPagar', 'ContaReceber', 'ViagemAdiantamento', 'Ajuste')),
     origem_id           INTEGER,
@@ -758,11 +758,17 @@ CREATE TABLE acertos_viagem (
     id                          INTEGER PRIMARY KEY,
     empresa_id                  INTEGER NOT NULL REFERENCES empresas(id),
     viagem_id                   INTEGER NOT NULL UNIQUE REFERENCES viagens(id),
-    data_acerto                 TEXT NOT NULL DEFAULT (datetime('now')),
+    data_acerto                 TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     media_consumo_km_l          REAL,             -- calculado a partir dos abastecimentos + km_total
     percentual_comissao_sugerido REAL,            -- resolvido via comissao_faixas pela media acima
     percentual_comissao_aplicado REAL NOT NULL,    -- copiado da sugestao, mas editavel pelo operador
     valor_comissao               INTEGER NOT NULL, -- centavos, = frete_bruto_total * percentual_aplicado
+    -- Imposto da empresa sobre o frete bruto (empresas.percentual_desconto_geral),
+    -- so informativo/lancado separado - NAO entra na formula do saldo_final
+    -- do motorista (comissao/saldo continuam batendo em cima do frete bruto
+    -- cheio, sem desconto de imposto).
+    percentual_imposto_aplicado  REAL,
+    valor_imposto                INTEGER NOT NULL DEFAULT 0,  -- centavos
     valor_reembolsos             INTEGER NOT NULL DEFAULT 0,  -- centavos
     valor_adiantamentos          INTEGER NOT NULL DEFAULT 0,  -- centavos
     valor_descontos              INTEGER NOT NULL DEFAULT 0,  -- centavos (multas, avarias...)
@@ -771,7 +777,7 @@ CREATE TABLE acertos_viagem (
     status                       TEXT NOT NULL DEFAULT 'Aberto' CHECK (status IN ('Aberto', 'Fechado')),
     observacoes_ajustes          TEXT,   -- "fechamento livre": justificativa de ajustes manuais de caixa
     criado_por                   INTEGER REFERENCES usuarios(id),
-    criado_em                    TEXT NOT NULL DEFAULT (datetime('now'))
+    criado_em                    TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
 );
 
 -- Razao (ledger) da conta corrente do motorista: toda vez que um saldo
@@ -790,7 +796,7 @@ CREATE TABLE motorista_conta_corrente_lancamentos (
     valor                INTEGER NOT NULL,  -- centavos, sempre positivo; o "tipo" indica o sentido
     saldo_anterior       INTEGER NOT NULL,  -- centavos
     saldo_posterior      INTEGER NOT NULL,  -- centavos
-    data                 TEXT NOT NULL DEFAULT (datetime('now')),
+    data                 TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     descricao            TEXT,
     criado_por           INTEGER REFERENCES usuarios(id)
 );
@@ -823,7 +829,7 @@ CREATE TABLE multas (
     valor_nao_indicacao     INTEGER,  -- centavos, 2x valor_original quando status = NaoIndicado
     observacoes             TEXT,
     criado_por              INTEGER REFERENCES usuarios(id),
-    criado_em               TEXT NOT NULL DEFAULT (datetime('now')),
+    criado_em               TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     atualizado_em           TEXT
 );
 CREATE INDEX idx_multas_veiculo ON multas(veiculo_id);
@@ -844,7 +850,7 @@ CREATE TABLE ocorrencias (
     entidade_id     INTEGER NOT NULL,
     texto           TEXT NOT NULL,
     criado_por      INTEGER REFERENCES usuarios(id),
-    criado_em       TEXT NOT NULL DEFAULT (datetime('now'))
+    criado_em       TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
 );
 CREATE INDEX idx_ocorrencias_entidade ON ocorrencias(entidade_tipo, entidade_id);
 
@@ -869,7 +875,7 @@ CREATE TABLE importacoes_drivvo (
     entidade_id         INTEGER,
     dados_brutos        TEXT NOT NULL,  -- JSON da linha original do Drivvo, para exibir/reprocessar na revisao
     motivo_pendencia    TEXT,           -- por que caiu em revisao (veiculo nao encontrado, sem viagem aberta no periodo, etc.)
-    criado_em           TEXT NOT NULL DEFAULT (datetime('now')),
+    criado_em           TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     resolvido_em        TEXT,
     resolvido_por       INTEGER REFERENCES usuarios(id)
 );
@@ -902,7 +908,11 @@ CREATE TABLE empresas (
     onixsat_usuario         TEXT,
     onixsat_senha           TEXT,
     onixsat_ultimo_mid      INTEGER, -- cursor de paginacao do RequestMensagemCB (ver onixsatClient.js)
+    -- % de imposto a descontar do frete bruto no fechamento do Acerto (varia
+    -- por empresa). Quando preenchido, o Acerto lanca/destaca "Imposto (nome
+    -- da empresa)" sobre o frete bruto da viagem - ver acertos.routes.js.
+    percentual_desconto_geral REAL,
     ativo                   INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1)),
-    criado_em               TEXT NOT NULL DEFAULT (datetime('now')),
+    criado_em               TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     atualizado_em           TEXT
 );

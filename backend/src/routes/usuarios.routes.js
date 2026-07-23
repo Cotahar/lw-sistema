@@ -52,7 +52,7 @@ router.put('/:id', asyncHandler(async (req, res) => {
   if (ativo !== undefined) { campos.push('ativo = ?'); valores.push(ativo ? 1 : 0); }
   if (senha) { campos.push('senha_hash = ?'); valores.push(bcrypt.hashSync(senha, 10)); }
   if (!campos.length) throw new ApiError(400, 'Nenhum campo valido informado.');
-  campos.push("atualizado_em = datetime('now')");
+  campos.push("atualizado_em = datetime('now', '-3 hours')");
 
   db.prepare(`UPDATE usuarios SET ${campos.join(', ')} WHERE id = ?`).run(...valores, req.params.id);
   const depois = db.prepare(`${SELECT_SEGURO} WHERE id = ?`).get(req.params.id);

@@ -10,7 +10,7 @@ const { withTransaction } = require('../utils/transaction');
 const COLUMNS = [
   'razao_social', 'nome_fantasia', 'cnpj', 'inscricao_estadual',
   'endereco_logradouro', 'endereco_numero', 'endereco_complemento', 'endereco_bairro', 'endereco_cidade', 'endereco_uf', 'endereco_cep',
-  'telefone', 'email', 'onixsat_usuario', 'onixsat_senha', 'ativo',
+  'telefone', 'email', 'onixsat_usuario', 'onixsat_senha', 'percentual_desconto_geral', 'ativo',
 ];
 
 const router = express.Router();
