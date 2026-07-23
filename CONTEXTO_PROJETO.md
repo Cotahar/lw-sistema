@@ -142,6 +142,20 @@ Node/Express) e Passo 3 (frontend HTML/CSS/JS + TailwindCSS).
   - Depois de editar um arquivo `.js` do frontend com o navegador já
     aberto, é preciso `location.reload()` de verdade — mudar só o hash
     (`#/rota`) não rebusca os módulos ES (ficam em cache do navegador).
+    Às vezes nem isso basta numa aba que já viveu muitas navegações nesta
+    sessão de browser automatizado — se algo parecer duplicado/bugado sem
+    explicação, teste numa aba nova antes de assumir que é bug de verdade.
+  - **`node:sqlite` sempre reporta `err.code === 'ERR_SQLITE_ERROR'`**,
+    nunca `'SQLITE_CONSTRAINT_UNIQUE'`/`'SQLITE_CONSTRAINT_FOREIGNKEY'` como
+    seria de esperar (isso é do `better-sqlite3`). O código real do SQLite
+    vem em `err.errcode` (número) e a mensagem original em `err.message`
+    (ex.: `"FOREIGN KEY constraint failed"`). `backend/src/middleware/errorHandler.js`
+    já trata isso certo — mas qualquer `try/catch` novo que inspecione erro
+    de banco direto precisa checar `err.message`, não `err.code`.
+  - Toda classe nova de utilitário/utility class do Tailwind (ex.:
+    `lg:sticky`, `lg:h-screen`) só aparece depois de rodar
+    `npm run build` dentro de `frontend/` — o CSS é compilado estaticamente
+    em `frontend/dist/output.css`, não gerado on-the-fly.
 
 ## Como o usuário gosta de trabalhar
 
@@ -160,9 +174,42 @@ Node/Express) e Passo 3 (frontend HTML/CSS/JS + TailwindCSS).
 
 ## Estado atual / possíveis próximos passos (não pedidos ainda)
 
-- **Onixsat**: arquitetura pronta (`hodometro_eventos.origem = 'Onixsat'`),
-  mas a integração real com a API da Onixsat **não foi implementada** — só
-  o fallback manual (que funciona plenamente).
+**IMPORTANTE**: o projeto cresceu muito além do PRD original (Passos 1-3).
+Hoje já tem multi-empresa, integração real com Onixsat, módulo de Multas e
+está em produção no Railway. Ver `PROMPT_NOVA_SESSAO.md` para o estado mais
+recente sessão-a-sessão — este arquivo (`CONTEXTO_PROJETO.md`) documenta o
+"porquê" arquitetural que não muda com frequência.
+
+- **Multi-empresa (multi-tenant)**: `empresa_id` em toda tabela operacional,
+  seletor de empresa no cabeçalho (header `X-Empresa-Id`, não JWT), modo
+  "Todas as empresas" para quem tem permissão em todas. Ver
+  `backend/src/middleware/empresa.js`.
+- **Onixsat/TrucksControl**: integração real via webservice legado (XML puro
+  sobre HTTP, não SOAP) em `backend/src/utils/onixsatClient.js`. Sincroniza
+  posição/hodômetro automaticamente a cada 5 minutos (agendador em
+  `onixsatScheduler.js`) — o mapeamento veículo↔placa (limite de 5 min entre
+  chamadas) fica cacheado em memória por 30 min pra não conflitar com a
+  consulta de mensagens (limite de 30s), permitindo essa cadência. Botão
+  manual "Atualizar posições" (componente `onixsatSync.js`) em toda tela que
+  mostra localização/hodômetro.
+- **Multas de Trânsito**: lançamento manual (sem integração com órgãos),
+  prazo de indicação do condutor automático (30 dias, Art. 257 §8º CTB),
+  valor dobra automaticamente se o condutor não for indicado a tempo.
+- **Checklist de Bordo**: vistorias periódicas por **conjunto** (histórico no
+  tempo em `checklist_vistorias`/`checklist_vistoria_itens`, não mais um
+  estado único mutável), mas os itens são registrados por **placa**
+  (`veiculo_checklist` guarda o último valor conhecido, usado como ponto de
+  partida da próxima vistoria) — importante porque carretas trocam de
+  conjunto. Alerta de divergência quando a composição do conjunto mudou
+  desde a última vistoria.
+- **Deploy**: produção no Railway (serviço `frotista`, projeto `frotista`),
+  auto-deploy no push pra `main` do GitHub. **Cuidado**: o banco de produção
+  já existe (SQLite em volume), então `schema.sql` só roda automaticamente
+  em banco **novo** — qualquer tabela/coluna nova precisa de um script em
+  `database/migrations/` rodado manualmente contra produção (via
+  `railway ssh`, chave SSH já configurada nesta máquina) **antes** ou logo
+  depois do push, senão a rota que usa a coluna/tabela nova quebra em
+  produção até a migração rodar.
 - Sem paginação nas tabelas do frontend (ok pro volume de dados atual; se
   crescer muito, `dataTable.js` precisaria de paginação server-side).
 - `estoque_itens` não tem exclusão em lote no frontend (a rota é
