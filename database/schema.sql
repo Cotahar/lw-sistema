@@ -1,5 +1,5 @@
 -- =====================================================================
--- SISTEMA DE GESTAO DE FROTA E TRANSPORTE RODOVIARIO (MODELO FROTISTA)
+-- SISTEMA DE GESTAO DE FROTA E TRANSPORTE RODOVIARIO (FROTTEX)
 -- PASSO 1 - MODELAGEM DO BANCO DE DADOS (SQLite)
 -- =====================================================================
 -- Convencoes gerais:
@@ -333,12 +333,32 @@ CREATE TABLE ordens_servico (
     fornecedor_id   INTEGER REFERENCES fornecedores(id),  -- oficina
     valor_pecas     INTEGER NOT NULL DEFAULT 0,   -- centavos (totalizador rapido)
     valor_mao_obra  INTEGER NOT NULL DEFAULT 0,   -- centavos
+    -- Parcelamento opcional (peca/servico pago parcelado ao fornecedor). NULL
+    -- = sem parcelamento (comportamento original: valor_pecas + valor_mao_obra
+    -- gera 1 unica conta_pagar). Preenchido = (valor_pecas + valor_mao_obra) e
+    -- dividido em qtd_parcelas parcelas mensais - ver os_parcelas.
+    -- valor_parcelado existe por simetria com despesas_fixas mas nao e usado
+    -- hoje (o total parcelado e sempre valor_pecas + valor_mao_obra).
+    valor_parcelado INTEGER,
+    qtd_parcelas    INTEGER,
     descricao       TEXT,
     criado_por      INTEGER REFERENCES usuarios(id),
     criado_em       TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
 );
 CREATE INDEX idx_os_veiculo ON ordens_servico(veiculo_id);
 CREATE INDEX idx_os_data ON ordens_servico(data);
+
+-- Parcelas de uma OS parcelada (mesmo padrao de financiamento_parcelas).
+CREATE TABLE os_parcelas (
+    id                  INTEGER PRIMARY KEY,
+    empresa_id          INTEGER NOT NULL REFERENCES empresas(id),
+    os_id               INTEGER NOT NULL REFERENCES ordens_servico(id) ON DELETE CASCADE,
+    numero_parcela      INTEGER NOT NULL,
+    data_vencimento     TEXT NOT NULL,
+    valor_parcela       INTEGER NOT NULL,
+    status              TEXT NOT NULL DEFAULT 'Pendente' CHECK (status IN ('Pendente', 'Paga')),
+    data_pagamento      TEXT
+);
 
 -- Itens detalhados da OS (o que foi trocado/realizado). Quando
 -- "estoque_item_id" e preenchido, a baixa correspondente deve existir
@@ -524,6 +544,7 @@ CREATE TABLE fretes (
     destino_uf                  TEXT NOT NULL,
     peso_carga_kg               INTEGER,
     frete_bruto                 INTEGER NOT NULL,  -- centavos; valor base do recebivel (ver contas_receber_baixas)
+    data_carregamento           TEXT,  -- data em que a carga foi carregada (distinta de criado_em)
     criado_em                    TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
 );
 CREATE INDEX idx_fretes_viagem ON fretes(viagem_id);
@@ -572,14 +593,22 @@ CREATE TABLE centros_custo (
 CREATE UNIQUE INDEX idx_centros_custo_base_por_empresa ON centros_custo(empresa_id) WHERE tipo = 'Base';
 
 CREATE TABLE categorias_despesa (
-    id      INTEGER PRIMARY KEY,
-    nome    TEXT NOT NULL UNIQUE  -- Abastecimento, Chapa, Borracharia, Pedagio, Seguro, Rastreamento...
+    id              INTEGER PRIMARY KEY,
+    nome            TEXT NOT NULL UNIQUE,  -- Abastecimento, Chapa, Borracharia, Pedagio, Seguro, Rastreamento...
+    -- Categoria continua existindo/valida (relatorios, historico), so nao
+    -- aparece na busca do formulario de despesa. Usado pela 'Arla', que
+    -- passou a ser lancada via bloco expansivel dentro de Abastecimento.
+    oculta_na_busca INTEGER NOT NULL DEFAULT 0 CHECK (oculta_na_busca IN (0, 1))
 );
 
 -- Faixas de KM/L -> % de comissao sobre o Frete Bruto. Cadastro restrito
--- a Admin (aplicado na regra de permissao, nao no schema).
+-- a Admin (aplicado na regra de permissao, nao no schema). marca NULL
+-- funciona como fallback "qualquer marca" (faixas antigas continuam
+-- valendo sem precisar recadastrar); marca preenchida so vale para
+-- veiculos daquela marca especifica.
 CREATE TABLE comissao_faixas (
     id                  INTEGER PRIMARY KEY,
+    marca               TEXT,
     km_l_de             REAL NOT NULL,
     km_l_ate            REAL NOT NULL,
     percentual_comissao REAL NOT NULL,  -- ex.: 10 = 10%
@@ -591,6 +620,11 @@ CREATE TABLE despesas_viagem (
     id                  INTEGER PRIMARY KEY,
     empresa_id          INTEGER NOT NULL REFERENCES empresas(id),
     viagem_id           INTEGER NOT NULL REFERENCES viagens(id) ON DELETE CASCADE,
+    -- Frete ao qual esta despesa pertence (para o relatorio de custo por
+    -- frete). Preenchido automaticamente com o ultimo frete cadastrado da
+    -- viagem; despesas lancadas antes do primeiro frete ficam com frete_id
+    -- NULL ate serem associadas retroativamente a ele.
+    frete_id            INTEGER REFERENCES fretes(id),
     centro_custo_id     INTEGER NOT NULL REFERENCES centros_custo(id),
     categoria_id        INTEGER NOT NULL REFERENCES categorias_despesa(id),
     valor               INTEGER NOT NULL,  -- centavos
@@ -602,12 +636,18 @@ CREATE TABLE despesas_viagem (
     preco_litro         INTEGER,   -- centavos
     litragem             REAL,
     km_abastecimento    INTEGER,
+    -- Despesa faturada com vencimento futuro: gera um lancamento em
+    -- contas_pagar (contas_pagar_id aponta pra ele) em vez de ja considerar
+    -- paga na hora do lancamento.
+    data_vencimento     TEXT,
+    contas_pagar_id     INTEGER REFERENCES contas_pagar(id),
     descricao           TEXT,
     criado_por          INTEGER REFERENCES usuarios(id),
     criado_em           TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
 );
 CREATE INDEX idx_despesas_viagem_viagem ON despesas_viagem(viagem_id);
 CREATE INDEX idx_despesas_viagem_centro ON despesas_viagem(centro_custo_id);
+CREATE INDEX idx_despesas_viagem_frete ON despesas_viagem(frete_id);
 
 -- Despesas fixas/recorrentes nao ligadas a uma viagem especifica
 -- (seguro, rastreamento, salario administrativo, aluguel da base...).
@@ -616,14 +656,30 @@ CREATE TABLE despesas_fixas (
     empresa_id          INTEGER NOT NULL REFERENCES empresas(id),
     centro_custo_id     INTEGER NOT NULL REFERENCES centros_custo(id),
     categoria_id        INTEGER NOT NULL REFERENCES categorias_despesa(id),
-    valor               INTEGER NOT NULL,  -- centavos
+    valor               INTEGER NOT NULL,  -- centavos (total, mesmo quando parcelada)
     data                TEXT NOT NULL DEFAULT (date('now', '-3 hours')),
     recorrente          INTEGER NOT NULL DEFAULT 0 CHECK (recorrente IN (0, 1)),
+    -- Parcelamento opcional. NULL = lancamento avulso (comportamento
+    -- original: gera 1 unica conta_pagar). Preenchido = valor e dividido em
+    -- qtd_parcelas parcelas mensais - ver despesa_fixa_parcelas.
+    qtd_parcelas        INTEGER,
     descricao           TEXT,
     criado_por          INTEGER REFERENCES usuarios(id),
     criado_em           TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
 );
 CREATE INDEX idx_despesas_fixas_centro ON despesas_fixas(centro_custo_id);
+
+-- Parcelas de uma despesa fixa parcelada (mesmo padrao de financiamento_parcelas).
+CREATE TABLE despesa_fixa_parcelas (
+    id                  INTEGER PRIMARY KEY,
+    empresa_id          INTEGER NOT NULL REFERENCES empresas(id),
+    despesa_fixa_id     INTEGER NOT NULL REFERENCES despesas_fixas(id) ON DELETE CASCADE,
+    numero_parcela      INTEGER NOT NULL,
+    data_vencimento     TEXT NOT NULL,
+    valor_parcela       INTEGER NOT NULL,
+    status              TEXT NOT NULL DEFAULT 'Pendente' CHECK (status IN ('Pendente', 'Paga')),
+    data_pagamento      TEXT
+);
 
 CREATE TABLE financiamentos (
     id                  INTEGER PRIMARY KEY,
@@ -682,7 +738,7 @@ CREATE TABLE contas_pagar (
     valor_pago          INTEGER NOT NULL DEFAULT 0,  -- centavos
     valor_descontado    INTEGER NOT NULL DEFAULT 0,  -- centavos; desconto concedido na baixa (nao movimenta caixa)
     status              TEXT NOT NULL DEFAULT 'Pendente' CHECK (status IN ('Pendente', 'Parcial', 'Pago', 'Atrasado')),
-    origem_tipo         TEXT CHECK (origem_tipo IN ('EstoqueMovimentacao', 'PneuEvento', 'OrdemServico', 'DespesaViagem', 'DespesaFixa', 'FinanciamentoParcela', 'ReembolsoMotorista', 'AcertoViagem', 'Outro')),
+    origem_tipo         TEXT CHECK (origem_tipo IN ('EstoqueMovimentacao', 'PneuEvento', 'OrdemServico', 'OrdemServicoParcela', 'DespesaViagem', 'DespesaFixa', 'DespesaFixaParcela', 'FinanciamentoParcela', 'ReembolsoMotorista', 'AcertoViagem', 'Outro')),
     origem_id           INTEGER,
     conta_bancaria_id   INTEGER REFERENCES contas_bancarias(id),
     criado_em           TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
@@ -763,10 +819,11 @@ CREATE TABLE acertos_viagem (
     percentual_comissao_sugerido REAL,            -- resolvido via comissao_faixas pela media acima
     percentual_comissao_aplicado REAL NOT NULL,    -- copiado da sugestao, mas editavel pelo operador
     valor_comissao               INTEGER NOT NULL, -- centavos, = frete_bruto_total * percentual_aplicado
-    -- Imposto da empresa sobre o frete bruto (empresas.percentual_desconto_geral),
-    -- so informativo/lancado separado - NAO entra na formula do saldo_final
-    -- do motorista (comissao/saldo continuam batendo em cima do frete bruto
-    -- cheio, sem desconto de imposto).
+    -- Imposto da empresa sobre o frete bruto (empresas.percentual_desconto_geral).
+    -- Reduz a base sobre a qual valor_comissao incide (base = frete_bruto -
+    -- valor_imposto): o motorista nao recebe comissao sobre a parte que e
+    -- imposto da empresa. Tambem gera um lancamento separado em contas_pagar
+    -- (a empresa "deve" esse imposto pra si mesma/reserva).
     percentual_imposto_aplicado  REAL,
     valor_imposto                INTEGER NOT NULL DEFAULT 0,  -- centavos
     valor_reembolsos             INTEGER NOT NULL DEFAULT 0,  -- centavos
@@ -915,4 +972,20 @@ CREATE TABLE empresas (
     ativo                   INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1)),
     criado_em               TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     atualizado_em           TEXT
+);
+
+-- Ultimo calculo da tela "Calculo de Frete" de cada usuario (sem
+-- historico - so o mais recente, usado para pre-preencher o formulario).
+CREATE TABLE calculo_frete_preferencias (
+    usuario_id      INTEGER PRIMARY KEY REFERENCES usuarios(id) ON DELETE CASCADE,
+    peso            REAL,
+    valor_tonelada  INTEGER,
+    frete_total     INTEGER,
+    valor_diesel    INTEGER,
+    media           REAL,
+    km              INTEGER,
+    pedagio         INTEGER,
+    descarga        INTEGER,
+    comissao_pct    REAL,
+    atualizado_em   TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
 );

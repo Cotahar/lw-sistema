@@ -7,15 +7,23 @@ const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { condicaoEmpresa } = require('../utils/empresaScope');
 const { registrarAuditoria } = require('../utils/audit');
 const { withTransaction } = require('../utils/transaction');
+const { hojeIsoBrasilia } = require('../utils/dataHora');
 
 const router = express.Router();
 const TIPOS = ['Preventiva', 'Corretiva'];
+
+function somarMeses(dataIso, meses) {
+  const data = new Date(`${dataIso}T00:00:00Z`);
+  data.setUTCMonth(data.getUTCMonth() + meses);
+  return data.toISOString().slice(0, 10);
+}
 
 function buscarOsCompleta(id, empresaId) {
   const os = db.prepare('SELECT * FROM ordens_servico WHERE id = ? AND empresa_id = ?').get(id, empresaId);
   if (!os) return null;
   const itens = db.prepare('SELECT * FROM os_itens WHERE os_id = ?').all(id);
-  return { ...os, itens };
+  const parcelas = db.prepare('SELECT * FROM os_parcelas WHERE os_id = ? ORDER BY numero_parcela').all(id);
+  return { ...os, itens, parcelas };
 }
 
 router.get('/', requerAcessoModulo('manutencao', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
@@ -37,7 +45,10 @@ router.get('/:id', requerAcessoModulo('manutencao', 'Visualizar'), exigirEmpresa
 // (estoque_movimentacoes com os_id preenchido), para nao contar o custo duas
 // vezes no DRE (valor_pecas da OS ja cobre esse custo).
 router.post('/', requerAcessoModulo('manutencao', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const { data, veiculo_id, hodometro, tipo, fornecedor_id, valor_pecas, valor_mao_obra, descricao, itens } = req.body;
+  const {
+    data, veiculo_id, hodometro, tipo, fornecedor_id, valor_pecas, valor_mao_obra, descricao, itens,
+    qtd_parcelas, primeira_parcela_vencimento,
+  } = req.body;
   if (!veiculo_id || hodometro === undefined || !tipo) throw new ApiError(400, 'Preencha veiculo_id, hodometro e tipo.');
   if (!TIPOS.includes(tipo)) throw new ApiError(400, `Tipo invalido. Use um de: ${TIPOS.join(', ')}`);
 
@@ -46,9 +57,9 @@ router.post('/', requerAcessoModulo('manutencao', 'Gerenciar'), exigirEmpresaEsp
     if (!veiculo) throw new ApiError(400, 'Veiculo nao encontrado nesta empresa.');
 
     const info = db.prepare(`
-      INSERT INTO ordens_servico (empresa_id, data, veiculo_id, hodometro, tipo, fornecedor_id, valor_pecas, valor_mao_obra, descricao, criado_por)
-      VALUES (?, COALESCE(?, date('now', '-3 hours')), ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(req.empresaId, data || null, veiculo_id, hodometro, tipo, fornecedor_id || null, valor_pecas || 0, valor_mao_obra || 0, descricao || null, req.usuario.id);
+      INSERT INTO ordens_servico (empresa_id, data, veiculo_id, hodometro, tipo, fornecedor_id, valor_pecas, valor_mao_obra, qtd_parcelas, descricao, criado_por)
+      VALUES (?, COALESCE(?, date('now', '-3 hours')), ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(req.empresaId, data || null, veiculo_id, hodometro, tipo, fornecedor_id || null, valor_pecas || 0, valor_mao_obra || 0, qtd_parcelas || null, descricao || null, req.usuario.id);
     const osId = info.lastInsertRowid;
 
     for (const item of itens || []) {
@@ -75,11 +86,33 @@ router.post('/', requerAcessoModulo('manutencao', 'Gerenciar'), exigirEmpresaEsp
       }
     }
 
-    if ((valor_pecas || valor_mao_obra) && (valor_pecas + valor_mao_obra) > 0) {
-      db.prepare(`
-        INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
-        VALUES (?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), 'Pendente', 'OrdemServico', ?)
-      `).run(req.empresaId, fornecedor_id || null, `Ordem de servico #${osId}`, Math.round((valor_pecas || 0) + (valor_mao_obra || 0)), data || null, osId);
+    const valorTotal = Math.round((valor_pecas || 0) + (valor_mao_obra || 0));
+    if (valorTotal > 0) {
+      if (qtd_parcelas && qtd_parcelas > 1) {
+        // Parcelada: mesmo padrao de financiamentos/despesas fixas - uma
+        // parcela por mes, rateio com resto ajustado na ultima, uma
+        // conta_pagar por parcela (a peca/mao de obra sai como um bloco so).
+        const primeiroVencimento = primeira_parcela_vencimento || data || hojeIsoBrasilia();
+        const valorBase = Math.floor(valorTotal / qtd_parcelas);
+        const resto = valorTotal - valorBase * qtd_parcelas;
+        for (let numero = 1; numero <= qtd_parcelas; numero += 1) {
+          const valorParcela = numero === qtd_parcelas ? valorBase + resto : valorBase;
+          const vencimento = somarMeses(primeiroVencimento, numero - 1);
+          const parcelaInfo = db.prepare(`
+            INSERT INTO os_parcelas (empresa_id, os_id, numero_parcela, data_vencimento, valor_parcela)
+            VALUES (?, ?, ?, ?, ?)
+          `).run(req.empresaId, osId, numero, vencimento, valorParcela);
+          db.prepare(`
+            INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
+            VALUES (?, ?, ?, ?, ?, 'Pendente', 'OrdemServicoParcela', ?)
+          `).run(req.empresaId, fornecedor_id || null, `Ordem de servico #${osId} - parcela ${numero}/${qtd_parcelas}`, valorParcela, vencimento, parcelaInfo.lastInsertRowid);
+        }
+      } else {
+        db.prepare(`
+          INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
+          VALUES (?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), 'Pendente', 'OrdemServico', ?)
+        `).run(req.empresaId, fornecedor_id || null, `Ordem de servico #${osId}`, valorTotal, data || null, osId);
+      }
     }
 
     return buscarOsCompleta(osId, req.empresaId);
@@ -109,9 +142,24 @@ router.put('/:id', requerAcessoModulo('manutencao', 'Gerenciar'), exigirEmpresaE
 router.delete('/:id', requerAcessoModulo('manutencao', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const antes = buscarOsCompleta(req.params.id, req.empresaId);
   if (!antes) throw new ApiError(404, 'Ordem de servico nao encontrada.');
+
+  if (antes.qtd_parcelas) {
+    if (antes.parcelas.some((p) => p.status === 'Paga')) throw new ApiError(400, 'Nao e possivel excluir uma OS com parcelas ja pagas.');
+  } else {
+    const contaPagar = db.prepare("SELECT * FROM contas_pagar WHERE origem_tipo = 'OrdemServico' AND origem_id = ?").get(antes.id);
+    if (contaPagar && contaPagar.status !== 'Pendente') throw new ApiError(400, 'Esta ordem de servico ja possui pagamento lancado e nao pode ser excluida.');
+  }
+
   // Bloqueada pelo banco (FK) se houver baixa de estoque vinculada — protege contra
   // excluir uma OS que ja gerou efeito real no estoque/DRE.
-  db.prepare('DELETE FROM ordens_servico WHERE id = ?').run(req.params.id);
+  withTransaction(db, () => {
+    if (antes.qtd_parcelas) {
+      db.prepare("DELETE FROM contas_pagar WHERE origem_tipo = 'OrdemServicoParcela' AND origem_id IN (SELECT id FROM os_parcelas WHERE os_id = ?)").run(req.params.id);
+    } else {
+      db.prepare("DELETE FROM contas_pagar WHERE origem_tipo = 'OrdemServico' AND origem_id = ?").run(req.params.id);
+    }
+    db.prepare('DELETE FROM ordens_servico WHERE id = ?').run(req.params.id);
+  });
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'ordens_servico', registroId: antes.id, acao: 'DELETE', antes });
   res.status(204).send();
 }));

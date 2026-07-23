@@ -147,9 +147,25 @@ function abrirOcorrencias(conta, gerenciar) {
   abrirModal({ titulo: `Ocorrencias - ${conta.descricao}`, conteudo: ocorrencias.el, largura: 'max-w-lg' });
 }
 
-export async function render(container) {
+export async function render(container, params, query) {
+  const financiamentoId = query && query.financiamento_id ? Number(query.financiamento_id) : null;
+  const despesaFixaId = query && query.despesa_fixa_id ? Number(query.despesa_fixa_id) : null;
+  const osId = query && query.os_id ? Number(query.os_id) : null;
+  const origemFiltrada = financiamentoId
+    ? { label: `financiamento #${financiamentoId}` }
+    : despesaFixaId
+    ? { label: `despesa fixa #${despesaFixaId}` }
+    : osId
+    ? { label: `OS #${osId}` }
+    : null;
   container.innerHTML = `
     <h1 class="mb-4 text-xl font-bold text-slate-900">Contas a Pagar</h1>
+    ${origemFiltrada ? `
+      <div class="card mb-4 flex items-center justify-between border-brand-300 bg-brand-50 p-3 text-sm">
+        <span>Filtrado pelas parcelas do ${origemFiltrada.label}.</span>
+        <a href="#/contas-pagar" class="text-brand-800 hover:underline">Limpar filtro</a>
+      </div>
+    ` : ''}
     <div class="card mb-4 grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
       <div>
         <label class="label">Status</label>
@@ -157,6 +173,12 @@ export async function render(container) {
       </div>
       <div><label class="label">Categoria</label><select class="input" data-filtro-categoria><option value="">Todas</option></select></div>
       <div><label class="label">Veiculo</label><div data-filtro-veiculo></div></div>
+    </div>
+    <div class="card mb-4 grid grid-cols-2 gap-3 p-4 lg:grid-cols-4">
+      <div><label class="label">Vencimento de</label><input type="text" class="input" data-filtro-venc-de placeholder="dd/mm/aaaa" /></div>
+      <div><label class="label">Vencimento ate</label><input type="text" class="input" data-filtro-venc-ate placeholder="dd/mm/aaaa" /></div>
+      <div><label class="label">Cadastro de</label><input type="text" class="input" data-filtro-cad-de placeholder="dd/mm/aaaa" /></div>
+      <div><label class="label">Cadastro ate</label><input type="text" class="input" data-filtro-cad-ate placeholder="dd/mm/aaaa" /></div>
     </div>
     <div data-tabela></div>
   `;
@@ -171,9 +193,26 @@ export async function render(container) {
   const veiculoSelect = criarSearchableSelect({ buscar: buscarVeiculos, placeholder: 'Todos os veiculos...', onChange: () => tabela.recarregar() });
   container.querySelector('[data-filtro-veiculo]').appendChild(veiculoSelect.el);
 
+  // Filtro padrao ao abrir: vencimento ate hoje (mostra o que ja venceu ou
+  // vence hoje; o usuario amplia o range pra ver contas futuras).
+  const inputVencDe = container.querySelector('[data-filtro-venc-de]');
+  const inputVencAte = container.querySelector('[data-filtro-venc-ate]');
+  const inputCadDe = container.querySelector('[data-filtro-cad-de]');
+  const inputCadAte = container.querySelector('[data-filtro-cad-ate]');
+  attachDataMask(inputVencDe);
+  // Quando vem filtrado por financiamento/despesa fixa/OS, nao faz sentido
+  // tambem esconder parcelas futuras por padrao - o usuario quer ver TODAS
+  // as parcelas daquele lancamento, vencidas ou nao.
+  attachDataMask(inputVencAte, origemFiltrada ? undefined : hojeIsoLocal());
+  attachDataMask(inputCadDe);
+  attachDataMask(inputCadAte);
+  for (const input of [inputVencDe, inputVencAte, inputCadDe, inputCadAte]) {
+    input.addEventListener('change', () => tabela.recarregar());
+  }
+
   const tabela = criarDataTable({
     colunas: [
-      { chave: 'descricao', titulo: 'Descricao', render: (r) => (r.viagem_id ? `${r.descricao} <a href="#/viagens/${r.viagem_id}" class="ml-1 text-xs text-brand-600 hover:underline">(viagem #${r.viagem_id})</a>` : r.descricao) },
+      { chave: 'descricao', titulo: 'Descricao', render: (r) => (r.viagem_id ? `${r.descricao} <a href="#/viagens/${r.viagem_id}" class="ml-1 text-xs text-brand-800 hover:underline">(viagem #${r.viagem_id})</a>` : r.descricao) },
       { chave: 'categoria_nome', titulo: 'Categoria', render: (r) => r.categoria_nome || '-' },
       { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => r.veiculo_placa || '-' },
       { chave: 'valor', titulo: 'Valor', render: (r) => formatarMoeda(r.valor) },
@@ -184,10 +223,17 @@ export async function render(container) {
     ordenacaoInicial: { chave: 'data_vencimento', direcao: 'asc' },
     buscarDados: async (termo) => {
       const params = new URLSearchParams();
+      if (financiamentoId) params.set('financiamento_id', financiamentoId);
+      if (despesaFixaId) params.set('despesa_fixa_id', despesaFixaId);
+      if (osId) params.set('os_id', osId);
       if (termo) params.set('search', termo);
       if (selectStatus.value) params.set('status', selectStatus.value);
       if (selectCategoria.value) params.set('categoria_id', selectCategoria.value);
       if (veiculoSelect.getValue()) params.set('veiculo_id', veiculoSelect.getValue());
+      if (inputVencDe.value) params.set('data_vencimento_de', parseDataBrParaIso(inputVencDe.value));
+      if (inputVencAte.value) params.set('data_vencimento_ate', parseDataBrParaIso(inputVencAte.value));
+      if (inputCadDe.value) params.set('data_cadastro_de', parseDataBrParaIso(inputCadDe.value));
+      if (inputCadAte.value) params.set('data_cadastro_ate', parseDataBrParaIso(inputCadAte.value));
       const query = params.toString();
       return get(`/contas-pagar${query ? `?${query}` : ''}`);
     },

@@ -149,8 +149,9 @@ export async function renderRelatorio(root, params, query) {
         <h2 class="mb-2 mt-6 font-semibold text-slate-900">Resumo financeiro</h2>
         <div class="rounded-lg bg-slate-50 p-4">
           ${linha('Frete bruto total', formatarMoeda(freteBrutoTotal))}
+          ${acerto && acerto.valor_imposto > 0 ? linha(`Imposto (${acerto.percentual_imposto_aplicado}%)`, `- ${formatarMoeda(acerto.valor_imposto)}`) : ''}
+          ${acerto && acerto.valor_imposto > 0 ? linha('Base de calculo da comissao (bruto - imposto)', formatarMoeda(freteBrutoTotal - acerto.valor_imposto)) : ''}
           ${acerto ? linha(`Comissao (${acerto.percentual_comissao_aplicado}%)`, formatarMoeda(acerto.valor_comissao)) : ''}
-          ${acerto && acerto.valor_imposto > 0 ? linha(`Imposto (${acerto.percentual_imposto_aplicado}%) - nao afeta o motorista`, formatarMoeda(acerto.valor_imposto)) : ''}
           ${acerto && acerto.valor_reembolsos > 0 ? linha('Reembolsos', formatarMoeda(acerto.valor_reembolsos)) : ''}
           ${acerto ? linha('Adiantamentos tomados', formatarMoeda(acerto.valor_adiantamentos)) : linha('Adiantamentos tomados', formatarMoeda(totalAdiantamentos))}
           ${acerto && acerto.valor_descontos > 0 ? linha('Descontos', formatarMoeda(acerto.valor_descontos)) : ''}

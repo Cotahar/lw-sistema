@@ -4,6 +4,7 @@ const db = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const { requerPerfilMinimo } = require('../middleware/auth');
+const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { registrarAuditoria } = require('../utils/audit');
 const { withTransaction } = require('../utils/transaction');
 
@@ -35,6 +36,16 @@ router.post('/', requerPerfilMinimo('Admin'), asyncHandler(async (req, res) => {
   });
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: empresa.id, tabela: 'empresas', registroId: empresa.id, acao: 'INSERT', depois: empresa });
   res.status(201).json(empresa);
+}));
+
+// Exposto a qualquer usuario logado (nao so Admin) - so o percentual de
+// imposto da empresa ativa, usado pela calculadora de Frete. O resto do
+// cadastro (inclusive credenciais Onixsat) continua Admin-only no CRUD
+// generico abaixo.
+router.get('/ativa/imposto', exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const empresa = db.prepare('SELECT razao_social, percentual_desconto_geral FROM empresas WHERE id = ?').get(req.empresaId);
+  if (!empresa) throw new ApiError(404, 'Empresa nao encontrada.');
+  res.json(empresa);
 }));
 
 router.use('/', createCrudRouter({

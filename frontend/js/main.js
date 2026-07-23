@@ -25,7 +25,7 @@ function renderGrupoAccordion(chave, titulo, itens) {
   const aberto = itens.some((item) => rotaEstaAtiva(item.rota));
   return `
     <div data-grupo="${chave}">
-      <button type="button" data-grupo-toggle="${chave}" class="flex w-full items-center justify-between rounded-lg px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-slate-400 hover:text-slate-600">
+      <button type="button" data-grupo-toggle="${chave}" class="flex w-full items-center justify-between rounded-lg px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide ${aberto ? 'text-brand-700' : 'text-slate-400 hover:text-slate-600'}">
         <span>${titulo}</span>
         <svg data-grupo-chevron class="h-3 w-3 shrink-0 transition-transform duration-150 ${aberto ? 'rotate-90' : ''}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
@@ -33,7 +33,7 @@ function renderGrupoAccordion(chave, titulo, itens) {
       </button>
       <div data-grupo-body class="space-y-0.5 ${aberto ? '' : 'hidden'}">
         ${itens.map((item) => `
-          <a href="#${item.rota}" data-rota="${item.rota}" class="menu-link block rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">
+          <a href="#${item.rota}" data-rota="${item.rota}" data-peso-base="font-medium" class="menu-link block rounded-lg px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-100">
             ${item.label}
           </a>
         `).join('')}
@@ -54,7 +54,7 @@ function montarSidebarHtml() {
     : '';
 
   return `
-    <a href="#${ROTA_PAINEL}" data-rota="${ROTA_PAINEL}" class="menu-link mb-2 block rounded-lg px-3 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-100">
+    <a href="#${ROTA_PAINEL}" data-rota="${ROTA_PAINEL}" data-peso-base="font-semibold" class="menu-link mb-2 block rounded-lg px-3 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-100">
       Painel
     </a>
     ${grupos}
@@ -87,7 +87,7 @@ function renderShellHtml() {
     <div class="flex min-h-screen">
       <aside class="fixed inset-y-0 left-0 z-30 w-64 -translate-x-full transform overflow-y-auto border-r border-slate-200 bg-white p-3 transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0" data-sidebar>
         <div class="mb-4 px-3 py-2">
-          <p class="text-lg font-bold text-slate-900">Frotista</p>
+          <p class="text-lg font-bold text-slate-900">Frottex</p>
           <p class="text-xs text-slate-500">Gestao de Frota</p>
         </div>
         <nav data-menu>${montarSidebarHtml()}</nav>
@@ -161,7 +161,18 @@ function atualizarLinkAtivo() {
     const rota = link.dataset.rota;
     const ativo = hash === rota || hash.startsWith(`${rota}/`);
     link.classList.toggle('bg-brand-50', ativo);
-    link.classList.toggle('text-brand-700', ativo);
+    link.classList.toggle('text-slate-900', ativo);
+    link.classList.toggle('font-bold', ativo);
+    if (link.dataset.corBase) link.classList.toggle(link.dataset.corBase, !ativo);
+    if (link.dataset.pesoBase) link.classList.toggle(link.dataset.pesoBase, !ativo);
+  });
+  appEl.querySelectorAll('[data-grupo]').forEach((grupo) => {
+    const btn = grupo.querySelector('[data-grupo-toggle]');
+    if (!btn) return;
+    const algumAtivo = grupo.querySelector('.menu-link.bg-brand-50') !== null;
+    btn.classList.toggle('text-brand-700', algumAtivo);
+    btn.classList.toggle('text-slate-400', !algumAtivo);
+    btn.classList.toggle('hover:text-slate-600', !algumAtivo);
   });
 }
 

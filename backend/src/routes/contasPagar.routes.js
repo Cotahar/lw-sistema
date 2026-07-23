@@ -35,7 +35,10 @@ const SELECT_LISTA = `
 `;
 
 router.get('/', requerAcessoModulo('contas_pagar', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const { status, origem_tipo, categoria_id, veiculo_id, search } = req.query;
+  const {
+    status, origem_tipo, categoria_id, veiculo_id, search, financiamento_id, despesa_fixa_id, os_id,
+    data_cadastro_de, data_cadastro_ate, data_vencimento_de, data_vencimento_ate,
+  } = req.query;
   const condicoes = ['cp.empresa_id = ?'];
   const params = [req.empresaId];
   if (status) { condicoes.push('cp.status = ?'); params.push(status); }
@@ -43,6 +46,22 @@ router.get('/', requerAcessoModulo('contas_pagar', 'Visualizar'), exigirEmpresaE
   if (categoria_id) { condicoes.push('COALESCE(dv.categoria_id, df.categoria_id) = ?'); params.push(categoria_id); }
   if (veiculo_id) { condicoes.push('vc.id = ?'); params.push(veiculo_id); }
   if (search) { condicoes.push('cp.descricao LIKE ?'); params.push(`%${search}%`); }
+  if (financiamento_id) {
+    condicoes.push(`cp.origem_tipo = 'FinanciamentoParcela' AND cp.origem_id IN (SELECT id FROM financiamento_parcelas WHERE financiamento_id = ?)`);
+    params.push(financiamento_id);
+  }
+  if (despesa_fixa_id) {
+    condicoes.push(`cp.origem_tipo = 'DespesaFixaParcela' AND cp.origem_id IN (SELECT id FROM despesa_fixa_parcelas WHERE despesa_fixa_id = ?)`);
+    params.push(despesa_fixa_id);
+  }
+  if (os_id) {
+    condicoes.push(`cp.origem_tipo = 'OrdemServicoParcela' AND cp.origem_id IN (SELECT id FROM os_parcelas WHERE os_id = ?)`);
+    params.push(os_id);
+  }
+  if (data_cadastro_de) { condicoes.push('date(cp.criado_em) >= ?'); params.push(data_cadastro_de); }
+  if (data_cadastro_ate) { condicoes.push('date(cp.criado_em) <= ?'); params.push(data_cadastro_ate); }
+  if (data_vencimento_de) { condicoes.push('cp.data_vencimento >= ?'); params.push(data_vencimento_de); }
+  if (data_vencimento_ate) { condicoes.push('cp.data_vencimento <= ?'); params.push(data_vencimento_ate); }
   const where = `WHERE ${condicoes.join(' AND ')}`;
   res.json(db.prepare(`${SELECT_LISTA} ${where} ORDER BY cp.data_vencimento`).all(...params));
 }));

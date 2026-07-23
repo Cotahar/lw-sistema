@@ -41,6 +41,7 @@ const empresasRoutes = require('./routes/empresas.routes');
 const cnpjRoutes = require('./routes/cnpj.routes');
 const onixsatRoutes = require('./routes/onixsat.routes');
 const multasRoutes = require('./routes/multas.routes');
+const calculoFreteRoutes = require('./routes/calculoFrete.routes');
 
 const app = express();
 app.use(cors());
@@ -92,13 +93,14 @@ app.use('/api/empresas', empresasRoutes);
 app.use('/api/cnpj', cnpjRoutes);
 app.use('/api/onixsat', onixsatRoutes);
 app.use('/api/multas', multasRoutes);
+app.use('/api/calculo-frete', calculoFreteRoutes);
 
 app.use((req, res) => res.status(404).json({ erro: 'Rota nao encontrada.' }));
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`API do Sistema Frotista rodando em http://localhost:${PORT}`);
+  console.log(`API do Sistema Frottex rodando em http://localhost:${PORT}`);
 });
 
 // Sincronizacao automatica de posicao/hodometro via Onixsat. Intervalo em

@@ -1,7 +1,7 @@
 {
   "name": "lw-sistema-frontend",
   "version": "1.0.0",
-  "description": "Frontend do Sistema de Gestao de Frota e Transporte Rodoviario (modelo Frotista)",
+  "description": "Frontend do Sistema de Gestao de Frota e Transporte Rodoviario (Frottex)",
   "private": true,
   "scripts": {
     "build": "tailwindcss -i ./src/input.css -o ./dist/output.css --minify",

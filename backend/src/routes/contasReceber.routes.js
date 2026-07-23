@@ -21,10 +21,14 @@ const SELECT_LISTA = `
 `;
 
 router.get('/', requerAcessoModulo('contas_receber', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const { status } = req.query;
+  const { status, data_cadastro_de, data_cadastro_ate, data_vencimento_de, data_vencimento_ate } = req.query;
   const condicoes = ['cr.empresa_id = ?'];
   const params = [req.empresaId];
   if (status) { condicoes.push('cr.status = ?'); params.push(status); }
+  if (data_cadastro_de) { condicoes.push('date(cr.criado_em) >= ?'); params.push(data_cadastro_de); }
+  if (data_cadastro_ate) { condicoes.push('date(cr.criado_em) <= ?'); params.push(data_cadastro_ate); }
+  if (data_vencimento_de) { condicoes.push('cr.data_prevista >= ?'); params.push(data_vencimento_de); }
+  if (data_vencimento_ate) { condicoes.push('cr.data_prevista <= ?'); params.push(data_vencimento_ate); }
   const rows = db.prepare(`${SELECT_LISTA} WHERE ${condicoes.join(' AND ')} ORDER BY cr.data_prevista`).all(...params);
   res.json(rows);
 }));

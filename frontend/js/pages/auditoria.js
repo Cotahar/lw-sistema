@@ -76,7 +76,7 @@ export async function render(container) {
           <td class="table-td">${l.usuario_nome || '-'}</td>
           <td class="table-td">${l.revertido_em ? `Revertido (${l.revertido_por_nome || ''} &middot; ${formatarDataHoraBr(l.revertido_em)})` : '-'}</td>
           <td class="table-td text-right whitespace-nowrap">
-            <button type="button" class="text-xs text-brand-600 hover:underline" data-detalhes="${l.id}">Detalhes</button>
+            <button type="button" class="text-xs text-brand-800 hover:underline" data-detalhes="${l.id}">Detalhes</button>
             ${l.revertido_em ? '' : `<button type="button" class="ml-2 text-xs text-red-600 hover:underline" data-reverter="${l.id}">Reverter</button>`}
           </td>
         </tr>

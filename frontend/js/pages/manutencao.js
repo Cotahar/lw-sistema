@@ -3,7 +3,8 @@ import { criarDataTable } from '../components/dataTable.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { abrirModal, fecharModal } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
-import { formatarMoeda, attachMoedaMask, getMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr } from '../masks.js';
+import { formatarMoeda, attachMoedaMask, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr } from '../masks.js';
+import { navegar } from '../router.js';
 
 async function buscarVeiculos(termo) {
   return (await get(`/veiculos${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((v) => ({ value: v.id, label: v.placa }));
@@ -32,6 +33,15 @@ function montarFormulario(aoSalvar) {
       <div><label class="label">Valor Pecas</label><input type="text" name="valor_pecas" class="input" /></div>
       <div><label class="label">Valor Mao de Obra</label><input type="text" name="valor_mao_obra" class="input" /></div>
     </div>
+    <div class="rounded-lg border border-slate-200 p-3" data-bloco-parcelamento>
+      <p class="mb-2 text-xs text-slate-500">Parcelar o total (pecas + mao de obra) ao fornecedor? Preencha qtd. de parcelas ou valor da parcela - o outro calcula sozinho.</p>
+      <p class="mb-2 text-sm font-medium text-slate-700">Total a parcelar: <span data-total-parcelar>R$ 0,00</span></p>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="label">Qtd. parcelas</label><input type="number" name="qtd_parcelas" class="input" min="2" /></div>
+        <div><label class="label">Valor da parcela</label><input type="text" name="valor_parcela" class="input" /></div>
+      </div>
+      <div class="mt-3 max-w-[10rem]"><label class="label">1a parcela vence em</label><input type="text" name="primeira_parcela_vencimento" class="input" /></div>
+    </div>
     <div><label class="label">Descricao</label><textarea name="descricao" class="input" rows="2"></textarea></div>
     <div>
       <div class="mb-2 flex items-center justify-between">
@@ -46,6 +56,33 @@ function montarFormulario(aoSalvar) {
   attachDataMask(form.data);
   attachMoedaMask(form.valor_pecas, 0);
   attachMoedaMask(form.valor_mao_obra, 0);
+  attachMoedaMask(form.valor_parcela, 0);
+  attachDataMask(form.primeira_parcela_vencimento);
+
+  // O total a parcelar e sempre pecas + mao de obra (nao e um campo proprio) -
+  // qtd_parcelas e valor_parcela se autocalculam um a partir do outro usando
+  // esse total ja conhecido.
+  function totalAParcelar() {
+    return getMoedaValue(form.valor_pecas) + getMoedaValue(form.valor_mao_obra);
+  }
+  function atualizarTotalParcelar() {
+    form.querySelector('[data-total-parcelar]').textContent = formatarMoeda(totalAParcelar());
+  }
+  function recalcularParcelas() {
+    atualizarTotalParcelar();
+    const total = totalAParcelar();
+    const qtdParcelas = Number(form.qtd_parcelas.value) || 0;
+    const valorParcela = getMoedaValue(form.valor_parcela);
+    if (total > 0 && qtdParcelas > 0 && valorParcela === 0) {
+      setMoedaValue(form.valor_parcela, Math.round(total / qtdParcelas));
+    } else if (total > 0 && valorParcela > 0 && qtdParcelas === 0) {
+      form.qtd_parcelas.value = Math.max(2, Math.round(total / valorParcela));
+    }
+  }
+  form.valor_pecas.addEventListener('input', recalcularParcelas);
+  form.valor_mao_obra.addEventListener('input', recalcularParcelas);
+  form.qtd_parcelas.addEventListener('input', recalcularParcelas);
+  form.valor_parcela.addEventListener('input', recalcularParcelas);
 
   const veiculoSelect = criarSearchableSelect({ buscar: buscarVeiculos, placeholder: 'Pesquisar placa...' });
   form.querySelector('[data-veiculo]').appendChild(veiculoSelect.el);
@@ -100,6 +137,8 @@ function montarFormulario(aoSalvar) {
         fornecedor_id: fornecedorSelect.getValue(),
         valor_pecas: getMoedaValue(form.valor_pecas),
         valor_mao_obra: getMoedaValue(form.valor_mao_obra),
+        qtd_parcelas: form.qtd_parcelas.value ? Number(form.qtd_parcelas.value) : null,
+        primeira_parcela_vencimento: form.primeira_parcela_vencimento.value ? parseDataBrParaIso(form.primeira_parcela_vencimento.value) : null,
         descricao: form.descricao.value || null,
         itens,
       });
@@ -166,6 +205,7 @@ export async function render(container) {
       { chave: 'tipo', titulo: 'Tipo' },
       { chave: 'hodometro', titulo: 'Hodometro', render: (r) => `${r.hodometro.toLocaleString('pt-BR')} km` },
       { chave: 'total', titulo: 'Valor Total', render: (r) => formatarMoeda(r.valor_pecas + r.valor_mao_obra) },
+      { chave: 'qtd_parcelas', titulo: 'Parcelas', render: (r) => (r.qtd_parcelas ? `${r.qtd_parcelas}x` : '-') },
     ],
     buscarDados: async () => {
       const ordens = await get('/ordens-servico');
@@ -173,7 +213,10 @@ export async function render(container) {
       return ordens;
     },
     onNovo: gerenciar ? () => abrirNovaOs(tabela.recarregar) : undefined,
-    acoesExtras: () => [{ label: 'Detalhes', onClick: verDetalhes }],
+    acoesExtras: (r) => [
+      { label: 'Detalhes', onClick: verDetalhes },
+      ...(r.qtd_parcelas ? [{ label: 'Ver parcelas', onClick: (os) => navegar(`/contas-pagar?os_id=${os.id}`) }] : []),
+    ],
     tituloNovo: 'Ordem de Servico',
     vazio: 'Nenhuma ordem de servico registrada.',
   });

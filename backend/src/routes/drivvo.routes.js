@@ -120,13 +120,13 @@ router.post('/importar', requerAcessoModulo('viagens', 'Gerenciar'), upload.sing
       if (!dataIso) { registrarPendencia({ chave, secao: 'Abastecimento', dadosBrutos: linha, motivo: 'Data invalida no arquivo.', empresaId }); resumo.abastecimento.pendentes++; continue; }
 
       const veiculo = buscarVeiculoPorNome(linha.nome_veiculo, mapaPlacasPorNome, empresaId);
-      if (!veiculo) { registrarPendencia({ chave, secao: 'Abastecimento', dadosBrutos: linha, motivo: `Veiculo "${linha.nome_veiculo}" nao encontrado no Frotista.`, empresaId }); resumo.abastecimento.pendentes++; continue; }
+      if (!veiculo) { registrarPendencia({ chave, secao: 'Abastecimento', dadosBrutos: linha, motivo: `Veiculo "${linha.nome_veiculo}" nao encontrado no Frottex.`, empresaId }); resumo.abastecimento.pendentes++; continue; }
 
       const candidatas = buscarViagensCandidatas(veiculo.id, dataIso, empresaId);
       if (candidatas.length !== 1) {
         registrarPendencia({
           chave, secao: 'Abastecimento', dadosBrutos: { ...linha, veiculo_id: veiculo.id },
-          motivo: candidatas.length === 0 ? 'Nenhuma viagem aberta do Frotista cobre esta data para este veiculo.' : 'Mais de uma viagem aberta cobre esta data - escolha manualmente.',
+          motivo: candidatas.length === 0 ? 'Nenhuma viagem aberta do Frottex cobre esta data para este veiculo.' : 'Mais de uma viagem aberta cobre esta data - escolha manualmente.',
           empresaId,
         });
         resumo.abastecimento.pendentes++;
@@ -178,12 +178,12 @@ router.post('/importar', requerAcessoModulo('viagens', 'Gerenciar'), upload.sing
         continue;
       }
 
-      if (!veiculo) { registrarPendencia({ chave, secao: 'Despesa', dadosBrutos: linha, motivo: `Veiculo "${linha['nome do veiculo']}" nao encontrado no Frotista.`, empresaId }); resumo.despesa.pendentes++; continue; }
+      if (!veiculo) { registrarPendencia({ chave, secao: 'Despesa', dadosBrutos: linha, motivo: `Veiculo "${linha['nome do veiculo']}" nao encontrado no Frottex.`, empresaId }); resumo.despesa.pendentes++; continue; }
       const candidatas = buscarViagensCandidatas(veiculo.id, dataIso, empresaId);
       if (candidatas.length !== 1) {
         registrarPendencia({
           chave, secao: 'Despesa', dadosBrutos: { ...linha, veiculo_id: veiculo.id },
-          motivo: candidatas.length === 0 ? 'Nenhuma viagem aberta do Frotista cobre esta data para este veiculo.' : 'Mais de uma viagem aberta cobre esta data - escolha manualmente.',
+          motivo: candidatas.length === 0 ? 'Nenhuma viagem aberta do Frottex cobre esta data para este veiculo.' : 'Mais de uma viagem aberta cobre esta data - escolha manualmente.',
           empresaId,
         });
         resumo.despesa.pendentes++;

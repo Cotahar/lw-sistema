@@ -1,4 +1,4 @@
-# Frotista — Sistema de Gestão de Frota e Transporte Rodoviário
+# Frottex — Sistema de Gestão de Frota e Transporte Rodoviário
 
 Sistema completo (modelo frotista) para gestão de frota, viagens, fretes, manutenção, pneus, estoque, financeiro e DRE, com controle de acesso granular por módulo.
 

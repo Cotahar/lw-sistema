@@ -6,7 +6,7 @@ da sessão que fez multi-empresa + Onixsat real + Multas + melhorias do dia).
 
 ---
 
-Você está assumindo o desenvolvimento do sistema Frotista (gestão de frota
+Você está assumindo o desenvolvimento do sistema Frottex (gestão de frota
 e transporte rodoviário). Não é um projeto novo — já está em produção no
 Railway (`frotista-production.up.railway.app`) e sendo usado de verdade.
 

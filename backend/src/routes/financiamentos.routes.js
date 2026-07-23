@@ -25,10 +25,12 @@ function buscarFinanciamentoCompleto(id, empresaId) {
 }
 
 router.get('/', requerAcessoModulo('financiamentos', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const { centro_custo_id } = req.query;
+  const { centro_custo_id, data_contrato_de, data_contrato_ate } = req.query;
   const condicoes = []; const params = [];
   condicaoEmpresa(condicoes, params, req);
   if (centro_custo_id) { condicoes.push('centro_custo_id = ?'); params.push(centro_custo_id); }
+  if (data_contrato_de) { condicoes.push('data_contrato >= ?'); params.push(data_contrato_de); }
+  if (data_contrato_ate) { condicoes.push('data_contrato <= ?'); params.push(data_contrato_ate); }
   const rows = db.prepare(`SELECT * FROM financiamentos WHERE ${condicoes.join(' AND ')} ORDER BY id DESC`).all(...params);
   res.json(rows);
 }));

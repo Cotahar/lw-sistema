@@ -203,7 +203,7 @@ function abrirResolverPendencia(pendencia, recarregar) {
 }
 
 async function ignorarPendencia(pendencia, recarregar) {
-  const ok = await confirmarAcao({ titulo: 'Ignorar pendencia', mensagem: 'Esta linha do Drivvo nao sera lancada no Frotista. Continuar?', textoConfirmar: 'Ignorar', perigo: false });
+  const ok = await confirmarAcao({ titulo: 'Ignorar pendencia', mensagem: 'Esta linha do Drivvo nao sera lancada no Frottex. Continuar?', textoConfirmar: 'Ignorar', perigo: false });
   if (!ok) return;
   try {
     await post(`/drivvo/pendencias/${pendencia.id}/ignorar`, {});

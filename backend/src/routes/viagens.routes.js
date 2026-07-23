@@ -186,7 +186,7 @@ router.post('/:id/fretes', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmp
 
   const {
     transportadora_id, origem_cidade, origem_uf, destino_cidade, destino_uf, peso_carga_kg, frete_bruto,
-    data_prevista_recebimento,
+    data_prevista_recebimento, data_carregamento,
   } = req.body;
   if (!origem_cidade || !origem_uf || !destino_cidade || !destino_uf || frete_bruto === undefined) {
     throw new ApiError(400, 'Preencha origem, destino e frete_bruto.');
@@ -197,10 +197,10 @@ router.post('/:id/fretes', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmp
 
   const frete = withTransaction(db, () => {
     const info = db.prepare(`
-      INSERT INTO fretes (empresa_id, viagem_id, transportadora_id, origem_cidade, origem_uf, destino_cidade, destino_uf, peso_carga_kg, frete_bruto)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO fretes (empresa_id, viagem_id, transportadora_id, origem_cidade, origem_uf, destino_cidade, destino_uf, peso_carga_kg, frete_bruto, data_carregamento)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      req.empresaId, req.params.id, transportadora_id || null, origem_cidade, origem_uf, destino_cidade, destino_uf, peso_carga_kg || null, frete_bruto,
+      req.empresaId, req.params.id, transportadora_id || null, origem_cidade, origem_uf, destino_cidade, destino_uf, peso_carga_kg || null, frete_bruto, data_carregamento || null,
     );
     const novoFrete = db.prepare('SELECT * FROM fretes WHERE id = ?').get(info.lastInsertRowid);
 
@@ -212,6 +212,14 @@ router.post('/:id/fretes', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmp
         VALUES (?, ?, ?, ?, ?, 'Pendente')
       `).run(req.empresaId, novoFrete.id, centroCusto.id, novoFrete.frete_bruto, dataOuHoje(data_prevista_recebimento || viagem.data_inicio));
     }
+
+    // Se este e o primeiro frete da viagem, despesas lancadas antes dele
+    // (ainda sem frete_id) passam a pertencer a ele retroativamente.
+    const outrosFretes = db.prepare('SELECT COUNT(*) AS total FROM fretes WHERE viagem_id = ? AND id != ?').get(req.params.id, novoFrete.id).total;
+    if (outrosFretes === 0) {
+      db.prepare('UPDATE despesas_viagem SET frete_id = ? WHERE viagem_id = ? AND frete_id IS NULL').run(novoFrete.id, req.params.id);
+    }
+
     return novoFrete;
   });
 
@@ -443,6 +451,7 @@ router.post('/:id/despesas', requerAcessoModulo('viagens', 'Gerenciar'), exigirE
   const {
     categoria_id, valor, data, pago_por, pago_por_usuario_id,
     posto_fornecedor_id, preco_litro, litragem, km_abastecimento, descricao,
+    data_vencimento, arla,
   } = req.body;
   if (!categoria_id || valor === undefined || !pago_por) throw new ApiError(400, 'Preencha categoria_id, valor e pago_por.');
   if (!PAGO_POR.includes(pago_por)) throw new ApiError(400, `pago_por invalido. Use um de: ${PAGO_POR.join(', ')}`);
@@ -452,33 +461,61 @@ router.post('/:id/despesas', requerAcessoModulo('viagens', 'Gerenciar'), exigirE
   const centroCusto = tratora ? buscarCentroCustoDoVeiculo(tratora.id) : null;
   if (!centroCusto) throw new ApiError(400, 'Nao foi possivel resolver o centro de custo da viagem.');
 
+  // Despesa pertence ao ultimo frete cadastrado da viagem ate ali (ver
+  // POST /:id/fretes para o vinculo retroativo de despesas ainda sem frete).
+  const ultimoFrete = db.prepare('SELECT id FROM fretes WHERE viagem_id = ? ORDER BY id DESC LIMIT 1').get(req.params.id);
+  const freteId = ultimoFrete ? ultimoFrete.id : null;
+
   const despesa = withTransaction(db, () => {
     const info = db.prepare(`
       INSERT INTO despesas_viagem (
-        empresa_id, viagem_id, centro_custo_id, categoria_id, valor, data, pago_por, pago_por_usuario_id,
-        posto_fornecedor_id, preco_litro, litragem, km_abastecimento, descricao, criado_por
-      ) VALUES (?, ?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), ?, ?, ?, ?, ?, ?, ?, ?)
+        empresa_id, viagem_id, frete_id, centro_custo_id, categoria_id, valor, data, pago_por, pago_por_usuario_id,
+        posto_fornecedor_id, preco_litro, litragem, km_abastecimento, data_vencimento, descricao, criado_por
+      ) VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      req.empresaId, req.params.id, centroCusto.id, categoria_id, valor, data || null, pago_por, pago_por_usuario_id || null,
-      posto_fornecedor_id || null, preco_litro || null, litragem || null, km_abastecimento || null, descricao || null, req.usuario.id
+      req.empresaId, req.params.id, freteId, centroCusto.id, categoria_id, valor, data || null, pago_por, pago_por_usuario_id || null,
+      posto_fornecedor_id || null, preco_litro || null, litragem || null, km_abastecimento || null, data_vencimento || null, descricao || null, req.usuario.id
     );
     const novaDespesa = db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(info.lastInsertRowid);
 
+    // Arla lancada junto (abastecimento unificado): mesma nota/parada, mas
+    // categoria propria pra continuar aparecendo separada nos relatorios.
+    let arlaDespesa = null;
+    if (arla && arla.valor > 0) {
+      const categoriaArla = db.prepare("SELECT id FROM categorias_despesa WHERE lower(trim(nome)) = 'arla'").get();
+      if (!categoriaArla) throw new ApiError(400, 'Categoria "Arla" nao encontrada no cadastro.');
+      const infoArla = db.prepare(`
+        INSERT INTO despesas_viagem (
+          empresa_id, viagem_id, frete_id, centro_custo_id, categoria_id, valor, data, pago_por, pago_por_usuario_id,
+          posto_fornecedor_id, preco_litro, litragem, criado_por
+        ) VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), ?, ?, ?, ?, ?, ?)
+      `).run(
+        req.empresaId, req.params.id, freteId, centroCusto.id, categoriaArla.id, arla.valor, data || null, pago_por, pago_por_usuario_id || null,
+        posto_fornecedor_id || null, arla.preco_litro || null, arla.litragem || null, req.usuario.id
+      );
+      arlaDespesa = db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(infoArla.lastInsertRowid);
+    }
+
+    // Uma so conta a pagar com o total combinado (diesel + arla) - e uma
+    // parada/nota so, um pagamento so ao posto.
     if (pago_por === 'Empresa' || pago_por === 'AdminOutros') {
       const categoria = db.prepare('SELECT nome FROM categorias_despesa WHERE id = ?').get(categoria_id);
       const quemDesembolsou = pago_por === 'AdminOutros'
         ? db.prepare('SELECT nome FROM usuarios WHERE id = ?').get(pago_por_usuario_id)
         : null;
+      const nomeDespesa = `${categoria ? categoria.nome : 'Despesa'}${arlaDespesa ? ' + Arla' : ''}`;
       const descricaoConta = pago_por === 'AdminOutros'
-        ? `Reembolso a ${quemDesembolsou ? quemDesembolsou.nome : 'usuario'} - ${categoria ? categoria.nome : 'despesa'} (viagem #${viagem.id})`
-        : `${categoria ? categoria.nome : 'Despesa'} - viagem #${viagem.id}`;
-      db.prepare(`
+        ? `Reembolso a ${quemDesembolsou ? quemDesembolsou.nome : 'usuario'} - ${nomeDespesa} (viagem #${viagem.id})`
+        : `${nomeDespesa} - viagem #${viagem.id}`;
+      const valorConta = valor + (arlaDespesa ? arlaDespesa.valor : 0);
+      const infoConta = db.prepare(`
         INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
         VALUES (?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), 'Pendente', 'DespesaViagem', ?)
-      `).run(req.empresaId, posto_fornecedor_id || null, descricaoConta, valor, data || null, novaDespesa.id);
+      `).run(req.empresaId, posto_fornecedor_id || null, descricaoConta, valorConta, data_vencimento || data || null, novaDespesa.id);
+      db.prepare('UPDATE despesas_viagem SET contas_pagar_id = ? WHERE id = ?').run(infoConta.lastInsertRowid, novaDespesa.id);
     }
 
-    return novaDespesa;
+    return db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(novaDespesa.id);
   });
 
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'despesas_viagem', registroId: despesa.id, acao: 'INSERT', depois: despesa });

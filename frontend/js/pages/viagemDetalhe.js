@@ -66,7 +66,10 @@ function montarFormularioFrete(aoSalvar) {
       <div><label class="label">Peso da carga</label><input type="text" name="peso_carga_kg" class="input" /></div>
       <div><label class="label">Frete Bruto *</label><input type="text" name="frete_bruto" class="input" required /></div>
     </div>
-    <div><label class="label">Data prevista de recebimento</label><input type="text" name="data_prevista_recebimento" class="input" /></div>
+    <div class="grid grid-cols-2 gap-3">
+      <div><label class="label">Data de carregamento</label><input type="text" name="data_carregamento" class="input" /></div>
+      <div><label class="label">Data prevista de recebimento</label><input type="text" name="data_prevista_recebimento" class="input" /></div>
+    </div>
     <p class="hidden text-sm text-red-600" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Cadastrar frete</button></div>
   `;
@@ -74,6 +77,7 @@ function montarFormularioFrete(aoSalvar) {
   form.querySelector('[data-transportadora]').appendChild(transportadoraSelect.el);
   attachPesoMask(form.peso_carga_kg);
   attachMoedaMask(form.frete_bruto, 0);
+  attachDataMask(form.data_carregamento);
   attachDataMask(form.data_prevista_recebimento);
   const erro = form.querySelector('[data-erro]');
   form.addEventListener('submit', async (ev) => {
@@ -88,6 +92,7 @@ function montarFormularioFrete(aoSalvar) {
         destino_uf: form.destino_uf.value.toUpperCase(),
         peso_carga_kg: getPesoValue(form.peso_carga_kg) || null,
         frete_bruto: getMoedaValue(form.frete_bruto),
+        data_carregamento: form.data_carregamento.value ? parseDataBrParaIso(form.data_carregamento.value) : null,
         data_prevista_recebimento: form.data_prevista_recebimento.value ? parseDataBrParaIso(form.data_prevista_recebimento.value) : null,
       });
     } catch (err) {
@@ -218,29 +223,57 @@ async function abrirBaixasFrete(frete, recarregar, gerenciar) {
 
 // ---- Despesas ----
 
+// Abastecimento e Arla usam o mesmo padrao de auto-calculo (2 dos 3 campos
+// preenchidos calculam o terceiro): preco x litragem = valor. Isolado aqui
+// pra nao duplicar a logica entre diesel e arla.
+function recalcularTrio(formPreco, formLitragem, formValor) {
+  const valor = getMoedaValue(formValor);
+  const preco = getMoedaValue(formPreco);
+  const litragem = formLitragem.value ? Number(formLitragem.value) : 0;
+  if (valor > 0 && litragem > 0 && preco === 0) setMoedaValue(formPreco, Math.round(valor / litragem));
+  else if (valor > 0 && preco > 0 && litragem === 0) formLitragem.value = (valor / preco).toFixed(2);
+  else if (preco > 0 && litragem > 0 && valor === 0) setMoedaValue(formValor, Math.round(preco * litragem));
+}
+
 async function abrirNovaDespesa(viagemId, recarregar) {
-  const categorias = await get('/categorias-despesa');
-  const categoriaAbastecimentoId = categorias.find((c) => c.nome.trim().toLowerCase() === 'abastecimento')?.id ?? null;
+  const todasCategorias = await get('/categorias-despesa');
+  const categorias = todasCategorias.filter((c) => !c.oculta_na_busca);
+  const categoriaAbastecimentoId = todasCategorias.find((c) => c.nome.trim().toLowerCase() === 'abastecimento')?.id ?? null;
   const form = document.createElement('form');
   form.className = 'space-y-4';
   form.innerHTML = `
     <div class="grid grid-cols-2 gap-3">
+      <div><label class="label" data-label-valor>Valor *</label><input type="text" name="valor" class="input" required /></div>
       <div><label class="label">Categoria *</label><select name="categoria_id" class="input" required>${categorias.map((c) => `<option value="${c.id}">${c.nome}</option>`).join('')}</select></div>
-      <div><label class="label">Valor *</label><input type="text" name="valor" class="input" required /></div>
     </div>
     <div class="grid grid-cols-2 gap-3">
       <div><label class="label">Data</label><input type="text" name="data" class="input" /></div>
       <div><label class="label">Pago por *</label><select name="pago_por" class="input" required><option value="Empresa">Empresa</option><option value="Motorista">Motorista (desconta do acerto)</option><option value="AdminOutros">Admin/Outros (reembolsavel)</option></select></div>
     </div>
     <div data-bloco-usuario class="hidden"><label class="label">Quem desembolsou *</label><div data-usuario-select></div></div>
+    <div data-bloco-vencimento class="hidden"><label class="label">Data de vencimento (se faturada)</label><input type="text" name="data_vencimento" class="input" placeholder="Deixe em branco se ja foi paga" /></div>
     <div><label class="label">Fornecedor</label><div data-fornecedor-select></div></div>
-    <div class="rounded-lg border border-slate-200 p-3">
+    <div class="rounded-lg border border-slate-200 p-3" data-bloco-abastecimento>
       <p class="mb-2 text-xs font-medium uppercase text-slate-500">Campos de abastecimento (se aplicavel)</p>
       <div class="grid grid-cols-2 gap-3">
-        <div><label class="label">Preco/Litro</label><input type="text" name="preco_litro" class="input" /></div>
-        <div><label class="label">Litragem</label><input type="number" step="0.01" name="litragem" class="input" /></div>
-        <div><label class="label">KM no abastecimento</label><input type="number" name="km_abastecimento" class="input" /></div>
+        <div><label class="label">Preco/Litro (diesel)</label><input type="text" name="preco_litro" class="input" /></div>
+        <div><label class="label">Litragem (diesel)</label><input type="number" step="0.01" name="litragem" class="input" /></div>
       </div>
+      <div class="mt-3 max-w-[12rem]"><label class="label">KM no abastecimento</label><input type="number" name="km_abastecimento" class="input" /></div>
+
+      <details class="mt-3 rounded-lg border border-slate-200 p-2" data-arla-bloco>
+        <summary class="cursor-pointer text-sm font-medium text-slate-700">+ Arla (opcional)</summary>
+        <div class="mt-3 space-y-3">
+          <div class="max-w-[10rem]"><label class="label">Unidade</label><select name="arla_unidade" class="input"><option value="Litro">Litro</option><option value="Galao">Galao (20L)</option></select></div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="label" data-label-arla-preco>Preco/Litro (Arla)</label><input type="text" name="arla_preco" class="input" /></div>
+            <div><label class="label" data-label-arla-qtd>Litragem (Arla)</label><input type="number" step="0.01" name="arla_qtd" class="input" /></div>
+          </div>
+          <div><label class="label">Valor Arla</label><input type="text" name="arla_valor" class="input" /></div>
+        </div>
+      </details>
+
+      <p class="mt-3 text-sm font-medium text-slate-600" data-total-despesa></p>
     </div>
     <div class="hidden rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800" data-divergencia>
       <p class="mb-2 font-medium" data-divergencia-msg></p>
@@ -256,7 +289,10 @@ async function abrirNovaDespesa(viagemId, recarregar) {
   `;
   attachMoedaMask(form.valor, 0);
   attachDataMask(form.data);
+  attachDataMask(form.data_vencimento);
   attachMoedaMask(form.preco_litro, 0);
+  attachMoedaMask(form.arla_preco, 0);
+  attachMoedaMask(form.arla_valor, 0);
   const usuarioSelect = criarSearchableSelect({ buscar: buscarUsuarios, placeholder: 'Pesquisar usuario...' });
   form.querySelector('[data-usuario-select]').appendChild(usuarioSelect.el);
   const fornecedorSelect = criarSearchableSelect({
@@ -265,12 +301,22 @@ async function abrirNovaDespesa(viagemId, recarregar) {
   });
   form.querySelector('[data-fornecedor-select]').appendChild(fornecedorSelect.el);
 
-  const camposAbastecimento = [form.preco_litro, form.litragem, form.km_abastecimento];
+  function categoriaEhAbastecimento() {
+    return categoriaAbastecimentoId !== null && Number(form.categoria_id.value) === categoriaAbastecimentoId;
+  }
+
+  const camposAbastecimento = [form.preco_litro, form.litragem, form.km_abastecimento, form.arla_preco, form.arla_qtd, form.arla_valor];
   let categoriaEraAbastecimento = categoriaEhAbastecimento();
   function atualizarDisponibilidadeAbastecimento() {
     const ativo = categoriaEhAbastecimento();
+    form.querySelector('[data-bloco-abastecimento]').classList.toggle('hidden', !ativo);
     for (const campo of camposAbastecimento) campo.disabled = !ativo;
-    if (!ativo) { form.preco_litro.value = ''; form.litragem.value = ''; form.km_abastecimento.value = ''; }
+    if (!ativo) {
+      form.preco_litro.value = ''; form.litragem.value = ''; form.km_abastecimento.value = '';
+      setMoedaValue(form.arla_preco, 0); form.arla_qtd.value = ''; setMoedaValue(form.arla_valor, 0);
+    }
+    form.querySelector('[data-label-valor]').textContent = ativo ? 'Valor do diesel *' : 'Valor *';
+    atualizarTotalDespesa();
   }
   form.categoria_id.addEventListener('change', () => {
     const agoraAbastecimento = categoriaEhAbastecimento();
@@ -280,33 +326,66 @@ async function abrirNovaDespesa(viagemId, recarregar) {
   });
   atualizarDisponibilidadeAbastecimento();
 
-  form.pago_por.addEventListener('change', () => {
+  function atualizarBlocosPagoPor() {
     form.querySelector('[data-bloco-usuario]').classList.toggle('hidden', form.pago_por.value !== 'AdminOutros');
+    form.querySelector('[data-bloco-vencimento]').classList.toggle('hidden', form.pago_por.value !== 'Empresa');
+  }
+  form.pago_por.addEventListener('change', atualizarBlocosPagoPor);
+  atualizarBlocosPagoPor();
+
+  // Arla pode ser comprado em galao (1 galao = 20L): o preco/litragem digitados
+  // sao sempre na unidade escolhida (o autocalculo preco x qtd = valor nao
+  // precisa de conversao); a conversao pra litros só acontece no envio.
+  form.arla_unidade.addEventListener('change', () => {
+    const emGalao = form.arla_unidade.value === 'Galao';
+    form.querySelector('[data-label-arla-preco]').textContent = emGalao ? 'Preco/Galao (Arla)' : 'Preco/Litro (Arla)';
+    form.querySelector('[data-label-arla-qtd]').textContent = emGalao ? 'Quantidade (galoes)' : 'Litragem (Arla)';
   });
 
   // Auto-calculo entre Valor / Preco-Litro / Litragem quando a categoria e
   // Abastecimento: sempre que 2 dos 3 campos estiverem preenchidos e o
   // terceiro estiver em branco/zerado, ele e calculado a partir dos outros
   // dois. Nunca sobrescreve um campo que ja tenha valor (o usuario pode ter
-  // digitado algo diferente do que o calculo daria).
-  function categoriaEhAbastecimento() {
-    return categoriaAbastecimentoId !== null && Number(form.categoria_id.value) === categoriaAbastecimentoId;
+  // digitado algo diferente do que o calculo daria). O mesmo vale para o
+  // trio do Arla. O "Total desta despesa" e so uma exibicao (diesel + arla),
+  // nao e enviado como campo separado.
+  function atualizarTotalDespesa() {
+    if (!categoriaEhAbastecimento()) { form.querySelector('[data-total-despesa]').textContent = ''; return; }
+    const total = getMoedaValue(form.valor) + getMoedaValue(form.arla_valor);
+    form.querySelector('[data-total-despesa]').textContent = `Total desta despesa (diesel + arla): ${formatarMoeda(total)}`;
   }
-  function recalcularAutomatico() {
+  function recalcularDiesel() {
     if (!categoriaEhAbastecimento()) return;
-    const valor = getMoedaValue(form.valor);
-    const preco = getMoedaValue(form.preco_litro);
-    const litragem = form.litragem.value ? Number(form.litragem.value) : 0;
-    if (valor > 0 && litragem > 0 && preco === 0) setMoedaValue(form.preco_litro, Math.round(valor / litragem));
-    else if (valor > 0 && preco > 0 && litragem === 0) form.litragem.value = (valor / preco).toFixed(2);
-    else if (preco > 0 && litragem > 0 && valor === 0) setMoedaValue(form.valor, Math.round(preco * litragem));
+    recalcularTrio(form.preco_litro, form.litragem, form.valor);
+    atualizarTotalDespesa();
   }
-  form.valor.addEventListener('input', recalcularAutomatico);
-  form.preco_litro.addEventListener('input', recalcularAutomatico);
-  form.litragem.addEventListener('input', recalcularAutomatico);
+  function recalcularArla() {
+    if (!categoriaEhAbastecimento()) return;
+    recalcularTrio(form.arla_preco, form.arla_qtd, form.arla_valor);
+    atualizarTotalDespesa();
+  }
+  form.valor.addEventListener('input', recalcularDiesel);
+  form.preco_litro.addEventListener('input', recalcularDiesel);
+  form.litragem.addEventListener('input', recalcularDiesel);
+  form.arla_valor.addEventListener('input', recalcularArla);
+  form.arla_preco.addEventListener('input', recalcularArla);
+  form.arla_qtd.addEventListener('input', recalcularArla);
 
   const erro = form.querySelector('[data-erro]');
   const divergenciaEl = form.querySelector('[data-divergencia]');
+
+  function montarArlaPayload() {
+    const valor = getMoedaValue(form.arla_valor);
+    if (!categoriaEhAbastecimento() || valor <= 0) return null;
+    const emGalao = form.arla_unidade.value === 'Galao';
+    const qtd = form.arla_qtd.value ? Number(form.arla_qtd.value) : 0;
+    const litragem = emGalao ? qtd * 20 : qtd;
+    return {
+      valor,
+      litragem: litragem > 0 ? litragem : null,
+      preco_litro: litragem > 0 ? Math.round(valor / litragem) : null,
+    };
+  }
 
   async function enviarDespesa() {
     try {
@@ -320,6 +399,8 @@ async function abrirNovaDespesa(viagemId, recarregar) {
         preco_litro: categoriaEhAbastecimento() && form.preco_litro.value ? getMoedaValue(form.preco_litro) : null,
         litragem: categoriaEhAbastecimento() && form.litragem.value ? Number(form.litragem.value) : null,
         km_abastecimento: categoriaEhAbastecimento() && form.km_abastecimento.value ? Number(form.km_abastecimento.value) : null,
+        data_vencimento: form.pago_por.value === 'Empresa' && form.data_vencimento.value ? parseDataBrParaIso(form.data_vencimento.value) : null,
+        arla: montarArlaPayload(),
       });
       if (form.observacao.value.trim()) {
         await post('/ocorrencias', { entidade_tipo: 'DespesaViagem', entidade_id: despesa.id, texto: form.observacao.value.trim() });
@@ -342,6 +423,7 @@ async function abrirNovaDespesa(viagemId, recarregar) {
       else if (btn.dataset.recalcular === 'preco') setMoedaValue(form.preco_litro, litragem > 0 ? Math.round(valor / litragem) : 0);
       else if (btn.dataset.recalcular === 'litragem') form.litragem.value = preco > 0 ? (valor / preco).toFixed(2) : '0';
       divergenciaEl.classList.add('hidden');
+      atualizarTotalDespesa();
       await enviarDespesa();
     });
   });
@@ -355,9 +437,11 @@ async function abrirNovaDespesa(viagemId, recarregar) {
       erro.classList.remove('hidden');
       return;
     }
-    // "Prova real": com os 3 valores de abastecimento preenchidos, confere se
+    // "Prova real": com os 3 valores de diesel preenchidos, confere se
     // valor == preco_litro x litragem antes de gravar. Se nao bater, deixa o
-    // usuario escolher qual dos 3 recalcular em vez de adivinhar.
+    // usuario escolher qual dos 3 recalcular em vez de adivinhar. (O mesmo
+    // cuidado nao se aplica ao Arla porque ele so tem 1 campo de "valor" -
+    // o proprio arla_valor - sem uma segunda fonte independente pra divergir.)
     if (categoriaEhAbastecimento()) {
       const valor = getMoedaValue(form.valor);
       const preco = getMoedaValue(form.preco_litro);
@@ -367,7 +451,7 @@ async function abrirNovaDespesa(viagemId, recarregar) {
         const diferenca = Math.abs(esperado - valor);
         if (diferenca > 1) {
           form.querySelector('[data-divergencia-msg]').textContent =
-            `Valor informado: ${formatarMoeda(valor)} • Preco/Litro x Litragem = ${formatarMoeda(esperado)}. Qual campo deseja recalcular?`;
+            `Valor do diesel informado: ${formatarMoeda(valor)} • Preco/Litro x Litragem = ${formatarMoeda(esperado)}. Qual campo deseja recalcular?`;
           divergenciaEl.classList.remove('hidden');
           return;
         }
@@ -467,6 +551,33 @@ async function abrirFinalizar(viagem, recarregarPagina) {
   abrirModal({ titulo: 'Finalizar viagem', conteudo: form });
 }
 
+// Cabecalho de secao expansivel (Fretes/Despesas/Adiantamentos) - sem isso,
+// list-none (que tira a seta nativa do <summary> pra controlar o layout)
+// deixa a secao sem NENHUMA pista visual de que e clicavel/expande-e-recolhe.
+// Dois icones fixos (seta direita = fechado, seta baixo = aberto), trocados
+// via "hidden" no evento "toggle" - girar um unico icone via CSS transform
+// nao atualizava de forma confiavel dentro do <summary>.
+function resumoSecao(titulo, contagem, aberto) {
+  return `
+    <summary class="-mx-2 mb-3 flex cursor-pointer list-none items-center justify-between rounded-lg px-2 py-1.5 hover:bg-slate-50">
+      <h2 class="font-semibold text-slate-900">${titulo} <span class="text-sm font-normal text-slate-400">(${contagem})</span></h2>
+      <svg data-chevron-fechado class="h-4 w-4 shrink-0 text-slate-400 ${aberto ? 'hidden' : ''}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+      </svg>
+      <svg data-chevron-aberto class="h-4 w-4 shrink-0 text-slate-400 ${aberto ? '' : 'hidden'}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+      </svg>
+    </summary>
+  `;
+}
+
+function ligarChevronSecao(details) {
+  details.addEventListener('toggle', () => {
+    details.querySelector('[data-chevron-fechado]').classList.toggle('hidden', details.open);
+    details.querySelector('[data-chevron-aberto]').classList.toggle('hidden', !details.open);
+  });
+}
+
 export async function render(container, params) {
   const viagemId = params.id;
   container.innerHTML = '<p class="text-slate-400">Carregando...</p>';
@@ -500,10 +611,18 @@ export async function render(container, params) {
     const totalDespesas = despesas.reduce((t, d) => t + d.valor, 0);
     const lucroAteAgora = totalFaturado - totalDespesas;
 
+    // Media de consumo ate agora (so litragem de Abastecimento - Arla nao e
+    // diesel, mesmo lancado junto no formulario unificado - ver acertos.routes.js).
+    const categoriaAbastecimentoId = categorias.find((c) => c.nome.trim().toLowerCase() === 'abastecimento')?.id ?? null;
+    const litrosAbastecidos = despesas
+      .filter((d) => d.categoria_id === categoriaAbastecimentoId)
+      .reduce((t, d) => t + (d.litragem || 0), 0);
+    const mediaConsumo = kmPercorrido && litrosAbastecidos > 0 ? kmPercorrido / litrosAbastecidos : null;
+
     container.innerHTML = `
       <div class="mb-4 flex items-center justify-between">
         <div>
-          <button type="button" class="mb-2 text-sm text-brand-600 hover:underline" data-voltar>&larr; Voltar para Viagens</button>
+          <button type="button" class="mb-2 text-sm text-brand-800 hover:underline" data-voltar>&larr; Voltar para Viagens</button>
           <h1 class="text-xl font-bold text-slate-900">Viagem #${viagem.id} - ${motorista.nome}</h1>
           <p class="text-sm text-slate-500">${conjunto.itens.map((i) => i.placa).join(' + ')} · ${formatarDataBr(viagem.data_inicio)}${viagem.data_fim ? ` a ${formatarDataBr(viagem.data_fim)}` : ''}</p>
         </div>
@@ -515,7 +634,7 @@ export async function render(container, params) {
       </div>
 
       <div class="mb-2 flex justify-end" data-onixsat-botao></div>
-      <div class="card mb-6 grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 lg:grid-cols-6">
+      <div class="card mb-6 grid grid-cols-2 gap-4 p-4 sm:grid-cols-4 lg:grid-cols-7">
         <div>
           <p class="text-xs font-medium uppercase text-slate-500">Localizacao atual</p>
           ${tratora && tratora.localizacao_cidade ? `
@@ -523,7 +642,7 @@ export async function render(container, params) {
               <summary class="inline cursor-pointer text-sm font-semibold text-slate-900">${tratora.localizacao_cidade}/${tratora.localizacao_uf}</summary>
               <div class="mt-1 text-xs text-slate-500">
                 Atualizado em ${formatarDataHoraBr(tratora.localizacao_atualizado_em)}<br />
-                <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${tratora.localizacao_cidade}, ${tratora.localizacao_uf}`)}" target="_blank" rel="noopener" class="text-brand-600 hover:underline">Google Maps</a>
+                <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${tratora.localizacao_cidade}, ${tratora.localizacao_uf}`)}" target="_blank" rel="noopener" class="text-brand-800 hover:underline">Google Maps</a>
               </div>
             </details>
           ` : '<p class="text-sm text-slate-400">Nao informada</p>'}
@@ -535,6 +654,10 @@ export async function render(container, params) {
         <div>
           <p class="text-xs font-medium uppercase text-slate-500">Distancia diaria</p>
           <p class="text-sm font-semibold text-slate-900">${distanciaDiaria !== null ? `${distanciaDiaria.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} km/dia` : '-'}</p>
+        </div>
+        <div>
+          <p class="text-xs font-medium uppercase text-slate-500">Media de consumo</p>
+          <p class="text-sm font-semibold text-slate-900">${mediaConsumo !== null ? `${mediaConsumo.toFixed(2)} km/l` : '-'}</p>
         </div>
         <div>
           <p class="text-xs font-medium uppercase text-slate-500">Faturado ate agora</p>
@@ -550,45 +673,48 @@ export async function render(container, params) {
         </div>
       </div>
 
-      <div class="mb-3 flex items-center justify-between">
-        <h2 class="font-semibold text-slate-900">Fretes</h2>
-        ${gerenciar && viagem.status !== 'Finalizada' ? '<button type="button" class="btn-primary btn-sm" data-novo-frete>+ Frete</button>' : ''}
-      </div>
-      <div data-tabela-fretes class="mb-6"></div>
+      <div class="card mb-6 p-4" data-ocorrencias-viagem></div>
 
-      <div class="mb-3 flex items-center justify-between">
-        <h2 class="font-semibold text-slate-900">Adiantamentos ao Motorista</h2>
-        ${gerenciar && viagem.status !== 'Finalizada' ? '<button type="button" class="btn-primary btn-sm" data-novo-adiantamento>+ Adiantamento</button>' : ''}
-      </div>
-      <div class="card mb-6 overflow-x-auto p-0">
-        <table class="w-full min-w-max border-collapse">
-          <thead class="border-b border-slate-200 bg-slate-50"><tr>
-            <th class="table-th">Data</th><th class="table-th">Valor</th><th class="table-th">Descricao</th><th class="table-th"></th>
-          </tr></thead>
-          <tbody>
-            ${adiantamentos.map((a) => `<tr class="border-b border-slate-100"><td class="table-td">${formatarDataBr(a.data)}</td><td class="table-td">${formatarMoeda(a.valor)}${a.conta_bancaria_id ? '' : ' (sem caixa)'}</td><td class="table-td">${a.descricao || '-'}</td><td class="table-td text-right">${gerenciar && viagem.status !== 'Finalizada' ? `<button type="button" class="text-xs text-red-600 hover:underline" data-remover-adiantamento="${a.id}">Remover</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="4" class="table-td py-6 text-center text-slate-400">Nenhum adiantamento lancado.</td></tr>'}
-          </tbody>
-        </table>
-      </div>
+      <details class="mb-6" data-secao-fretes open>
+        ${resumoSecao('Fretes', (viagem.fretes || []).length, true)}
+        ${gerenciar && viagem.status !== 'Finalizada' ? '<div class="mb-3 flex justify-end"><button type="button" class="btn-primary btn-sm" data-novo-frete>+ Frete</button></div>' : ''}
+        <div data-tabela-fretes></div>
+      </details>
 
-      <div class="mb-3 flex items-center justify-between">
-        <h2 class="font-semibold text-slate-900">Despesas</h2>
-        ${gerenciar && viagem.status !== 'Finalizada' ? '<button type="button" class="btn-primary btn-sm" data-nova-despesa>+ Despesa</button>' : ''}
-      </div>
-      <div class="card overflow-x-auto p-0">
-        <table class="w-full min-w-max border-collapse">
-          <thead class="border-b border-slate-200 bg-slate-50"><tr>
-            <th class="table-th">Data</th><th class="table-th">Categoria</th><th class="table-th">Valor</th><th class="table-th">Pago por</th><th class="table-th"></th>
-          </tr></thead>
-          <tbody>
-            ${despesas.map((d) => `<tr class="border-b border-slate-100" data-despesa-id="${d.id}"><td class="table-td">${formatarDataBr(d.data)}</td><td class="table-td">${nomeCategoriasPorId[d.categoria_id] || d.categoria_id}</td><td class="table-td">${formatarMoeda(d.valor)}</td><td class="table-td">${d.pago_por}</td><td class="table-td text-right"><button type="button" class="text-xs text-brand-600 hover:underline" data-ocorrencias-despesa="${d.id}">Ocorrencias</button></td></tr>`).join('') || '<tr><td colspan="5" class="table-td py-6 text-center text-slate-400">Nenhuma despesa lancada.</td></tr>'}
-          </tbody>
-        </table>
-      </div>
+      <details class="mb-6" data-secao-despesas>
+        ${resumoSecao('Despesas', despesas.length, false)}
+        ${gerenciar && viagem.status !== 'Finalizada' ? '<div class="mb-3 flex justify-end"><button type="button" class="btn-primary btn-sm" data-nova-despesa>+ Despesa</button></div>' : ''}
+        <div class="card overflow-x-auto p-0">
+          <table class="w-full min-w-max border-collapse">
+            <thead class="border-b border-slate-200 bg-slate-50"><tr>
+              <th class="table-th">Data</th><th class="table-th">Categoria</th><th class="table-th">Valor</th><th class="table-th">Pago por</th><th class="table-th">Vencimento</th><th class="table-th"></th>
+            </tr></thead>
+            <tbody>
+              ${despesas.map((d) => `<tr class="border-b border-slate-100" data-despesa-id="${d.id}"><td class="table-td">${formatarDataBr(d.data)}</td><td class="table-td">${nomeCategoriasPorId[d.categoria_id] || d.categoria_id}</td><td class="table-td">${formatarMoeda(d.valor)}</td><td class="table-td">${d.pago_por}</td><td class="table-td">${d.data_vencimento ? formatarDataBr(d.data_vencimento) : '-'}${d.contas_pagar_id ? ' <a href="#/contas-pagar" class="text-xs text-brand-800 hover:underline">(ver conta)</a>' : ''}</td><td class="table-td text-right"><button type="button" class="text-xs text-brand-800 hover:underline" data-ocorrencias-despesa="${d.id}">Ocorrencias</button></td></tr>`).join('') || '<tr><td colspan="6" class="table-td py-6 text-center text-slate-400">Nenhuma despesa lancada.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </details>
 
-      <div class="card mt-6 p-4" data-ocorrencias-viagem></div>
+      <details data-secao-adiantamentos>
+        ${resumoSecao('Adiantamentos ao Motorista', adiantamentos.length, false)}
+        ${gerenciar && viagem.status !== 'Finalizada' ? '<div class="mb-3 flex justify-end"><button type="button" class="btn-primary btn-sm" data-novo-adiantamento>+ Adiantamento</button></div>' : ''}
+        <div class="card overflow-x-auto p-0">
+          <table class="w-full min-w-max border-collapse">
+            <thead class="border-b border-slate-200 bg-slate-50"><tr>
+              <th class="table-th">Data</th><th class="table-th">Valor</th><th class="table-th">Descricao</th><th class="table-th"></th>
+            </tr></thead>
+            <tbody>
+              ${adiantamentos.map((a) => `<tr class="border-b border-slate-100"><td class="table-td">${formatarDataBr(a.data)}</td><td class="table-td">${formatarMoeda(a.valor)}${a.conta_bancaria_id ? '' : ' (sem caixa)'}</td><td class="table-td">${a.descricao || '-'}</td><td class="table-td text-right">${gerenciar && viagem.status !== 'Finalizada' ? `<button type="button" class="text-xs text-red-600 hover:underline" data-remover-adiantamento="${a.id}">Remover</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="4" class="table-td py-6 text-center text-slate-400">Nenhum adiantamento lancado.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </details>
     `;
 
+    ['[data-secao-fretes]', '[data-secao-despesas]', '[data-secao-adiantamentos]'].forEach((seletor) => {
+      ligarChevronSecao(container.querySelector(seletor));
+    });
     container.querySelector('[data-voltar]').addEventListener('click', () => navegar('/viagens'));
     if (viagem.status !== 'EmAndamento') {
       container.querySelector('[data-ir-acerto]').addEventListener('click', () => navegar(`/acertos/${viagem.id}`));
@@ -613,7 +739,7 @@ export async function render(container, params) {
       btn.addEventListener('click', () => abrirOcorrenciasDespesa(despesa, gerenciar));
     });
     container.querySelector('[data-ocorrencias-viagem]').appendChild(
-      criarOcorrencias({ entidadeTipo: 'Viagem', entidadeId: Number(viagemId), podeGerenciar: gerenciar }).el,
+      criarOcorrencias({ entidadeTipo: 'Viagem', entidadeId: Number(viagemId), podeGerenciar: gerenciar, resumida: true }).el,
     );
 
     const fretes = await get(`/viagens/${viagemId}/fretes`);
@@ -621,6 +747,7 @@ export async function render(container, params) {
       colunas: [
         { chave: 'transportadora', titulo: 'Transportadora', render: (r) => (r.transportadora_id ? nomeFornecedoresPorId[r.transportadora_id] || `#${r.transportadora_id}` : '-') },
         { chave: 'rota', titulo: 'Rota', render: (r) => `${r.origem_cidade}/${r.origem_uf} &rarr; ${r.destino_cidade}/${r.destino_uf}` },
+        { chave: 'data_carregamento', titulo: 'Carregamento', render: (r) => (r.data_carregamento ? formatarDataBr(r.data_carregamento) : '-') },
         { chave: 'peso_carga_kg', titulo: 'Peso', render: (r) => (r.peso_carga_kg ? `${r.peso_carga_kg.toLocaleString('pt-BR')} kg` : '-') },
         { chave: 'frete_bruto', titulo: 'Frete Bruto', render: (r) => formatarMoeda(r.frete_bruto) },
       ],

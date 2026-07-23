@@ -3,7 +3,8 @@ import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { abrirModal, fecharModal } from '../../components/modal.js';
 import { mostrarToast } from '../../components/toast.js';
-import { formatarMoeda, attachMoedaMask, getMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr } from '../../masks.js';
+import { formatarMoeda, attachMoedaMask, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr } from '../../masks.js';
+import { navegar } from '../../router.js';
 
 async function buscarCentrosCusto(termo) {
   return (await get(`/centros-custo${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((c) => ({ value: c.id, label: c.nome }));
@@ -23,6 +24,16 @@ async function montarFormulario(registro, aoSalvar) {
       <div><label class="label">Data</label><input type="text" name="data" class="input" /></div>
       <div class="flex items-end gap-2 pb-2"><input type="checkbox" name="recorrente" id="recorrente" class="h-4 w-4" /><label for="recorrente" class="text-sm">Recorrente (mensal)</label></div>
     </div>
+    ${!registro ? `
+      <div class="rounded-lg border border-slate-200 p-3" data-bloco-parcelamento>
+        <p class="mb-2 text-xs text-slate-500">Parcelar? Preencha 2 dos 3 campos - o terceiro calcula sozinho.</p>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="label">Qtd. parcelas</label><input type="number" name="qtd_parcelas" class="input" min="2" /></div>
+          <div><label class="label">Valor da parcela</label><input type="text" name="valor_parcela" class="input" /></div>
+        </div>
+        <div class="mt-3"><label class="label">1a parcela vence em</label><input type="text" name="primeira_parcela_vencimento" class="input max-w-[10rem]" /></div>
+      </div>
+    ` : registro.qtd_parcelas ? '<p class="text-xs text-slate-500">Parcelamento nao pode ser alterado depois de criado - veja as parcelas em Contas a Pagar.</p>' : ''}
     <div><label class="label">Descricao</label><input type="text" name="descricao" class="input" /></div>
     <p class="hidden text-sm text-red-600" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">${registro ? 'Salvar alteracoes' : 'Cadastrar'}</button></div>
@@ -36,6 +47,27 @@ async function montarFormulario(registro, aoSalvar) {
     form.recorrente.checked = Boolean(registro.recorrente);
     form.descricao.value = registro.descricao || '';
   }
+
+  if (!registro) {
+    attachMoedaMask(form.valor_parcela, 0);
+    attachDataMask(form.primeira_parcela_vencimento);
+    function recalcularParcelas() {
+      const valorTotal = getMoedaValue(form.valor);
+      const qtdParcelas = Number(form.qtd_parcelas.value) || 0;
+      const valorParcela = getMoedaValue(form.valor_parcela);
+      if (valorTotal > 0 && qtdParcelas > 0 && valorParcela === 0) {
+        setMoedaValue(form.valor_parcela, Math.round(valorTotal / qtdParcelas));
+      } else if (valorTotal > 0 && valorParcela > 0 && qtdParcelas === 0) {
+        form.qtd_parcelas.value = Math.max(2, Math.round(valorTotal / valorParcela));
+      } else if (qtdParcelas > 0 && valorParcela > 0 && valorTotal === 0) {
+        setMoedaValue(form.valor, qtdParcelas * valorParcela);
+      }
+    }
+    form.valor.addEventListener('input', recalcularParcelas);
+    form.qtd_parcelas.addEventListener('input', recalcularParcelas);
+    form.valor_parcela.addEventListener('input', recalcularParcelas);
+  }
+
   const erro = form.querySelector('[data-erro]');
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
@@ -49,6 +81,8 @@ async function montarFormulario(registro, aoSalvar) {
         valor: getMoedaValue(form.valor),
         data: form.data.value ? parseDataBrParaIso(form.data.value) : null,
         recorrente: form.recorrente.checked ? 1 : 0,
+        qtd_parcelas: !registro && form.qtd_parcelas.value ? Number(form.qtd_parcelas.value) : null,
+        primeira_parcela_vencimento: !registro && form.primeira_parcela_vencimento.value ? parseDataBrParaIso(form.primeira_parcela_vencimento.value) : null,
         descricao: form.descricao.value || null,
       });
     } catch (err) {
@@ -71,8 +105,26 @@ async function abrirFormulario(registro, recarregar) {
 }
 
 export async function render(container) {
-  container.innerHTML = '<h1 class="mb-4 text-xl font-bold text-slate-900">Despesas Fixas</h1><div data-tabela></div>';
+  container.innerHTML = `
+    <h1 class="mb-4 text-xl font-bold text-slate-900">Despesas Fixas</h1>
+    <div class="card mb-4 grid grid-cols-2 gap-3 p-4 lg:grid-cols-4">
+      <div><label class="label">Data de</label><input type="text" class="input" data-filtro-data-de placeholder="dd/mm/aaaa" /></div>
+      <div><label class="label">Data ate</label><input type="text" class="input" data-filtro-data-ate placeholder="dd/mm/aaaa" /></div>
+      <div><label class="label">Cadastro de</label><input type="text" class="input" data-filtro-cad-de placeholder="dd/mm/aaaa" /></div>
+      <div><label class="label">Cadastro ate</label><input type="text" class="input" data-filtro-cad-ate placeholder="dd/mm/aaaa" /></div>
+    </div>
+    <div data-tabela></div>
+  `;
   const gerenciar = podeGerenciar('despesas_fixas');
+
+  const inputDataDe = container.querySelector('[data-filtro-data-de]');
+  const inputDataAte = container.querySelector('[data-filtro-data-ate]');
+  const inputCadDe = container.querySelector('[data-filtro-cad-de]');
+  const inputCadAte = container.querySelector('[data-filtro-cad-ate]');
+  for (const input of [inputDataDe, inputDataAte, inputCadDe, inputCadAte]) {
+    attachDataMask(input);
+    input.addEventListener('change', () => tabela.recarregar());
+  }
 
   const tabela = criarDataTable({
     colunas: [
@@ -81,9 +133,18 @@ export async function render(container) {
       { chave: 'valor', titulo: 'Valor', render: (r) => formatarMoeda(r.valor) },
       { chave: 'data', titulo: 'Data', render: (r) => formatarDataBr(r.data) },
       { chave: 'recorrente', titulo: 'Recorrente', render: (r) => (r.recorrente ? 'Sim' : 'Nao') },
+      { chave: 'qtd_parcelas', titulo: 'Parcelas', render: (r) => (r.qtd_parcelas ? `${r.qtd_parcelas}x` : 'Avulsa') },
     ],
     buscarDados: async () => {
-      const [despesas, centros, categorias] = await Promise.all([get('/despesas-fixas'), get('/centros-custo'), get('/categorias-despesa')]);
+      const params = new URLSearchParams();
+      if (inputDataDe.value) params.set('data_vencimento_de', parseDataBrParaIso(inputDataDe.value));
+      if (inputDataAte.value) params.set('data_vencimento_ate', parseDataBrParaIso(inputDataAte.value));
+      if (inputCadDe.value) params.set('data_cadastro_de', parseDataBrParaIso(inputCadDe.value));
+      if (inputCadAte.value) params.set('data_cadastro_ate', parseDataBrParaIso(inputCadAte.value));
+      const query = params.toString();
+      const [despesas, centros, categorias] = await Promise.all([
+        get(`/despesas-fixas${query ? `?${query}` : ''}`), get('/centros-custo'), get('/categorias-despesa'),
+      ]);
       const centrosPorId = Object.fromEntries(centros.map((c) => [c.id, c.nome]));
       const categoriasPorId = Object.fromEntries(categorias.map((c) => [c.id, c.nome]));
       return despesas.map((d) => ({ ...d, centro_custo_nome: centrosPorId[d.centro_custo_id], categoria_nome: categoriasPorId[d.categoria_id] }));
@@ -91,6 +152,7 @@ export async function render(container) {
     onNovo: gerenciar ? () => abrirFormulario(null, tabela.recarregar) : undefined,
     onEditar: gerenciar ? (r) => abrirFormulario(r, tabela.recarregar) : undefined,
     onExcluir: gerenciar ? (r) => del(`/despesas-fixas/${r.id}`) : undefined,
+    acoesExtras: (r) => (r.qtd_parcelas ? [{ label: 'Ver parcelas', onClick: (d) => navegar(`/contas-pagar?despesa_fixa_id=${d.id}`) }] : []),
     tituloNovo: 'Despesa Fixa',
     vazio: 'Nenhuma despesa fixa cadastrada.',
   });

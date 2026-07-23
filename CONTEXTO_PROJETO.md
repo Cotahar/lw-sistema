@@ -1,4 +1,4 @@
-# Contexto do Projeto — Frotista (lw-sistema)
+# Contexto do Projeto — Frottex (lw-sistema)
 
 > Este arquivo existe para situar uma sessão nova do Claude Code (ou qualquer
 > desenvolvedor) rapidamente, com o "porquê" por trás das decisões — não só

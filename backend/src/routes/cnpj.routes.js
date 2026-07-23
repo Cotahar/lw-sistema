@@ -16,7 +16,7 @@ router.get('/:cnpj', asyncHandler(async (req, res) => {
   try {
     // BrasilAPI (Cloudflare) devolve 403 para requisicoes sem User-Agent.
     resposta = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${digitos}`, {
-      headers: { 'User-Agent': 'Frotista/1.0 (sistema interno de gestao de frota)' },
+      headers: { 'User-Agent': 'Frottex/1.0 (sistema interno de gestao de frota)' },
     });
   } catch {
     throw new ApiError(502, 'Falha ao consultar a BrasilAPI. Preencha manualmente.');

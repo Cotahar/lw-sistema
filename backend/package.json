@@ -1,7 +1,7 @@
 {
   "name": "lw-sistema-backend",
   "version": "1.0.0",
-  "description": "API do Sistema de Gestao de Frota e Transporte Rodoviario (modelo Frotista)",
+  "description": "API do Sistema de Gestao de Frota e Transporte Rodoviario (Frottex)",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",

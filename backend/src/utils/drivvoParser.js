@@ -5,7 +5,7 @@ const crypto = require('node:crypto');
 // arquivo, cada uma iniciada por uma linha "#NomeDaSecao", seguida de uma
 // linha de cabecalho e as linhas de dados. So processamos as secoes
 // Veiculo/Abastecimento/Despesa/Receita (Servico fica de fora por ora -
-// nao mapeia para nenhuma tabela do Frotista ainda).
+// nao mapeia para nenhuma tabela do Frottex ainda).
 //
 // Observacoes sobre o formato (verificadas em exports reais):
 //  - O arquivo costuma vir em Windows-1252/Latin1, nao UTF-8 - detectamos

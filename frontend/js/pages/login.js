@@ -8,7 +8,7 @@ export function renderLogin(root) {
   wrapper.innerHTML = `
     <div class="w-full max-w-sm">
       <div class="mb-6 text-center">
-        <h1 class="text-2xl font-bold text-slate-900">Frotista</h1>
+        <h1 class="text-2xl font-bold text-slate-900">Frottex</h1>
         <p class="mt-1 text-sm text-slate-500">Gestao de Frota e Transporte Rodoviario</p>
       </div>
       <form class="card space-y-4 p-6">

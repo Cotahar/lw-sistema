@@ -1,3 +1,4 @@
+import { get, put } from '../api.js';
 import { formatarMoeda, attachMoedaMask, getMoedaValue, setMoedaValue } from '../masks.js';
 
 // Calculadora de frete - replica a planilha "Calculo de frete.xlsx" ja usada
@@ -55,6 +56,10 @@ export async function render(container) {
         <hr class="my-2 border-slate-200" />
         <div class="flex items-center justify-between py-2 text-lg font-bold" data-out-resultado-linha><span>Resultado do frete</span><span data-out-resultado>R$ 0,00</span></div>
         <div class="flex items-center justify-between py-1 text-sm text-slate-500"><span>Margem</span><span data-out-percentual>0%</span></div>
+        <div class="hidden mt-2 border-t border-dashed border-slate-200 pt-2" data-bloco-imposto>
+          <p class="text-xs text-slate-400" data-imposto-legenda></p>
+          <div class="flex items-center justify-between py-0.5 text-xs text-slate-500"><span>Resultado considerando imposto</span><span data-out-resultado-imposto>R$ 0,00</span></div>
+        </div>
       </div>
     </div>
   `;
@@ -64,6 +69,7 @@ export async function render(container) {
   for (const nome of camposMoeda) attachMoedaMask(form.elements[nome], 0);
 
   let freteTotalTravado = false; // true quando o usuario digita o total direto, ao inves de peso x valor/ton
+  let empresaImposto = null; // { razao_social, percentual_desconto_geral }
 
   function recalcular() {
     const peso = Number(form.peso.value) || 0;
@@ -101,6 +107,43 @@ export async function render(container) {
     resultadoEl.textContent = formatarMoeda(resultado);
     resultadoEl.className = resultado >= 0 ? 'text-emerald-600' : 'text-red-600';
     container.querySelector('[data-out-percentual]').textContent = `${percentual.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`;
+
+    // Mesma regra do Acerto: imposto reduz a base da comissao do motorista e
+    // tambem e um custo a parte pra empresa - so exibido se a empresa ativa
+    // tiver % de imposto cadastrado.
+    const blocoImposto = container.querySelector('[data-bloco-imposto]');
+    if (empresaImposto && empresaImposto.percentual_desconto_geral > 0 && freteTotal > 0) {
+      const pctImposto = empresaImposto.percentual_desconto_geral;
+      const valorImposto = Math.round(freteTotal * (pctImposto / 100));
+      const baseComissao = freteTotal - valorImposto;
+      const comissaoComImposto = Math.round(baseComissao * (comissaoPct / 100));
+      const resultadoComImposto = freteTotal - pedagio - descarga - dieselGasto - comissaoComImposto - valorImposto;
+      container.querySelector('[data-imposto-legenda]').textContent = `Com imposto de ${pctImposto}% (${empresaImposto.razao_social}) descontado do bruto antes da comissao:`;
+      container.querySelector('[data-out-resultado-imposto]').textContent = formatarMoeda(resultadoComImposto);
+      blocoImposto.classList.remove('hidden');
+    } else {
+      blocoImposto.classList.add('hidden');
+    }
+
+    salvarPreferenciasDebounced();
+  }
+
+  let salvarTimeoutId = null;
+  function salvarPreferenciasDebounced() {
+    clearTimeout(salvarTimeoutId);
+    salvarTimeoutId = setTimeout(() => {
+      put('/calculo-frete', {
+        peso: Number(form.peso.value) || null,
+        valor_tonelada: getMoedaValue(form.valor_tonelada) || null,
+        frete_total: getMoedaValue(form.frete_total) || null,
+        valor_diesel: getMoedaValue(form.valor_diesel) || null,
+        media: Number(form.media.value) || null,
+        km: Number(form.km.value) || null,
+        pedagio: getMoedaValue(form.pedagio) || null,
+        descarga: getMoedaValue(form.descarga) || null,
+        comissao_pct: Number(form.comissao_pct.value) || null,
+      }).catch(() => {});
+    }, 500);
   }
 
   form.addEventListener('submit', (ev) => ev.preventDefault());
@@ -109,6 +152,24 @@ export async function render(container) {
   form.frete_total.addEventListener('input', () => { freteTotalTravado = true; recalcular(); });
   for (const nome of ['valor_diesel', 'media', 'km', 'pedagio', 'descarga', 'comissao_pct']) {
     form.elements[nome].addEventListener('input', recalcular);
+  }
+
+  const [prefs, imposto] = await Promise.all([
+    get('/calculo-frete').catch(() => null),
+    get('/empresas/ativa/imposto').catch(() => null),
+  ]);
+  empresaImposto = imposto;
+
+  if (prefs) {
+    if (prefs.peso !== null) form.peso.value = prefs.peso;
+    if (prefs.valor_tonelada !== null) setMoedaValue(form.valor_tonelada, prefs.valor_tonelada);
+    if (prefs.frete_total !== null) { setMoedaValue(form.frete_total, prefs.frete_total); freteTotalTravado = true; }
+    if (prefs.valor_diesel !== null) setMoedaValue(form.valor_diesel, prefs.valor_diesel);
+    if (prefs.media !== null) form.media.value = prefs.media;
+    if (prefs.km !== null) form.km.value = prefs.km;
+    if (prefs.pedagio !== null) setMoedaValue(form.pedagio, prefs.pedagio);
+    if (prefs.descarga !== null) setMoedaValue(form.descarga, prefs.descarga);
+    if (prefs.comissao_pct !== null) form.comissao_pct.value = prefs.comissao_pct;
   }
 
   recalcular();

@@ -2,7 +2,7 @@ import { get, podeGerenciar } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { abrirModal } from '../../components/modal.js';
 import { mostrarErro } from '../../components/toast.js';
-import { formatarMoeda, formatarDataBr, hojeIsoLocal } from '../../masks.js';
+import { formatarMoeda, formatarDataBr, hojeIsoLocal, attachDataMask, parseDataBrParaIso } from '../../masks.js';
 import { criarOcorrencias } from '../../components/ocorrencias.js';
 
 const STATUS_BADGE = { Pendente: 'bg-amber-100 text-amber-700', Parcial: 'bg-amber-100 text-amber-700', Recebido: 'bg-emerald-100 text-emerald-700', Atrasado: 'bg-red-100 text-red-700' };
@@ -53,14 +53,34 @@ export async function render(container) {
   container.innerHTML = `
     <h1 class="mb-4 text-xl font-bold text-slate-900">Saldos de Frete (Contas a Receber)</h1>
     <div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3" data-resumo></div>
+    <div class="card mb-4 grid grid-cols-2 gap-3 p-4 lg:grid-cols-4">
+      <div><label class="label">Previsto de</label><input type="text" class="input" data-filtro-venc-de placeholder="dd/mm/aaaa" /></div>
+      <div><label class="label">Previsto ate</label><input type="text" class="input" data-filtro-venc-ate placeholder="dd/mm/aaaa" /></div>
+      <div><label class="label">Cadastro de</label><input type="text" class="input" data-filtro-cad-de placeholder="dd/mm/aaaa" /></div>
+      <div><label class="label">Cadastro ate</label><input type="text" class="input" data-filtro-cad-ate placeholder="dd/mm/aaaa" /></div>
+    </div>
     <div data-tabela></div>
   `;
   const gerenciar = podeGerenciar('contas_receber');
   const resumoEl = container.querySelector('[data-resumo]');
 
+  // Sem valor padrao aqui de proposito: esta tela existe pra sempre mostrar
+  // TODO saldo pendente em destaque (mesmo o que ainda nao venceu) - ver
+  // comentario de badgePrazo acima. Filtrar por vencimento ate hoje por
+  // padrao esconderia justamente os saldos futuros que o usuario pediu pra
+  // sempre aparecer.
+  const inputVencDe = container.querySelector('[data-filtro-venc-de]');
+  const inputVencAte = container.querySelector('[data-filtro-venc-ate]');
+  const inputCadDe = container.querySelector('[data-filtro-cad-de]');
+  const inputCadAte = container.querySelector('[data-filtro-cad-ate]');
+  for (const input of [inputVencDe, inputVencAte, inputCadDe, inputCadAte]) {
+    attachDataMask(input);
+    input.addEventListener('change', () => tabela.recarregar());
+  }
+
   const tabela = criarDataTable({
     colunas: [
-      { chave: 'frete_id', titulo: 'Frete', render: (r) => `<a href="#/viagens/${r.viagem_id}" class="text-brand-600 hover:underline">#${r.frete_id} (viagem #${r.viagem_id})</a>` },
+      { chave: 'frete_id', titulo: 'Frete', render: (r) => `<a href="#/viagens/${r.viagem_id}" class="text-brand-800 hover:underline">#${r.frete_id} (viagem #${r.viagem_id})</a>` },
       { chave: 'rota', titulo: 'Rota', render: (r) => `${r.origem_cidade}/${r.origem_uf} &rarr; ${r.destino_cidade}/${r.destino_uf}` },
       { chave: 'transportadora_nome', titulo: 'Transportadora', render: (r) => r.transportadora_nome || '-' },
       { chave: 'valor', titulo: 'Valor', render: (r) => formatarMoeda(r.valor) },
@@ -70,7 +90,13 @@ export async function render(container) {
     ],
     ordenacaoInicial: { chave: 'data_prevista', direcao: 'asc' },
     buscarDados: async () => {
-      const dados = await get('/contas-receber');
+      const params = new URLSearchParams();
+      if (inputVencDe.value) params.set('data_vencimento_de', parseDataBrParaIso(inputVencDe.value));
+      if (inputVencAte.value) params.set('data_vencimento_ate', parseDataBrParaIso(inputVencAte.value));
+      if (inputCadDe.value) params.set('data_cadastro_de', parseDataBrParaIso(inputCadDe.value));
+      if (inputCadAte.value) params.set('data_cadastro_ate', parseDataBrParaIso(inputCadAte.value));
+      const query = params.toString();
+      const dados = await get(`/contas-receber${query ? `?${query}` : ''}`);
       const pendentes = dados.filter((r) => r.status !== 'Recebido');
       const saldoTotal = pendentes.reduce((t, r) => t + saldoEmAberto(r), 0);
       const vencidos = pendentes.filter((r) => new Date(`${r.data_prevista}T00:00:00Z`) < new Date(`${hojeIsoLocal()}T00:00:00Z`)).length;

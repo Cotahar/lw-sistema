@@ -7,6 +7,7 @@ const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { condicaoEmpresa } = require('../utils/empresaScope');
 const { registrarAuditoria } = require('../utils/audit');
 const { withTransaction } = require('../utils/transaction');
+const { buscarUnidadeTratora } = require('../utils/conjuntoHelper');
 
 const router = express.Router();
 
@@ -37,29 +38,44 @@ function calcularAcerto(viagemId, empresaId, overrides = {}) {
   const freteBrutoTotal = somar(fretes.map((f) => f.frete_bruto));
 
   // Imposto da empresa sobre o frete bruto (variavel por empresa, cadastro
-  // de Empresas). So informativo/lancado a parte - NAO reduz a comissao nem
-  // o saldo do motorista, que continuam batendo em cima do frete bruto cheio.
+  // de Empresas). Reduz a base sobre a qual a comissao do motorista incide
+  // (comissao = (bruto - imposto) x %) - o motorista nao recebe comissao
+  // sobre a parte do frete que e imposto da empresa.
   const empresa = db.prepare('SELECT razao_social, percentual_desconto_geral FROM empresas WHERE id = ?').get(empresaId);
   const percentualImposto = empresa.percentual_desconto_geral || null;
   const valorImposto = percentualImposto ? Math.round(freteBrutoTotal * (percentualImposto / 100)) : 0;
+  const baseCalculoComissao = freteBrutoTotal - valorImposto;
   const adiantamentos = db.prepare('SELECT * FROM viagem_adiantamentos WHERE viagem_id = ?').all(viagemId);
   const adiantamentosTotal = somar(adiantamentos.map((a) => a.valor));
 
   const despesas = db.prepare('SELECT * FROM despesas_viagem WHERE viagem_id = ?').all(viagemId);
-  const litrosTotal = somar(despesas.map((d) => d.litragem));
+  // So litragem de Abastecimento entra na media de consumo - Arla (mesmo
+  // lancado junto no formulario unificado) e um insumo separado, nao diesel.
+  const categoriaAbastecimento = db.prepare("SELECT id FROM categorias_despesa WHERE lower(trim(nome)) = 'abastecimento'").get();
+  const litrosTotal = somar(
+    despesas.filter((d) => !categoriaAbastecimento || d.categoria_id === categoriaAbastecimento.id).map((d) => d.litragem)
+  );
   const kmTotal = viagem.km_final - viagem.km_inicial;
   const mediaConsumoKmL = litrosTotal > 0 ? kmTotal / litrosTotal : null;
 
+  // A faixa de comissao varia por marca do cavalo/truck/toco da composicao
+  // (ex.: Scania e VW tem medias tipicas bem diferentes). marca = NULL na
+  // faixa funciona como fallback generico; uma faixa com marca especifica
+  // tem prioridade quando ambas cobririam a mesma media de consumo.
   let percentualSugerido = null;
   if (mediaConsumoKmL !== null) {
+    const tratora = buscarUnidadeTratora(viagem.conjunto_id);
+    const marcaTratora = tratora ? tratora.marca : null;
     const faixa = db.prepare(`
-      SELECT * FROM comissao_faixas WHERE ativo = 1 AND km_l_de <= ? AND km_l_ate >= ? ORDER BY km_l_de LIMIT 1
-    `).get(mediaConsumoKmL, mediaConsumoKmL);
+      SELECT * FROM comissao_faixas
+      WHERE ativo = 1 AND km_l_de <= ? AND km_l_ate >= ? AND (marca = ? OR marca IS NULL)
+      ORDER BY (marca IS NULL) ASC, km_l_de LIMIT 1
+    `).get(mediaConsumoKmL, mediaConsumoKmL, marcaTratora);
     percentualSugerido = faixa ? faixa.percentual_comissao : null;
   }
 
   const percentualAplicado = overrides.percentual_comissao_aplicado ?? percentualSugerido ?? 0;
-  const valorComissao = Math.round(freteBrutoTotal * (percentualAplicado / 100));
+  const valorComissao = Math.round(baseCalculoComissao * (percentualAplicado / 100));
 
   const valorDescontosSugerido = somar(despesas.filter((d) => d.pago_por === 'Motorista').map((d) => d.valor));
   const valorDescontos = overrides.valor_descontos ?? valorDescontosSugerido;
@@ -74,7 +90,7 @@ function calcularAcerto(viagemId, empresaId, overrides = {}) {
     viagem, motorista, fretes, despesas, empresa,
     freteBrutoTotal, kmTotal, litrosTotal, mediaConsumoKmL,
     percentualSugerido, percentualAplicado, valorComissao,
-    percentualImposto, valorImposto,
+    percentualImposto, valorImposto, baseCalculoComissao,
     valorReembolsos, adiantamentosTotal, valorDescontosSugerido, valorDescontos,
     saldoContaCorrenteAnterior, saldoFinal,
   };
@@ -199,6 +215,8 @@ router.get('/:id/whatsapp', requerAcessoModulo('acertos', 'Visualizar'), exigirE
     '',
     '💰 *Receitas*',
     `Frete bruto total: ${formatarMoeda(freteBrutoTotal)}`,
+    acerto.valor_imposto > 0 ? `Imposto (${acerto.percentual_imposto_aplicado}%): -${formatarMoeda(acerto.valor_imposto)}` : null,
+    acerto.valor_imposto > 0 ? `Base de calculo da comissao: ${formatarMoeda(freteBrutoTotal - acerto.valor_imposto)}` : null,
     `Comissao (${acerto.percentual_comissao_aplicado}%): ${formatarMoeda(acerto.valor_comissao)}`,
     acerto.valor_reembolsos > 0 ? `Reembolsos: ${formatarMoeda(acerto.valor_reembolsos)}` : null,
     '',

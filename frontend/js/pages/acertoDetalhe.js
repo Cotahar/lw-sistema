@@ -45,10 +45,11 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
   function renderResumo(p) {
     resumoEl.innerHTML = [
       linha('Frete bruto total', formatarMoeda(p.freteBrutoTotal)),
+      p.valorImposto > 0 ? linha(`Imposto (${p.empresa.razao_social})`, `- ${formatarMoeda(p.valorImposto)}`) : '',
+      p.valorImposto > 0 ? linha('Base de calculo da comissao (bruto - imposto)', formatarMoeda(p.baseCalculoComissao)) : '',
       linha('Media de consumo', p.mediaConsumoKmL ? `${p.mediaConsumoKmL.toFixed(2)} km/l` : '-'),
       linha('% comissao sugerido', p.percentualSugerido !== null ? `${p.percentualSugerido}%` : '-'),
       linha('Valor da comissao', formatarMoeda(p.valorComissao)),
-      p.valorImposto > 0 ? linha(`Imposto (${p.empresa.razao_social}) - nao afeta o motorista`, formatarMoeda(p.valorImposto)) : '',
       linha('Adiantamentos tomados', formatarMoeda(p.adiantamentosTotal)),
       linha('Desconto sugerido (despesas do motorista)', formatarMoeda(p.valorDescontosSugerido)),
       linha('Saldo conta corrente anterior', formatarMoeda(p.saldoContaCorrenteAnterior)),
@@ -134,9 +135,13 @@ async function renderFechado(container, viagem, motorista, acerto, gerenciar) {
   container.querySelector('[data-ocorrencias]').appendChild(
     criarOcorrencias({ entidadeTipo: 'AcertoViagem', entidadeId: viagem.id, podeGerenciar: gerenciar }).el,
   );
+  const freteBrutoTotal = (viagem.fretes || []).reduce((t, f) => t + f.frete_bruto, 0);
+  const baseCalculoComissao = freteBrutoTotal - (acerto.valor_imposto || 0);
   container.querySelector('[data-resumo]').innerHTML = [
+    linha('Frete bruto total', formatarMoeda(freteBrutoTotal)),
+    acerto.valor_imposto > 0 ? linha(`Imposto (${acerto.percentual_imposto_aplicado}%)`, `- ${formatarMoeda(acerto.valor_imposto)}`) : '',
+    acerto.valor_imposto > 0 ? linha('Base de calculo da comissao (bruto - imposto)', formatarMoeda(baseCalculoComissao)) : '',
     linha('Comissao aplicada', `${acerto.percentual_comissao_aplicado}% = ${formatarMoeda(acerto.valor_comissao)}`),
-    acerto.valor_imposto > 0 ? linha(`Imposto (${acerto.percentual_imposto_aplicado}%) - lancado a parte, nao afeta o motorista`, formatarMoeda(acerto.valor_imposto)) : '',
     linha('Reembolsos', formatarMoeda(acerto.valor_reembolsos)),
     linha('Adiantamentos', formatarMoeda(acerto.valor_adiantamentos)),
     linha('Descontos', formatarMoeda(acerto.valor_descontos)),
