@@ -4,6 +4,7 @@ import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { abrirModal, fecharModal, confirmarAcao } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
 import { formatarDataBr, formatarDataHoraBr } from '../masks.js';
+import { criarBotaoSincronizarOnixsat } from '../components/onixsatSync.js';
 
 const TIPOS = ['Cavalo', 'Carreta', 'Dolly', 'Truck', 'Toco'];
 
@@ -190,36 +191,13 @@ export async function abrirLocalizacao(veiculo, recarregar) {
   }
 }
 
-async function sincronizarOnixsat(container, recarregar) {
-  const resumoEl = container.querySelector('[data-onixsat-resumo]');
-  const botao = container.querySelector('[data-onixsat-sincronizar]');
-  botao.disabled = true;
-  resumoEl.classList.remove('hidden', 'text-red-600');
-  resumoEl.textContent = 'Sincronizando...';
-  try {
-    const r = await post('/onixsat/sincronizar', {});
-    if (r.aviso) {
-      resumoEl.textContent = r.aviso;
-    } else {
-      resumoEl.textContent = `${r.veiculosMapeados} veiculo(s) mapeado(s), ${r.mensagensProcessadas} mensagem(ns) recebida(s): ${r.hodometroAtualizados} hodometro(s) e ${r.localizacaoAtualizados} localizacao(oes) atualizados (${r.mensagensIgnoradas} ignorada(s)).`;
-      recarregar();
-    }
-  } catch (err) {
-    resumoEl.textContent = err.message;
-    resumoEl.classList.add('text-red-600');
-  } finally {
-    botao.disabled = false;
-  }
-}
-
 export async function render(container) {
   const gerenciar = podeGerenciar('veiculos');
   container.innerHTML = `
     <div class="mb-4 flex items-center justify-between">
       <h1 class="text-xl font-bold text-slate-900">Veiculos e Frota</h1>
-      ${gerenciar ? '<button type="button" class="btn-secondary" data-onixsat-sincronizar>Sincronizar Onixsat</button>' : ''}
+      <div data-onixsat-botao></div>
     </div>
-    ${gerenciar ? '<p class="mb-4 hidden text-sm text-slate-500" data-onixsat-resumo></p>' : ''}
     <div data-tabela></div>
   `;
 
@@ -255,6 +233,6 @@ export async function render(container) {
   container.querySelector('[data-tabela]').appendChild(tabela.el);
 
   if (gerenciar) {
-    container.querySelector('[data-onixsat-sincronizar]').addEventListener('click', () => sincronizarOnixsat(container, tabela.recarregar));
+    container.querySelector('[data-onixsat-botao]').appendChild(criarBotaoSincronizarOnixsat({ onAtualizar: tabela.recarregar }));
   }
 }

@@ -2,7 +2,8 @@ import { confirmarAcao } from './modal.js';
 import { mostrarErro, mostrarToast } from './toast.js';
 
 // Tabela generica: busca, selecao/exclusao em lote (com modal de confirmacao),
-// acoes por linha. Usada por praticamente todo modulo de cadastro/listagem.
+// acoes por linha, ordenacao clicavel no cabecalho. Usada por praticamente
+// todo modulo de cadastro/listagem.
 export function criarDataTable({
   colunas,
   buscarDados,
@@ -14,10 +15,12 @@ export function criarDataTable({
   tituloNovo = 'Novo',
   vazio = 'Nenhum registro encontrado.',
   mostrarBusca = true,
+  ordenacaoInicial = null, // { chave, direcao: 'asc'|'desc' } - ordenacao padrao ao carregar
 }) {
   const el = document.createElement('div');
   el.className = 'card';
   const temSelecao = Boolean(onExcluirLote);
+  let ordenacao = ordenacaoInicial ? { ...ordenacaoInicial } : null;
 
   el.innerHTML = `
     <div class="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -32,7 +35,11 @@ export function criarDataTable({
         <thead class="border-b border-slate-200 bg-slate-50">
           <tr>
             ${temSelecao ? '<th class="table-th w-8"><input type="checkbox" data-marcar-todos /></th>' : ''}
-            ${colunas.map((c) => `<th class="table-th">${c.titulo}</th>`).join('')}
+            ${colunas.map((c) => `
+              <th class="table-th cursor-pointer select-none whitespace-nowrap hover:text-slate-700" data-ordenar="${c.chave}">
+                ${c.titulo} <span class="text-slate-400" data-seta></span>
+              </th>
+            `).join('')}
             ${onEditar || onExcluir || acoesExtras ? '<th class="table-th text-right">Acoes</th>' : ''}
           </tr>
         </thead>
@@ -58,8 +65,34 @@ export function criarDataTable({
     btnExcluirLote.textContent = `Excluir selecionados (${ids.length})`;
   }
 
-  function renderLinhas(dados) {
-    dadosAtuais = dados;
+  function compararValores(a, b) {
+    if (a === null || a === undefined || a === '') return b === null || b === undefined || b === '' ? 0 : 1;
+    if (b === null || b === undefined || b === '') return -1;
+    if (typeof a === 'number' && typeof b === 'number') return a - b;
+    return String(a).localeCompare(String(b), 'pt-BR', { numeric: true, sensitivity: 'base' });
+  }
+
+  function dadosOrdenados() {
+    if (!ordenacao) return dadosAtuais;
+    const { chave, direcao } = ordenacao;
+    const copia = [...dadosAtuais];
+    copia.sort((a, b) => compararValores(a[chave], b[chave]) * (direcao === 'asc' ? 1 : -1));
+    return copia;
+  }
+
+  function atualizarSetasCabecalho() {
+    el.querySelectorAll('[data-ordenar]').forEach((th) => {
+      const seta = th.querySelector('[data-seta]');
+      if (ordenacao && ordenacao.chave === th.dataset.ordenar) {
+        seta.textContent = ordenacao.direcao === 'asc' ? '▲' : '▼';
+      } else {
+        seta.textContent = '';
+      }
+    });
+  }
+
+  function renderCorpo() {
+    const dados = dadosOrdenados();
     if (!dados.length) {
       const colspan = colunas.length + (temSelecao ? 1 : 0) + (onEditar || onExcluir || acoesExtras ? 1 : 0);
       corpo.innerHTML = `<tr><td colspan="${colspan}" class="table-td py-8 text-center text-slate-400">${vazio}</td></tr>`;
@@ -129,7 +162,8 @@ export function criarDataTable({
   async function recarregar() {
     try {
       const dados = await buscarDados(inputBusca.value.trim());
-      renderLinhas(dados);
+      dadosAtuais = dados;
+      renderCorpo();
     } catch (err) {
       mostrarErro(err);
     }
@@ -139,6 +173,20 @@ export function criarDataTable({
     clearTimeout(debounceId);
     debounceId = setTimeout(recarregar, 300);
   });
+
+  el.querySelectorAll('[data-ordenar]').forEach((th) => {
+    th.addEventListener('click', () => {
+      const chave = th.dataset.ordenar;
+      if (ordenacao && ordenacao.chave === chave) {
+        ordenacao.direcao = ordenacao.direcao === 'asc' ? 'desc' : 'asc';
+      } else {
+        ordenacao = { chave, direcao: 'asc' };
+      }
+      atualizarSetasCabecalho();
+      renderCorpo();
+    });
+  });
+  atualizarSetasCabecalho();
 
   if (onNovo) el.querySelector('[data-novo]').addEventListener('click', onNovo);
 

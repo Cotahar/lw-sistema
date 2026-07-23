@@ -22,6 +22,43 @@ function paraNumeroDecimal(valor) {
   return Number.isFinite(numero) ? numero : null;
 }
 
+// RequestVeiculo (mapeamento veiID<->placa) tem limite de 1 chamada a cada 5
+// minutos, mas raramente muda (so quando um equipamento e instalado/trocado).
+// Cacheamos por empresa em memoria por 30 min pra poder chamar
+// RequestMensagemCB (limite de so 30 segundos) com mais frequencia sem
+// esbarrar no limite do RequestVeiculo.
+const CACHE_MAPEAMENTO_MS = 30 * 60 * 1000;
+const cacheMapeamento = new Map(); // empresaId -> { mapa, veiculosOnixsat, atualizadoEm }
+
+async function obterMapeamentoVeiculos(empresa) {
+  const cache = cacheMapeamento.get(empresa.id);
+  if (cache && Date.now() - cache.atualizadoEm < CACHE_MAPEAMENTO_MS) return cache;
+
+  let veiculosOnixsat;
+  try {
+    veiculosOnixsat = await requestVeiculo(empresa.onixsat_usuario, empresa.onixsat_senha);
+  } catch (err) {
+    // Se a chamada falhar (ex.: 5 min ainda nao passaram desde a ultima vez,
+    // ou instabilidade da Onixsat) mas ja houver um mapeamento em cache
+    // (mesmo vencido), reaproveita ele em vez de travar a sincronizacao de
+    // posicao - o mapeamento raramente muda de um ciclo pro outro.
+    if (cache) return cache;
+    if (err.codigoOnixsat === 7) throw new ApiError(429, 'Aguarde alguns minutos antes de sincronizar de novo (limite da Onixsat: 1 consulta de veiculos a cada 5 minutos).');
+    throw new ApiError(502, err.message);
+  }
+
+  const nossosVeiculos = db.prepare('SELECT id, placa FROM veiculos WHERE empresa_id = ?').all(empresa.id);
+  const mapaPorPlaca = new Map(nossosVeiculos.map((v) => [normalizarPlaca(v.placa), v.id]));
+  const mapa = new Map();
+  for (const v of veiculosOnixsat) {
+    const veiculoId = mapaPorPlaca.get(normalizarPlaca(v.placa));
+    if (veiculoId) mapa.set(String(v.veiID), veiculoId);
+  }
+  const resultado = { mapa, veiculosOnixsat: veiculosOnixsat.length, atualizadoEm: Date.now() };
+  cacheMapeamento.set(empresa.id, resultado);
+  return resultado;
+}
+
 // Puxa posicao/hodometro reais da Onixsat (RequestVeiculo + RequestMensagemCB,
 // ver onixsatClient.js) e grava em hodometro_eventos/localizacao_eventos com
 // origem='Onixsat'. Cursor de paginacao (mId) e global da conta, persistido em
@@ -33,15 +70,9 @@ async function sincronizarEmpresa(empresaId, usuarioId = null) {
     throw new ApiError(400, 'Configure o usuario e senha do Onixsat no cadastro desta empresa antes de sincronizar.');
   }
 
-  let veiculosOnixsat;
-  try {
-    veiculosOnixsat = await requestVeiculo(empresa.onixsat_usuario, empresa.onixsat_senha);
-  } catch (err) {
-    if (err.codigoOnixsat === 7) throw new ApiError(429, 'Aguarde alguns minutos antes de sincronizar de novo (limite da Onixsat: 1 consulta de veiculos a cada 5 minutos).');
-    throw new ApiError(502, err.message);
-  }
+  const { mapa: mapaVeiIdParaVeiculoId, veiculosOnixsat } = await obterMapeamentoVeiculos(empresa);
 
-  if (!veiculosOnixsat.length) {
+  if (!veiculosOnixsat) {
     return {
       veiculosOnixsat: 0, veiculosMapeados: 0, mensagensProcessadas: 0,
       hodometroAtualizados: 0, localizacaoAtualizados: 0, mensagensIgnoradas: 0,
@@ -49,17 +80,9 @@ async function sincronizarEmpresa(empresaId, usuarioId = null) {
     };
   }
 
-  const nossosVeiculos = db.prepare('SELECT id, placa FROM veiculos WHERE empresa_id = ?').all(empresaId);
-  const mapaPorPlaca = new Map(nossosVeiculos.map((v) => [normalizarPlaca(v.placa), v.id]));
-  const mapaVeiIdParaVeiculoId = new Map();
-  for (const v of veiculosOnixsat) {
-    const veiculoId = mapaPorPlaca.get(normalizarPlaca(v.placa));
-    if (veiculoId) mapaVeiIdParaVeiculoId.set(String(v.veiID), veiculoId);
-  }
-
   if (!mapaVeiIdParaVeiculoId.size) {
     return {
-      veiculosOnixsat: veiculosOnixsat.length, veiculosMapeados: 0, mensagensProcessadas: 0,
+      veiculosOnixsat, veiculosMapeados: 0, mensagensProcessadas: 0,
       hodometroAtualizados: 0, localizacaoAtualizados: 0, mensagensIgnoradas: 0,
       aviso: 'Nenhuma placa dos equipamentos Onixsat bate com veiculos cadastrados nesta empresa.',
     };
@@ -131,7 +154,7 @@ async function sincronizarEmpresa(empresaId, usuarioId = null) {
   }
 
   return {
-    veiculosOnixsat: veiculosOnixsat.length,
+    veiculosOnixsat,
     veiculosMapeados: mapaVeiIdParaVeiculoId.size,
     mensagensProcessadas: mensagens.length,
     hodometroAtualizados,

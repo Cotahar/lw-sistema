@@ -6,7 +6,7 @@ import { mostrarToast, mostrarErro } from '../components/toast.js';
 import { criarOcorrencias } from '../components/ocorrencias.js';
 import { formatarMoeda, attachMoedaMask, getMoedaValue, setMoedaValue, attachPesoMask, getPesoValue, attachDataMask, parseDataBrParaIso, formatarDataBr, formatarDataHoraBr } from '../masks.js';
 import { navegar } from '../router.js';
-import { abrirHodometro, abrirLocalizacao } from './veiculos.js';
+import { criarBotaoSincronizarOnixsat } from '../components/onixsatSync.js';
 
 const TIPOS_TRATORA = ['Cavalo', 'Truck', 'Toco'];
 
@@ -15,6 +15,24 @@ const TIPOS_BAIXA = ['Adiantamento', 'Pedagio', 'Saldo', 'Desconto', 'Outro'];
 
 async function buscarFornecedores(termo) {
   return (await get(`/fornecedores${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((f) => ({ value: f.id, label: f.nome }));
+}
+
+let postoTipoIdCache = null;
+async function obterPostoTipoId() {
+  if (postoTipoIdCache !== null) return postoTipoIdCache;
+  const tipos = await get('/fornecedor-tipos');
+  const posto = tipos.find((t) => t.nome.trim().toLowerCase() === 'posto');
+  postoTipoIdCache = posto ? posto.id : null;
+  return postoTipoIdCache;
+}
+async function buscarFornecedoresFiltrado(termo, apenasPostos) {
+  const todos = await get(`/fornecedores${termo ? `?search=${encodeURIComponent(termo)}` : ''}`);
+  let filtrados = todos;
+  if (apenasPostos) {
+    const tipoId = await obterPostoTipoId();
+    filtrados = todos.filter((f) => f.tipo_id === tipoId);
+  }
+  return filtrados.map((f) => ({ value: f.id, label: f.nome }));
 }
 async function buscarContasBancarias(termo) {
   const contas = await get('/contas-bancarias');
@@ -215,10 +233,10 @@ async function abrirNovaDespesa(viagemId, recarregar) {
       <div><label class="label">Pago por *</label><select name="pago_por" class="input" required><option value="Empresa">Empresa</option><option value="Motorista">Motorista (desconta do acerto)</option><option value="AdminOutros">Admin/Outros (reembolsavel)</option></select></div>
     </div>
     <div data-bloco-usuario class="hidden"><label class="label">Quem desembolsou *</label><div data-usuario-select></div></div>
+    <div><label class="label">Fornecedor</label><div data-fornecedor-select></div></div>
     <div class="rounded-lg border border-slate-200 p-3">
       <p class="mb-2 text-xs font-medium uppercase text-slate-500">Campos de abastecimento (se aplicavel)</p>
       <div class="grid grid-cols-2 gap-3">
-        <div><label class="label">Posto</label><div data-posto-select></div></div>
         <div><label class="label">Preco/Litro</label><input type="text" name="preco_litro" class="input" /></div>
         <div><label class="label">Litragem</label><input type="number" step="0.01" name="litragem" class="input" /></div>
         <div><label class="label">KM no abastecimento</label><input type="number" name="km_abastecimento" class="input" /></div>
@@ -232,6 +250,7 @@ async function abrirNovaDespesa(viagemId, recarregar) {
         <button type="button" class="btn-secondary btn-sm" data-recalcular="litragem">Recalcular litragem</button>
       </div>
     </div>
+    <div><label class="label">Observacao</label><textarea name="observacao" class="input" rows="2"></textarea></div>
     <p class="hidden text-sm text-red-600" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Cadastrar despesa</button></div>
   `;
@@ -240,8 +259,26 @@ async function abrirNovaDespesa(viagemId, recarregar) {
   attachMoedaMask(form.preco_litro, 0);
   const usuarioSelect = criarSearchableSelect({ buscar: buscarUsuarios, placeholder: 'Pesquisar usuario...' });
   form.querySelector('[data-usuario-select]').appendChild(usuarioSelect.el);
-  const postoSelect = criarSearchableSelect({ buscar: buscarFornecedores, placeholder: 'Pesquisar posto/fornecedor...' });
-  form.querySelector('[data-posto-select]').appendChild(postoSelect.el);
+  const fornecedorSelect = criarSearchableSelect({
+    buscar: (termo) => buscarFornecedoresFiltrado(termo, categoriaEhAbastecimento()),
+    placeholder: 'Pesquisar fornecedor...',
+  });
+  form.querySelector('[data-fornecedor-select]').appendChild(fornecedorSelect.el);
+
+  const camposAbastecimento = [form.preco_litro, form.litragem, form.km_abastecimento];
+  let categoriaEraAbastecimento = categoriaEhAbastecimento();
+  function atualizarDisponibilidadeAbastecimento() {
+    const ativo = categoriaEhAbastecimento();
+    for (const campo of camposAbastecimento) campo.disabled = !ativo;
+    if (!ativo) { form.preco_litro.value = ''; form.litragem.value = ''; form.km_abastecimento.value = ''; }
+  }
+  form.categoria_id.addEventListener('change', () => {
+    const agoraAbastecimento = categoriaEhAbastecimento();
+    if (agoraAbastecimento && !categoriaEraAbastecimento) fornecedorSelect.setValue(null, '');
+    categoriaEraAbastecimento = agoraAbastecimento;
+    atualizarDisponibilidadeAbastecimento();
+  });
+  atualizarDisponibilidadeAbastecimento();
 
   form.pago_por.addEventListener('change', () => {
     form.querySelector('[data-bloco-usuario]').classList.toggle('hidden', form.pago_por.value !== 'AdminOutros');
@@ -273,17 +310,20 @@ async function abrirNovaDespesa(viagemId, recarregar) {
 
   async function enviarDespesa() {
     try {
-      await post(`/viagens/${viagemId}/despesas`, {
+      const despesa = await post(`/viagens/${viagemId}/despesas`, {
         categoria_id: Number(form.categoria_id.value),
         valor: getMoedaValue(form.valor),
         data: form.data.value ? parseDataBrParaIso(form.data.value) : null,
         pago_por: form.pago_por.value,
         pago_por_usuario_id: usuarioSelect.getValue(),
-        posto_fornecedor_id: postoSelect.getValue(),
-        preco_litro: form.preco_litro.value ? getMoedaValue(form.preco_litro) : null,
-        litragem: form.litragem.value ? Number(form.litragem.value) : null,
-        km_abastecimento: form.km_abastecimento.value ? Number(form.km_abastecimento.value) : null,
+        posto_fornecedor_id: fornecedorSelect.getValue(),
+        preco_litro: categoriaEhAbastecimento() && form.preco_litro.value ? getMoedaValue(form.preco_litro) : null,
+        litragem: categoriaEhAbastecimento() && form.litragem.value ? Number(form.litragem.value) : null,
+        km_abastecimento: categoriaEhAbastecimento() && form.km_abastecimento.value ? Number(form.km_abastecimento.value) : null,
       });
+      if (form.observacao.value.trim()) {
+        await post('/ocorrencias', { entidade_tipo: 'DespesaViagem', entidade_id: despesa.id, texto: form.observacao.value.trim() });
+      }
       fecharModal();
       mostrarToast('Despesa cadastrada.');
       recarregar();
@@ -476,6 +516,7 @@ export async function render(container, params) {
         </div>
       </div>
 
+      <div class="mb-2 flex justify-end" data-onixsat-botao></div>
       <div class="card mb-6 grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 lg:grid-cols-6">
         <div>
           <p class="text-xs font-medium uppercase text-slate-500">Localizacao atual</p>
@@ -488,12 +529,10 @@ export async function render(container, params) {
               </div>
             </details>
           ` : '<p class="text-sm text-slate-400">Nao informada</p>'}
-          ${gerenciar && tratora ? '<button type="button" class="mt-1 text-xs text-brand-600 hover:underline" data-atualizar-localizacao>Atualizar</button>' : ''}
         </div>
         <div>
           <p class="text-xs font-medium uppercase text-slate-500">Hodometro atual</p>
           <p class="text-sm font-semibold text-slate-900">${tratora ? `${tratora.hodometro_atual.toLocaleString('pt-BR')} km` : '-'}</p>
-          ${gerenciar && tratora ? '<button type="button" class="mt-1 text-xs text-brand-600 hover:underline" data-atualizar-hodometro>Atualizar</button>' : ''}
         </div>
         <div>
           <p class="text-xs font-medium uppercase text-slate-500">Distancia diaria</p>
@@ -558,12 +597,8 @@ export async function render(container, params) {
     }
     const btnFinalizar = container.querySelector('[data-finalizar]');
     if (btnFinalizar) btnFinalizar.addEventListener('click', () => abrirFinalizar(viagem, recarregarPagina));
-    if (tratora) {
-      const veiculoTratora = { id: tratora.veiculo_id, placa: tratora.placa, hodometro_atual: tratora.hodometro_atual, localizacao_cidade: tratora.localizacao_cidade, localizacao_uf: tratora.localizacao_uf };
-      const btnAtualizarLocalizacao = container.querySelector('[data-atualizar-localizacao]');
-      if (btnAtualizarLocalizacao) btnAtualizarLocalizacao.addEventListener('click', () => abrirLocalizacao(veiculoTratora, recarregarPagina));
-      const btnAtualizarHodometro = container.querySelector('[data-atualizar-hodometro]');
-      if (btnAtualizarHodometro) btnAtualizarHodometro.addEventListener('click', () => abrirHodometro(veiculoTratora, recarregarPagina));
+    if (gerenciar) {
+      container.querySelector('[data-onixsat-botao]').appendChild(criarBotaoSincronizarOnixsat({ onAtualizar: recarregarPagina }));
     }
     const btnNovoFrete = container.querySelector('[data-novo-frete]');
     if (btnNovoFrete) btnNovoFrete.addEventListener('click', () => abrirNovoFrete(viagemId, recarregarPagina));

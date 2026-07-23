@@ -1,12 +1,19 @@
 import { get, post, podeGerenciar } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
-import { abrirModal, fecharModal } from '../../components/modal.js';
+import { abrirModal, fecharModal, confirmarAcao } from '../../components/modal.js';
 import { mostrarToast, mostrarErro } from '../../components/toast.js';
 import { criarOcorrencias } from '../../components/ocorrencias.js';
 import { formatarMoeda, attachMoedaMask, getMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr } from '../../masks.js';
 
 const STATUS_BADGE = { Pendente: 'bg-amber-100 text-amber-700', Parcial: 'bg-amber-100 text-amber-700', Pago: 'bg-emerald-100 text-emerald-700', Atrasado: 'bg-red-100 text-red-700' };
+const STATUS_OPCOES = [
+  { value: '', label: 'Todos' },
+  { value: 'Pendente', label: 'Pendente' },
+  { value: 'Parcial', label: 'Parcial' },
+  { value: 'Pago', label: 'Pago' },
+  { value: 'Atrasado', label: 'Atrasado' },
+];
 
 async function buscarFornecedores(termo) {
   return (await get(`/fornecedores${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((f) => ({ value: f.id, label: f.nome }));
@@ -18,6 +25,19 @@ async function buscarContasBancarias(termo) {
   const contas = await get('/contas-bancarias');
   const filtradas = termo ? contas.filter((c) => c.nome.toLowerCase().includes(termo.toLowerCase())) : contas;
   return filtradas.map((c) => ({ value: c.id, label: c.nome }));
+}
+async function buscarVeiculos(termo) {
+  return (await get(`/veiculos${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((v) => ({ value: v.id, label: v.placa }));
+}
+
+function badgePrazo(conta) {
+  if (conta.status === 'Pago') return '';
+  const hoje = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z');
+  const venc = new Date(`${conta.data_vencimento}T00:00:00Z`);
+  const dias = Math.round((venc - hoje) / 86400000);
+  const cor = dias < 0 ? 'bg-red-100 text-red-700' : dias <= 5 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500';
+  const texto = dias < 0 ? `${Math.abs(dias)} dia(s) vencido` : dias === 0 ? 'vence hoje' : `${dias} dia(s)`;
+  return `<span class="badge ${cor} ml-1">${texto}</span>`;
 }
 
 async function abrirNovaConta(recarregar) {
@@ -65,19 +85,44 @@ async function abrirNovaConta(recarregar) {
   abrirModal({ titulo: 'Nova conta a pagar', conteudo: form });
 }
 
+async function enviarBaixa(conta, payload, recarregar, erroEl) {
+  try {
+    await post(`/contas-pagar/${conta.id}/baixar`, payload);
+    fecharModal();
+    mostrarToast('Conta baixada.');
+    recarregar();
+  } catch (err) {
+    if (err.status === 409) {
+      const ok = await confirmarAcao({
+        titulo: 'Valor maior que o restante',
+        mensagem: `${err.message} Deseja continuar e ajustar o valor do lancamento?`,
+        textoConfirmar: 'Continuar e ajustar',
+      });
+      if (ok) return enviarBaixa(conta, { ...payload, ajustarValorConta: true }, recarregar, erroEl);
+      return;
+    }
+    erroEl.textContent = err.message;
+    erroEl.classList.remove('hidden');
+  }
+}
+
 async function abrirBaixa(conta, recarregar) {
-  const restante = conta.valor - conta.valor_pago;
+  const restante = conta.valor - conta.valor_pago - conta.valor_descontado;
   const form = document.createElement('form');
   form.className = 'space-y-4';
   form.innerHTML = `
     <p class="text-sm text-slate-600">Restante a pagar: <span class="font-medium">${formatarMoeda(restante)}</span></p>
     <div><label class="label">Conta bancaria *</label><div data-conta></div></div>
-    <div><label class="label">Valor a baixar *</label><input type="text" name="valor_pago" class="input" required /></div>
+    <div class="grid grid-cols-2 gap-3">
+      <div><label class="label">Valor a baixar *</label><input type="text" name="valor_pago" class="input" required /></div>
+      <div><label class="label">Desconto</label><input type="text" name="desconto" class="input" /></div>
+    </div>
     <div><label class="label">Data do pagamento</label><input type="text" name="data_pagamento" class="input" /></div>
     <p class="hidden text-sm text-red-600" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Baixar</button></div>
   `;
   attachMoedaMask(form.valor_pago, restante);
+  attachMoedaMask(form.desconto, 0);
   attachDataMask(form.data_pagamento);
   const contaSelect = criarSearchableSelect({ buscar: buscarContasBancarias, placeholder: 'Pesquisar conta...' });
   form.querySelector('[data-conta]').appendChild(contaSelect.el);
@@ -87,19 +132,12 @@ async function abrirBaixa(conta, recarregar) {
     erro.classList.add('hidden');
     const conta_bancaria_id = contaSelect.getValue();
     if (!conta_bancaria_id) { erro.textContent = 'Selecione a conta bancaria.'; erro.classList.remove('hidden'); return; }
-    try {
-      await post(`/contas-pagar/${conta.id}/baixar`, {
-        conta_bancaria_id,
-        valor_pago: getMoedaValue(form.valor_pago),
-        data_pagamento: form.data_pagamento.value ? parseDataBrParaIso(form.data_pagamento.value) : null,
-      });
-      fecharModal();
-      mostrarToast('Conta baixada.');
-      recarregar();
-    } catch (err) {
-      erro.textContent = err.message;
-      erro.classList.remove('hidden');
-    }
+    await enviarBaixa(conta, {
+      conta_bancaria_id,
+      valor_pago: getMoedaValue(form.valor_pago),
+      desconto: getMoedaValue(form.desconto),
+      data_pagamento: form.data_pagamento.value ? parseDataBrParaIso(form.data_pagamento.value) : null,
+    }, recarregar, erro);
   });
   abrirModal({ titulo: `Baixar - ${conta.descricao}`, conteudo: form });
 }
@@ -110,18 +148,49 @@ function abrirOcorrencias(conta, gerenciar) {
 }
 
 export async function render(container) {
-  container.innerHTML = '<h1 class="mb-4 text-xl font-bold text-slate-900">Contas a Pagar</h1><div data-tabela></div>';
+  container.innerHTML = `
+    <h1 class="mb-4 text-xl font-bold text-slate-900">Contas a Pagar</h1>
+    <div class="card mb-4 grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div>
+        <label class="label">Status</label>
+        <select class="input" data-filtro-status>${STATUS_OPCOES.map((o) => `<option value="${o.value}">${o.label}</option>`).join('')}</select>
+      </div>
+      <div><label class="label">Categoria</label><select class="input" data-filtro-categoria><option value="">Todas</option></select></div>
+      <div><label class="label">Veiculo</label><div data-filtro-veiculo></div></div>
+    </div>
+    <div data-tabela></div>
+  `;
   const gerenciar = podeGerenciar('contas_pagar');
+
+  const selectStatus = container.querySelector('[data-filtro-status]');
+  const selectCategoria = container.querySelector('[data-filtro-categoria]');
+  try {
+    const categorias = await get('/categorias-despesa');
+    selectCategoria.innerHTML += categorias.map((c) => `<option value="${c.id}">${c.nome}</option>`).join('');
+  } catch (err) { mostrarErro(err); }
+  const veiculoSelect = criarSearchableSelect({ buscar: buscarVeiculos, placeholder: 'Todos os veiculos...', onChange: () => tabela.recarregar() });
+  container.querySelector('[data-filtro-veiculo]').appendChild(veiculoSelect.el);
 
   const tabela = criarDataTable({
     colunas: [
-      { chave: 'descricao', titulo: 'Descricao' },
+      { chave: 'descricao', titulo: 'Descricao', render: (r) => (r.viagem_id ? `${r.descricao} <a href="#/viagens/${r.viagem_id}" class="ml-1 text-xs text-brand-600 hover:underline">(viagem #${r.viagem_id})</a>` : r.descricao) },
+      { chave: 'categoria_nome', titulo: 'Categoria', render: (r) => r.categoria_nome || '-' },
+      { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => r.veiculo_placa || '-' },
       { chave: 'valor', titulo: 'Valor', render: (r) => formatarMoeda(r.valor) },
-      { chave: 'valor_pago', titulo: 'Pago', render: (r) => formatarMoeda(r.valor_pago) },
-      { chave: 'data_vencimento', titulo: 'Vencimento', render: (r) => formatarDataBr(r.data_vencimento) },
+      { chave: 'valor_pago', titulo: 'Pago', render: (r) => formatarMoeda(r.valor_pago + r.valor_descontado) },
+      { chave: 'data_vencimento', titulo: 'Vencimento', render: (r) => `${formatarDataBr(r.data_vencimento)}${badgePrazo(r)}` },
       { chave: 'status', titulo: 'Status', render: (r) => `<span class="badge ${STATUS_BADGE[r.status]}">${r.status}</span>` },
     ],
-    buscarDados: () => get('/contas-pagar'),
+    ordenacaoInicial: { chave: 'data_vencimento', direcao: 'asc' },
+    buscarDados: async (termo) => {
+      const params = new URLSearchParams();
+      if (termo) params.set('search', termo);
+      if (selectStatus.value) params.set('status', selectStatus.value);
+      if (selectCategoria.value) params.set('categoria_id', selectCategoria.value);
+      if (veiculoSelect.getValue()) params.set('veiculo_id', veiculoSelect.getValue());
+      const query = params.toString();
+      return get(`/contas-pagar${query ? `?${query}` : ''}`);
+    },
     onNovo: gerenciar ? () => abrirNovaConta(tabela.recarregar) : undefined,
     acoesExtras: (r) => {
       const acoes = [{ label: 'Ocorrencias', onClick: (c) => abrirOcorrencias(c, gerenciar) }];
@@ -132,4 +201,7 @@ export async function render(container) {
     vazio: 'Nenhuma conta a pagar registrada.',
   });
   container.querySelector('[data-tabela]').appendChild(tabela.el);
+
+  selectStatus.addEventListener('change', () => tabela.recarregar());
+  selectCategoria.addEventListener('change', () => tabela.recarregar());
 }

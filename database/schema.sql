@@ -389,7 +389,8 @@ CREATE TABLE checklist_itens_catalogo (
     ativo   INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1))
 );
 
--- Estado do checklist por placa.
+-- Estado do checklist por placa (ultimo valor conhecido de cada item - usado
+-- como ponto de partida ao abrir uma vistoria nova, ver checklist_vistorias).
 CREATE TABLE veiculo_checklist (
     id              INTEGER PRIMARY KEY,
     empresa_id      INTEGER NOT NULL REFERENCES empresas(id),
@@ -400,6 +401,39 @@ CREATE TABLE veiculo_checklist (
     atualizado_em   TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (veiculo_id, item_id)
 );
+
+-- Vistoria periodica do checklist (a cada ~30 dias, em media) - um registro
+-- por "rodada" feita no CONJUNTO, para ter historico no tempo (antes so
+-- existia o estado atual mutavel em veiculo_checklist). E do conjunto porque
+-- e assim que o motorista pensa na vistoria (o rodotrem inteiro), mas os
+-- itens em si (checklist_vistoria_itens) sao por veiculo/placa, porque
+-- carretas podem trocar de conjunto e o item pertence a placa fisica.
+CREATE TABLE checklist_vistorias (
+    id              INTEGER PRIMARY KEY,
+    empresa_id      INTEGER NOT NULL REFERENCES empresas(id),
+    conjunto_id     INTEGER NOT NULL REFERENCES conjuntos(id),
+    data_vistoria   TEXT NOT NULL DEFAULT (date('now')),
+    criado_por      INTEGER REFERENCES usuarios(id),
+    criado_em       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_checklist_vistorias_conjunto ON checklist_vistorias(conjunto_id, data_vistoria);
+
+-- Estado de cada item na vistoria, por veiculo (nao por conjunto - ver
+-- comentario acima). O conjunto de veiculo_id distintos aqui e o "retrato" da
+-- composicao do conjunto no momento da vistoria; se divergir da composicao
+-- atual (conjunto_itens), o frontend avisa o usuario (troca de carreta/cavalo
+-- entre a vistoria e hoje).
+CREATE TABLE checklist_vistoria_itens (
+    id              INTEGER PRIMARY KEY,
+    empresa_id      INTEGER NOT NULL REFERENCES empresas(id),
+    vistoria_id     INTEGER NOT NULL REFERENCES checklist_vistorias(id) ON DELETE CASCADE,
+    veiculo_id      INTEGER NOT NULL REFERENCES veiculos(id),
+    item_id         INTEGER NOT NULL REFERENCES checklist_itens_catalogo(id),
+    presente        INTEGER NOT NULL DEFAULT 1 CHECK (presente IN (0, 1)),
+    observacao      TEXT,
+    UNIQUE (vistoria_id, veiculo_id, item_id)
+);
+CREATE INDEX idx_checklist_vistoria_itens_vistoria ON checklist_vistoria_itens(vistoria_id);
 
 -- Registro fotografico do veiculo no Recebimento (motorista pega o caminhao) e
 -- na Entrega (motorista devolve), para comparar o estado antes/depois. item_id
@@ -646,6 +680,7 @@ CREATE TABLE contas_pagar (
     data_vencimento     TEXT NOT NULL,
     data_pagamento      TEXT,
     valor_pago          INTEGER NOT NULL DEFAULT 0,  -- centavos
+    valor_descontado    INTEGER NOT NULL DEFAULT 0,  -- centavos; desconto concedido na baixa (nao movimenta caixa)
     status              TEXT NOT NULL DEFAULT 'Pendente' CHECK (status IN ('Pendente', 'Parcial', 'Pago', 'Atrasado')),
     origem_tipo         TEXT CHECK (origem_tipo IN ('EstoqueMovimentacao', 'PneuEvento', 'OrdemServico', 'DespesaViagem', 'DespesaFixa', 'FinanciamentoParcela', 'ReembolsoMotorista', 'AcertoViagem', 'Outro')),
     origem_id           INTEGER,

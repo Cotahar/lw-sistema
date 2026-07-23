@@ -130,4 +130,105 @@ router.delete('/fotos/:id', requerAcessoModulo('checklist', 'Gerenciar'), exigir
   res.status(204).send();
 }));
 
+// ---- Vistorias periodicas do conjunto (a cada ~30 dias) ----
+// Cada vistoria e "retrato" do conjunto numa data: os itens sao por veiculo
+// (placa), nao por conjunto, pois carretas podem trocar de conjunto - ver
+// comentario em schema.sql.
+function veiculosDoConjunto(conjuntoId, empresaId) {
+  return db.prepare(`
+    SELECT v.id, v.placa, v.tipo FROM conjunto_itens ci
+    JOIN veiculos v ON v.id = ci.veiculo_id
+    WHERE ci.conjunto_id = ? AND v.empresa_id = ?
+    ORDER BY ci.ordem
+  `).all(conjuntoId, empresaId);
+}
+
+router.get('/conjunto/:conjuntoId/vistorias', requerAcessoModulo('checklist', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const conjunto = db.prepare('SELECT id FROM conjuntos WHERE id = ? AND empresa_id = ?').get(req.params.conjuntoId, req.empresaId);
+  if (!conjunto) throw new ApiError(404, 'Conjunto nao encontrado.');
+  const vistorias = db.prepare(`
+    SELECT * FROM checklist_vistorias WHERE conjunto_id = ? ORDER BY data_vistoria DESC, id DESC
+  `).all(req.params.conjuntoId);
+  res.json(vistorias);
+}));
+
+router.post('/conjunto/:conjuntoId/vistorias', requerAcessoModulo('checklist', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const conjunto = db.prepare('SELECT id FROM conjuntos WHERE id = ? AND empresa_id = ?').get(req.params.conjuntoId, req.empresaId);
+  if (!conjunto) throw new ApiError(404, 'Conjunto nao encontrado.');
+  const veiculos = veiculosDoConjunto(req.params.conjuntoId, req.empresaId);
+  if (!veiculos.length) throw new ApiError(400, 'Este conjunto nao tem veiculos vinculados.');
+  const itensCatalogo = db.prepare('SELECT id FROM checklist_itens_catalogo WHERE ativo = 1').all();
+
+  const info = db.prepare(`
+    INSERT INTO checklist_vistorias (empresa_id, conjunto_id, data_vistoria, criado_por)
+    VALUES (?, ?, COALESCE(?, date('now')), ?)
+  `).run(req.empresaId, req.params.conjuntoId, req.body.data_vistoria || null, req.usuario.id);
+
+  // Cada item comeca com o ultimo valor conhecido (veiculo_checklist), pra o
+  // usuario so precisar atualizar o que mudou desde a ultima vistoria.
+  for (const veiculo of veiculos) {
+    for (const item of itensCatalogo) {
+      const ultimo = db.prepare('SELECT presente, observacao FROM veiculo_checklist WHERE veiculo_id = ? AND item_id = ?').get(veiculo.id, item.id);
+      db.prepare(`
+        INSERT INTO checklist_vistoria_itens (empresa_id, vistoria_id, veiculo_id, item_id, presente, observacao)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(req.empresaId, info.lastInsertRowid, veiculo.id, item.id, ultimo ? ultimo.presente : 1, ultimo ? ultimo.observacao : null);
+    }
+  }
+
+  registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'checklist_vistorias', registroId: info.lastInsertRowid, acao: 'INSERT', depois: { conjunto_id: req.params.conjuntoId } });
+  const vistoria = db.prepare('SELECT * FROM checklist_vistorias WHERE id = ?').get(info.lastInsertRowid);
+  res.status(201).json(vistoria);
+}));
+
+router.get('/vistorias/:id', requerAcessoModulo('checklist', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const vistoria = db.prepare('SELECT * FROM checklist_vistorias WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
+  if (!vistoria) throw new ApiError(404, 'Vistoria nao encontrada.');
+
+  const itens = db.prepare(`
+    SELECT cvi.*, v.placa, v.tipo AS veiculo_tipo, c.nome AS item_nome
+    FROM checklist_vistoria_itens cvi
+    JOIN veiculos v ON v.id = cvi.veiculo_id
+    JOIN checklist_itens_catalogo c ON c.id = cvi.item_id
+    WHERE cvi.vistoria_id = ?
+    ORDER BY v.tipo DESC, v.placa, c.nome
+  `).all(req.params.id);
+
+  // Divergencia: compara o conjunto de placas registradas nesta vistoria com
+  // a composicao atual do conjunto (pode ter trocado carreta/cavalo desde entao).
+  const placasNaVistoria = [...new Set(itens.map((i) => i.placa))].sort();
+  const veiculosAtuais = veiculosDoConjunto(vistoria.conjunto_id, req.empresaId);
+  const placasAtuais = veiculosAtuais.map((v) => v.placa).sort();
+  const conjuntoDivergente = JSON.stringify(placasNaVistoria) !== JSON.stringify(placasAtuais);
+
+  res.json({ vistoria, itens, conjuntoDivergente, placasNaVistoria, placasAtuais });
+}));
+
+router.put('/vistorias/:vistoriaId/veiculo/:veiculoId/item/:itemId', requerAcessoModulo('checklist', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const vistoria = db.prepare('SELECT * FROM checklist_vistorias WHERE id = ? AND empresa_id = ?').get(req.params.vistoriaId, req.empresaId);
+  if (!vistoria) throw new ApiError(404, 'Vistoria nao encontrada.');
+  const antes = db.prepare('SELECT * FROM checklist_vistoria_itens WHERE vistoria_id = ? AND veiculo_id = ? AND item_id = ?')
+    .get(req.params.vistoriaId, req.params.veiculoId, req.params.itemId);
+  if (!antes) throw new ApiError(404, 'Item da vistoria nao encontrado.');
+
+  const { presente, observacao } = req.body;
+  db.prepare('UPDATE checklist_vistoria_itens SET presente = ?, observacao = ? WHERE id = ?')
+    .run(presente ? 1 : 0, observacao || null, antes.id);
+
+  // Mantem veiculo_checklist (ultimo estado conhecido) em sincronia, pra
+  // servir de ponto de partida pra proxima vistoria.
+  const existente = db.prepare('SELECT id FROM veiculo_checklist WHERE veiculo_id = ? AND item_id = ?').get(req.params.veiculoId, req.params.itemId);
+  if (existente) {
+    db.prepare("UPDATE veiculo_checklist SET presente = ?, observacao = ?, atualizado_em = datetime('now') WHERE id = ?")
+      .run(presente ? 1 : 0, observacao || null, existente.id);
+  } else {
+    db.prepare('INSERT INTO veiculo_checklist (empresa_id, veiculo_id, item_id, presente, observacao) VALUES (?, ?, ?, ?, ?)')
+      .run(req.empresaId, req.params.veiculoId, req.params.itemId, presente ? 1 : 0, observacao || null);
+  }
+
+  const depois = db.prepare('SELECT * FROM checklist_vistoria_itens WHERE id = ?').get(antes.id);
+  registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'checklist_vistoria_itens', registroId: depois.id, acao: 'UPDATE', antes, depois });
+  res.json(depois);
+}));
+
 module.exports = router;
