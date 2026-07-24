@@ -88,7 +88,11 @@ export async function api(method, path, body) {
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
-  if (res.status === 401) {
+  // So trata 401 como "sessao expirada" para chamadas ja autenticadas. O
+  // proprio /auth/login devolve 401 para credenciais erradas - interceptar
+  // esse caso aqui mascarava a mensagem real ("Usuario ou senha invalidos")
+  // com "Sessao expirada", deixando o usuario sem saber o motivo de verdade.
+  if (res.status === 401 && path !== '/auth/login') {
     limparSessao();
     window.location.hash = '#/login';
     throw new ApiError(401, 'Sessao expirada. Faca login novamente.');

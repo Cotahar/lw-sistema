@@ -24,14 +24,72 @@ const TABELAS_OPERACIONAIS = [
   'fornecedores', 'motoristas', 'veiculos', 'conjuntos', 'conjunto_itens',
   'estoque_itens', 'estoque_movimentacoes', 'pneus', 'pneu_eventos',
   'ordens_servico', 'os_itens', 'alertas_regras', 'alertas_ocorrencias',
-  'veiculo_checklist', 'veiculo_checklist_fotos', 'viagens',
-  'hodometro_eventos', 'localizacao_eventos', 'fretes', 'viagem_adiantamentos',
+  'veiculo_checklist', 'viagens',
+  'hodometro_eventos', 'fretes',
   'centros_custo', 'despesas_viagem', 'despesas_fixas', 'financiamentos',
   'financiamento_parcelas', 'contas_bancarias', 'contas_pagar', 'contas_receber',
   'contas_receber_baixas', 'movimentacoes_caixa', 'acertos_viagem',
-  'motorista_conta_corrente_lancamentos', 'ocorrencias', 'importacoes_drivvo',
+  'motorista_conta_corrente_lancamentos', 'importacoes_drivvo',
   'logs_auditoria',
 ];
+
+// Tabelas que ja nasceram DEPOIS do conceito de empresa existir (schema.sql
+// ja define empresa_id NOT NULL nelas nativamente) - em vez de ALTER TABLE
+// ADD COLUMN (que quebraria por causa do NOT NULL sem default numa tabela
+// que pode nem existir ainda), so garantimos que a tabela existe. Nao
+// precisam de backfill: nunca existiu uma linha nelas antes do multi-tenant.
+const DDL_TABELAS_NOVAS = `
+  CREATE TABLE IF NOT EXISTS veiculo_checklist_fotos (
+      id              INTEGER PRIMARY KEY,
+      empresa_id      INTEGER NOT NULL REFERENCES empresas(id),
+      veiculo_id      INTEGER NOT NULL REFERENCES veiculos(id),
+      item_id         INTEGER REFERENCES checklist_itens_catalogo(id),
+      momento         TEXT NOT NULL CHECK (momento IN ('Recebimento', 'Entrega')),
+      arquivo         TEXT NOT NULL,
+      criado_por      INTEGER REFERENCES usuarios(id),
+      criado_em       TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_checklist_fotos_veiculo ON veiculo_checklist_fotos(veiculo_id, momento);
+
+  CREATE TABLE IF NOT EXISTS localizacao_eventos (
+      id              INTEGER PRIMARY KEY,
+      empresa_id      INTEGER NOT NULL REFERENCES empresas(id),
+      veiculo_id      INTEGER NOT NULL REFERENCES veiculos(id),
+      cidade          TEXT NOT NULL,
+      uf              TEXT NOT NULL,
+      latitude        REAL,
+      longitude       REAL,
+      origem          TEXT NOT NULL CHECK (origem IN ('Onixsat', 'Manual')),
+      usuario_id      INTEGER REFERENCES usuarios(id),
+      data_hora       TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
+      observacao      TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_localizacao_eventos_veiculo ON localizacao_eventos(veiculo_id, data_hora);
+
+  CREATE TABLE IF NOT EXISTS viagem_adiantamentos (
+      id                  INTEGER PRIMARY KEY,
+      empresa_id          INTEGER NOT NULL REFERENCES empresas(id),
+      viagem_id           INTEGER NOT NULL REFERENCES viagens(id) ON DELETE CASCADE,
+      valor               INTEGER NOT NULL,
+      data                TEXT NOT NULL DEFAULT (date('now', '-3 hours')),
+      conta_bancaria_id   INTEGER REFERENCES contas_bancarias(id),
+      descricao           TEXT,
+      criado_por          INTEGER REFERENCES usuarios(id),
+      criado_em           TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_viagem_adiantamentos_viagem ON viagem_adiantamentos(viagem_id);
+
+  CREATE TABLE IF NOT EXISTS ocorrencias (
+      id              INTEGER PRIMARY KEY,
+      empresa_id      INTEGER NOT NULL REFERENCES empresas(id),
+      entidade_tipo   TEXT NOT NULL CHECK (entidade_tipo IN ('Viagem', 'Frete', 'DespesaViagem', 'ContaPagar', 'ContaReceber', 'AcertoViagem', 'Multa')),
+      entidade_id     INTEGER NOT NULL,
+      texto           TEXT NOT NULL,
+      criado_por      INTEGER REFERENCES usuarios(id),
+      criado_em       TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_ocorrencias_entidade ON ocorrencias(entidade_tipo, entidade_id);
+`;
 
 const TABELAS_COM_INDICE = [
   'viagens', 'contas_pagar', 'contas_receber', 'fretes', 'despesas_viagem',
@@ -61,6 +119,9 @@ try {
     );
   `);
   console.log('Tabela usuario_empresas garantida.');
+
+  db.exec(DDL_TABELAS_NOVAS);
+  console.log('Tabelas novas (checklist_fotos, localizacao_eventos, viagem_adiantamentos, ocorrencias) garantidas.');
 
   for (const tabela of TABELAS_OPERACIONAIS) {
     const colunas = db.prepare(`PRAGMA table_info(${tabela})`).all();
