@@ -2,7 +2,7 @@ import { get, authHeaders } from '../../api.js';
 import { navegar } from '../../router.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { mostrarToast, mostrarErro } from '../../components/toast.js';
-import { attachMoedaMask, getMoedaValue, attachDataMask, parseDataBrParaIso, hojeIsoLocal } from '../../masks.js';
+import { attachMoedaMask, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso, hojeIsoLocal } from '../../masks.js';
 import { comprimirImagem } from '../../imageCompress.js';
 import { adicionarPendente, registrarSyncBackground } from './offlineQueue.js';
 
@@ -22,17 +22,19 @@ async function buscarPostos(termo) {
 
 // Mesmo auto-calculo do formulario de despesa do escritorio (viagemDetalhe.js):
 // com 2 dos 3 campos preenchidos, calcula o terceiro. Nunca sobrescreve um
-// campo que ja tenha valor digitado.
+// campo que ja tenha valor digitado. preco/valor sao sempre CENTAVOS (ver
+// getMoedaValue) - preco*litragem ja da o valor certo em centavos direto,
+// sem multiplicar por 100 de novo (bug anterior fazia isso, gerando valor
+// 100x maior - ex.: preco 7,28 x litragem 100 virava 72.800,00 em vez de
+// 728,00). setMoedaValue formata com separador de milhar automaticamente
+// (Intl/toLocaleString), diferente do toFixed(2) manual que ficava sem.
 function recalcularTrio(formPreco, formLitragem, formValor) {
   const valor = getMoedaValue(formValor);
   const preco = getMoedaValue(formPreco);
   const litragem = formLitragem.value ? Number(formLitragem.value) : 0;
-  if (valor > 0 && litragem > 0 && preco === 0) formPreco.value = (valor / litragem / 100).toFixed(3);
-  else if (valor > 0 && preco > 0 && litragem === 0) formLitragem.value = (valor / (preco * 100)).toFixed(2);
-  else if (preco > 0 && litragem > 0 && valor === 0) {
-    const centavos = Math.round(preco * 100 * litragem);
-    formValor.value = (centavos / 100).toFixed(2).replace('.', ',');
-  }
+  if (valor > 0 && litragem > 0 && preco === 0) setMoedaValue(formPreco, Math.round(valor / litragem));
+  else if (valor > 0 && preco > 0 && litragem === 0) formLitragem.value = (valor / preco).toFixed(2);
+  else if (preco > 0 && litragem > 0 && valor === 0) setMoedaValue(formValor, Math.round(preco * litragem));
 }
 
 export async function render(appEl) {
@@ -97,6 +99,16 @@ export async function render(appEl) {
   attachMoedaMask(form.arla_valor, 0);
   attachDataMask(form.data);
   form.data.value = new Date(hojeIsoLocal()).toLocaleDateString('pt-BR');
+
+  // KM sugerido a partir do hodometro ao vivo (Onixsat) - o motorista quase
+  // sempre lanca o abastecimento no ato, entao isso evita digitar de novo um
+  // numero que o rastreador ja sabe. Continua editavel (o rastreador pode
+  // estar desatualizado ou o veiculo pode ter ficado sem sinal).
+  get('/motorista/viagem-atual').then(({ viagem }) => {
+    if (viagem && viagem.hodometro_atual != null) {
+      form.km_abastecimento.value = viagem.hodometro_atual;
+    }
+  }).catch(() => {});
 
   const postoSelect = criarSearchableSelect({ buscar: buscarPostos, placeholder: 'Pesquisar posto...' });
   form.querySelector('[data-posto-select]').appendChild(postoSelect.el);
