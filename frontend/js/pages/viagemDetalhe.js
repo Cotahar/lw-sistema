@@ -223,16 +223,27 @@ async function abrirBaixasFrete(frete, recarregar, gerenciar) {
 
 // ---- Despesas ----
 
-// Abastecimento e Arla usam o mesmo padrao de auto-calculo (2 dos 3 campos
-// preenchidos calculam o terceiro): preco x litragem = valor. Isolado aqui
-// pra nao duplicar a logica entre diesel e arla.
-function recalcularTrio(formPreco, formLitragem, formValor) {
+// Abastecimento e Arla usam o mesmo padrao de auto-calculo: preco x
+// litragem = valor. Isolado aqui pra nao duplicar a logica entre diesel e
+// arla. Sempre baseado em qual campo esta sendo digitado NESTE instante
+// (campoEditado), nunca em "esse campo esta zerado?" - checar zero quebra
+// digitando litragem char a char (ex.: "100"): no primeiro digito ("1") ja
+// calculava um valor parcial e o campo de valor deixava de estar zerado,
+// entao os digitos seguintes (0, 0) paravam de recalcular nada (o valor
+// ficava travado no resultado parcial, ex.: preco 7,28 x "1" = 7,28 em vez
+// de esperar o "100" completo pra dar 728,00). Editar preco ou litragem
+// sempre recalcula valor; editar valor direto recalcula o que faltar.
+function recalcularTrio(formPreco, formLitragem, formValor, campoEditado) {
   const valor = getMoedaValue(formValor);
   const preco = getMoedaValue(formPreco);
   const litragem = formLitragem.value ? Number(formLitragem.value) : 0;
-  if (valor > 0 && litragem > 0 && preco === 0) setMoedaValue(formPreco, Math.round(valor / litragem));
-  else if (valor > 0 && preco > 0 && litragem === 0) formLitragem.value = (valor / preco).toFixed(2);
-  else if (preco > 0 && litragem > 0 && valor === 0) setMoedaValue(formValor, Math.round(preco * litragem));
+
+  if (campoEditado === formValor) {
+    if (preco > 0 && litragem === 0) formLitragem.value = (valor / preco).toFixed(2);
+    else if (litragem > 0 && preco === 0) setMoedaValue(formPreco, Math.round(valor / litragem));
+  } else if (litragem > 0 && preco > 0) {
+    setMoedaValue(formValor, Math.round(preco * litragem));
+  }
 }
 
 async function abrirNovaDespesa(viagemId, recarregar) {
@@ -354,22 +365,22 @@ async function abrirNovaDespesa(viagemId, recarregar) {
     const total = getMoedaValue(form.valor) + getMoedaValue(form.arla_valor);
     form.querySelector('[data-total-despesa]').textContent = `Total desta despesa (diesel + arla): ${formatarMoeda(total)}`;
   }
-  function recalcularDiesel() {
+  function recalcularDiesel(campoEditado) {
     if (!categoriaEhAbastecimento()) return;
-    recalcularTrio(form.preco_litro, form.litragem, form.valor);
+    recalcularTrio(form.preco_litro, form.litragem, form.valor, campoEditado);
     atualizarTotalDespesa();
   }
-  function recalcularArla() {
+  function recalcularArla(campoEditado) {
     if (!categoriaEhAbastecimento()) return;
-    recalcularTrio(form.arla_preco, form.arla_qtd, form.arla_valor);
+    recalcularTrio(form.arla_preco, form.arla_qtd, form.arla_valor, campoEditado);
     atualizarTotalDespesa();
   }
-  form.valor.addEventListener('input', recalcularDiesel);
-  form.preco_litro.addEventListener('input', recalcularDiesel);
-  form.litragem.addEventListener('input', recalcularDiesel);
-  form.arla_valor.addEventListener('input', recalcularArla);
-  form.arla_preco.addEventListener('input', recalcularArla);
-  form.arla_qtd.addEventListener('input', recalcularArla);
+  form.valor.addEventListener('input', () => recalcularDiesel(form.valor));
+  form.preco_litro.addEventListener('input', () => recalcularDiesel(form.preco_litro));
+  form.litragem.addEventListener('input', () => recalcularDiesel(form.litragem));
+  form.arla_valor.addEventListener('input', () => recalcularArla(form.arla_valor));
+  form.arla_preco.addEventListener('input', () => recalcularArla(form.arla_preco));
+  form.arla_qtd.addEventListener('input', () => recalcularArla(form.arla_qtd));
 
   const erro = form.querySelector('[data-erro]');
   const divergenciaEl = form.querySelector('[data-divergencia]');

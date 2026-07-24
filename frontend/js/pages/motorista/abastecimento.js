@@ -20,21 +20,30 @@ async function buscarPostos(termo) {
   return todos.filter((f) => f.tipo_id === tipoId).map((f) => ({ value: f.id, label: f.nome }));
 }
 
-// Mesmo auto-calculo do formulario de despesa do escritorio (viagemDetalhe.js):
-// com 2 dos 3 campos preenchidos, calcula o terceiro. Nunca sobrescreve um
-// campo que ja tenha valor digitado. preco/valor sao sempre CENTAVOS (ver
-// getMoedaValue) - preco*litragem ja da o valor certo em centavos direto,
-// sem multiplicar por 100 de novo (bug anterior fazia isso, gerando valor
-// 100x maior - ex.: preco 7,28 x litragem 100 virava 72.800,00 em vez de
-// 728,00). setMoedaValue formata com separador de milhar automaticamente
-// (Intl/toLocaleString), diferente do toFixed(2) manual que ficava sem.
-function recalcularTrio(formPreco, formLitragem, formValor) {
+// Auto-calculo do trio preco/litragem/valor - sempre baseado em qual campo
+// o motorista esta digitando NESTE exato instante (campoEditado), nunca em
+// "esse campo esta zerado?". A versao anterior (copiada do formulario do
+// escritorio) checava se o campo alvo estava com valor 0 pra decidir se
+// recalculava - isso quebra digitando litragem char a char: no primeiro
+// digito (ex.: "1" de "100") ja calculava um valor parcial e "travava" o
+// campo de valor, porque ele deixava de estar zerado - os digitos
+// seguintes (0, 0) paravam de recalcular nada. Editar preco ou litragem
+// sempre recalcula valor (o motorista digita os dois primeiro, o valor e
+// a conta); editar valor direto recalcula o que faltar (preco OU
+// litragem, o que ja estiver preenchido decide qual). preco/valor sao
+// sempre CENTAVOS (ver getMoedaValue) - preco*litragem ja da o valor certo
+// em centavos direto, sem multiplicar por 100 de novo.
+function recalcularTrio(formPreco, formLitragem, formValor, campoEditado) {
   const valor = getMoedaValue(formValor);
   const preco = getMoedaValue(formPreco);
   const litragem = formLitragem.value ? Number(formLitragem.value) : 0;
-  if (valor > 0 && litragem > 0 && preco === 0) setMoedaValue(formPreco, Math.round(valor / litragem));
-  else if (valor > 0 && preco > 0 && litragem === 0) formLitragem.value = (valor / preco).toFixed(2);
-  else if (preco > 0 && litragem > 0 && valor === 0) setMoedaValue(formValor, Math.round(preco * litragem));
+
+  if (campoEditado === formValor) {
+    if (preco > 0 && litragem === 0) formLitragem.value = (valor / preco).toFixed(2);
+    else if (litragem > 0 && preco === 0) setMoedaValue(formPreco, Math.round(valor / litragem));
+  } else if (litragem > 0 && preco > 0) {
+    setMoedaValue(formValor, Math.round(preco * litragem));
+  }
 }
 
 export async function render(appEl) {
@@ -113,12 +122,12 @@ export async function render(appEl) {
   const postoSelect = criarSearchableSelect({ buscar: buscarPostos, placeholder: 'Pesquisar posto...' });
   form.querySelector('[data-posto-select]').appendChild(postoSelect.el);
 
-  form.valor.addEventListener('input', () => recalcularTrio(form.preco_litro, form.litragem, form.valor));
-  form.preco_litro.addEventListener('input', () => recalcularTrio(form.preco_litro, form.litragem, form.valor));
-  form.litragem.addEventListener('input', () => recalcularTrio(form.preco_litro, form.litragem, form.valor));
-  form.arla_valor.addEventListener('input', () => recalcularTrio(form.arla_preco, form.arla_qtd, form.arla_valor));
-  form.arla_preco.addEventListener('input', () => recalcularTrio(form.arla_preco, form.arla_qtd, form.arla_valor));
-  form.arla_qtd.addEventListener('input', () => recalcularTrio(form.arla_preco, form.arla_qtd, form.arla_valor));
+  form.valor.addEventListener('input', () => recalcularTrio(form.preco_litro, form.litragem, form.valor, form.valor));
+  form.preco_litro.addEventListener('input', () => recalcularTrio(form.preco_litro, form.litragem, form.valor, form.preco_litro));
+  form.litragem.addEventListener('input', () => recalcularTrio(form.preco_litro, form.litragem, form.valor, form.litragem));
+  form.arla_valor.addEventListener('input', () => recalcularTrio(form.arla_preco, form.arla_qtd, form.arla_valor, form.arla_valor));
+  form.arla_preco.addEventListener('input', () => recalcularTrio(form.arla_preco, form.arla_qtd, form.arla_valor, form.arla_preco));
+  form.arla_qtd.addEventListener('input', () => recalcularTrio(form.arla_preco, form.arla_qtd, form.arla_valor, form.arla_qtd));
 
   // Arla pode ser comprado em galao (1 galao = 20L): o preco/litragem digitados
   // continuam representando o que esta na nota, so a conversao pro backend
