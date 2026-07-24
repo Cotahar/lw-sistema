@@ -31,7 +31,7 @@ export function criarDataTable({
       </div>
     </div>
     <div class="overflow-x-auto">
-      <table class="w-full min-w-max border-collapse">
+      <table class="w-full border-collapse">
         <thead class="bg-brand-black">
           <tr>
             ${temSelecao ? '<th class="table-th w-8"><input type="checkbox" data-marcar-todos /></th>' : ''}

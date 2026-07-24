@@ -169,7 +169,7 @@ export async function render(container, params, query) {
     <div class="card mb-4 grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
       <div>
         <label class="label">Status</label>
-        <select class="input" data-filtro-status>${STATUS_OPCOES.map((o) => `<option value="${o.value}">${o.label}</option>`).join('')}</select>
+        <select class="input" data-filtro-status>${STATUS_OPCOES.map((o) => `<option value="${o.value}" ${o.value === 'Pendente' ? 'selected' : ''}>${o.label}</option>`).join('')}</select>
       </div>
       <div><label class="label">Categoria</label><select class="input" data-filtro-categoria><option value="">Todas</option></select></div>
       <div><label class="label">Veiculo</label><div data-filtro-veiculo></div></div>

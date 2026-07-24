@@ -9,8 +9,8 @@ const { registrarAuditoria } = require('../utils/audit');
 const { withTransaction } = require('../utils/transaction');
 const { verificarAlertasDoVeiculo } = require('../utils/alertaEngine');
 const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
-const { hojeIsoBrasilia } = require('../utils/dataHora');
-const { criarDespesaViagem } = require('../utils/despesaViagemHelper');
+const { hojeIsoBrasilia, agoraDataHoraIsoBrasilia } = require('../utils/dataHora');
+const { criarDespesaViagem, criarContaPagarCombinada } = require('../utils/despesaViagemHelper');
 
 const router = express.Router();
 
@@ -514,6 +514,48 @@ router.delete('/despesas/:despesaId', requerAcessoModulo('viagens', 'Gerenciar')
   });
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'despesas_viagem', registroId: antes.id, acao: 'DELETE', antes });
   res.status(204).send();
+}));
+
+// Valida uma despesa lancada pelo app do motorista (validado_em nulo).
+// Despesas "Assinar nota" so ganham a Conta a Pagar aqui, porque so agora o
+// vencimento real (informado pelo posto na fatura, nao pelo motorista) e
+// conhecido - ver despesaViagemHelper.js. Despesas "Imediato" (ou lancadas
+// pelo escritorio) ja tem a conta a pagar desde a criacao; validar aqui so
+// confirma a revisao, sem pedir nada a mais.
+router.patch('/despesas/:despesaId/validar', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const despesa = db.prepare('SELECT * FROM despesas_viagem WHERE id = ? AND empresa_id = ?').get(req.params.despesaId, req.empresaId);
+  if (!despesa) throw new ApiError(404, 'Despesa nao encontrada.');
+  if (despesa.validado_em) throw new ApiError(400, 'Despesa ja foi validada.');
+
+  const { data_vencimento } = req.body;
+  const precisaContaPagar = (despesa.pago_por === 'Empresa' || despesa.pago_por === 'AdminOutros') && !despesa.contas_pagar_id;
+
+  if (precisaContaPagar && despesa.forma_pagamento_posto === 'AssinarNota' && !data_vencimento) {
+    throw new ApiError(400, 'Informe a data de vencimento para validar uma despesa "Assinar nota".');
+  }
+
+  const arlaDespesa = despesa.despesa_arla_id
+    ? db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(despesa.despesa_arla_id)
+    : null;
+
+  withTransaction(db, () => {
+    if (precisaContaPagar) {
+      criarContaPagarCombinada({
+        empresaId: req.empresaId, viagemId: despesa.viagem_id, despesa, arlaDespesa, categoriaId: despesa.categoria_id,
+        pagoPor: despesa.pago_por, pagoPorUsuarioId: despesa.pago_por_usuario_id, postoFornecedorId: despesa.posto_fornecedor_id,
+        dataVencimento: data_vencimento, data: despesa.data,
+      });
+    }
+    const agora = agoraDataHoraIsoBrasilia();
+    db.prepare('UPDATE despesas_viagem SET validado_por = ?, validado_em = ? WHERE id = ?').run(req.usuario.id, agora, despesa.id);
+    if (arlaDespesa) {
+      db.prepare('UPDATE despesas_viagem SET validado_por = ?, validado_em = ? WHERE id = ?').run(req.usuario.id, agora, arlaDespesa.id);
+    }
+  });
+
+  const depois = db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(despesa.id);
+  registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'despesas_viagem', registroId: despesa.id, acao: 'UPDATE', antes: despesa, depois });
+  res.json(depois);
 }));
 
 module.exports = router;

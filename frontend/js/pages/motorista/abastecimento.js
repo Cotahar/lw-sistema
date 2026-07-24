@@ -46,7 +46,7 @@ export async function render(appEl) {
       </header>
       <main class="p-4">
         <form class="card space-y-4 p-4" data-form>
-          <div><label class="label">Valor total *</label><input type="text" name="valor" class="input" required inputmode="decimal" /></div>
+          <div><label class="label">Valor total (diesel) *</label><input type="text" name="valor" class="input" required inputmode="decimal" /></div>
           <div><label class="label">Data</label><input type="text" name="data" class="input" placeholder="DD/MM/AAAA" /></div>
           <div class="grid grid-cols-2 gap-3">
             <div><label class="label">Preco/Litro</label><input type="text" name="preco_litro" class="input" inputmode="decimal" /></div>
@@ -54,6 +54,27 @@ export async function render(appEl) {
           </div>
           <div><label class="label">KM no abastecimento</label><input type="number" name="km_abastecimento" class="input" /></div>
           <div><label class="label">Posto</label><div data-posto-select></div></div>
+
+          <div>
+            <label class="label">Como foi pago? *</label>
+            <select name="forma_pagamento_posto" class="input" required>
+              <option value="Imediato">Pago no ato</option>
+              <option value="AssinarNota">Assinar nota (posto fatura depois)</option>
+            </select>
+          </div>
+
+          <details class="rounded-lg border border-slate-200 p-3" data-arla-bloco>
+            <summary class="cursor-pointer text-sm font-medium text-slate-700">+ Arla (opcional)</summary>
+            <div class="mt-3 space-y-3">
+              <div><label class="label">Unidade</label><select name="arla_unidade" class="input"><option value="Litro">Litro</option><option value="Galao">Galao (20L)</option></select></div>
+              <div class="grid grid-cols-2 gap-3">
+                <div><label class="label" data-label-arla-preco>Preco/Litro (Arla)</label><input type="text" name="arla_preco" class="input" inputmode="decimal" /></div>
+                <div><label class="label" data-label-arla-qtd>Litragem (Arla)</label><input type="number" step="0.01" name="arla_qtd" class="input" /></div>
+              </div>
+              <div><label class="label">Valor Arla</label><input type="text" name="arla_valor" class="input" inputmode="decimal" /></div>
+            </div>
+          </details>
+
           <div>
             <label class="label">Foto da nota/cupom *</label>
             <input type="file" accept="image/*" capture="environment" class="hidden" data-input-foto />
@@ -72,6 +93,8 @@ export async function render(appEl) {
   const form = appEl.querySelector('[data-form]');
   attachMoedaMask(form.valor, 0);
   attachMoedaMask(form.preco_litro, 0);
+  attachMoedaMask(form.arla_preco, 0);
+  attachMoedaMask(form.arla_valor, 0);
   attachDataMask(form.data);
   form.data.value = new Date(hojeIsoLocal()).toLocaleDateString('pt-BR');
 
@@ -81,6 +104,18 @@ export async function render(appEl) {
   form.valor.addEventListener('input', () => recalcularTrio(form.preco_litro, form.litragem, form.valor));
   form.preco_litro.addEventListener('input', () => recalcularTrio(form.preco_litro, form.litragem, form.valor));
   form.litragem.addEventListener('input', () => recalcularTrio(form.preco_litro, form.litragem, form.valor));
+  form.arla_valor.addEventListener('input', () => recalcularTrio(form.arla_preco, form.arla_qtd, form.arla_valor));
+  form.arla_preco.addEventListener('input', () => recalcularTrio(form.arla_preco, form.arla_qtd, form.arla_valor));
+  form.arla_qtd.addEventListener('input', () => recalcularTrio(form.arla_preco, form.arla_qtd, form.arla_valor));
+
+  // Arla pode ser comprado em galao (1 galao = 20L): o preco/litragem digitados
+  // continuam representando o que esta na nota, so a conversao pro backend
+  // (sempre em litros) muda - ver montarArlaPayload.
+  form.arla_unidade.addEventListener('change', () => {
+    const emGalao = form.arla_unidade.value === 'Galao';
+    form.querySelector('[data-label-arla-preco]').textContent = emGalao ? 'Preco/Galao (Arla)' : 'Preco/Litro (Arla)';
+    form.querySelector('[data-label-arla-qtd]').textContent = emGalao ? 'Quantidade (galoes)' : 'Litragem (Arla)';
+  });
 
   let fotoBlob = null;
   const inputFoto = form.querySelector('[data-input-foto]');
@@ -93,6 +128,19 @@ export async function render(appEl) {
     previewFoto.src = URL.createObjectURL(fotoBlob);
     previewFoto.classList.remove('hidden');
   });
+
+  function montarArlaPayload() {
+    const valor = getMoedaValue(form.arla_valor);
+    if (!valor) return null;
+    const emGalao = form.arla_unidade.value === 'Galao';
+    const qtd = form.arla_qtd.value ? Number(form.arla_qtd.value) : 0;
+    const litragem = emGalao ? qtd * 20 : qtd;
+    return {
+      valor,
+      litragem: litragem > 0 ? litragem : null,
+      preco_litro: litragem > 0 ? Math.round(valor / litragem) : null,
+    };
+  }
 
   const erro = form.querySelector('[data-erro]');
   form.addEventListener('submit', async (ev) => {
@@ -110,6 +158,7 @@ export async function render(appEl) {
       return;
     }
 
+    const arla = montarArlaPayload();
     const payload = {
       valor,
       data: form.data.value ? parseDataBrParaIso(form.data.value) : null,
@@ -117,6 +166,10 @@ export async function render(appEl) {
       litragem: form.litragem.value ? Number(form.litragem.value) : null,
       km_abastecimento: form.km_abastecimento.value ? Number(form.km_abastecimento.value) : null,
       posto_fornecedor_id: postoSelect.getValue(),
+      forma_pagamento_posto: form.forma_pagamento_posto.value,
+      arla_valor: arla ? arla.valor : null,
+      arla_preco_litro: arla ? arla.preco_litro : null,
+      arla_litragem: arla ? arla.litragem : null,
     };
 
     const botao = form.querySelector('button[type="submit"]');

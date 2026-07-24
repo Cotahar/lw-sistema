@@ -9,6 +9,7 @@ const { registrarAuditoria } = require('../utils/audit');
 const { withTransaction } = require('../utils/transaction');
 const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 const { parseDrivvoCsv, paraCentavos, paraDataIso, chaveExterna } = require('../utils/drivvoParser');
+const { agoraDataHoraIsoBrasilia } = require('../utils/dataHora');
 
 const router = express.Router();
 router.use(exigirEmpresaEspecifica);
@@ -56,16 +57,19 @@ function buscarOuCriarCategoria(nome) {
 
 // Espelha o que POST /viagens/:id/despesas faz (centro de custo da tratora +
 // Conta a Pagar quando pago_por='Empresa') - o import do Drivvo so lanca
-// despesas pagas pela empresa, entao sempre gera a conta a pagar.
+// despesas pagas pela empresa, entao sempre gera a conta a pagar. Nasce ja
+// validada (validado_por/validado_em preenchidos) - e um lancamento do
+// escritorio via importacao, nao do app do motorista, entao nunca cai na
+// fila de "pendente de validacao" (ver despesaViagemHelper.js).
 function lancarDespesaViagem(viagem, categoria, valorCentavos, dataIso, extras = {}, usuarioId = null, empresaId) {
   const tratora = buscarUnidadeTratora(viagem.conjunto_id);
   const centroCusto = tratora ? buscarCentroCustoDoVeiculo(tratora.id) : null;
   if (!centroCusto) throw new ApiError(400, `Nao foi possivel resolver o centro de custo da viagem #${viagem.id}.`);
 
   const info = db.prepare(`
-    INSERT INTO despesas_viagem (empresa_id, viagem_id, centro_custo_id, categoria_id, valor, data, pago_por, posto_fornecedor_id, litragem, preco_litro, descricao, criado_por)
-    VALUES (?, ?, ?, ?, ?, ?, 'Empresa', ?, ?, ?, ?, ?)
-  `).run(empresaId, viagem.id, centroCusto.id, categoria.id, valorCentavos, dataIso, extras.postoFornecedorId || null, extras.litragem || null, extras.precoLitro || null, extras.descricao || null, usuarioId);
+    INSERT INTO despesas_viagem (empresa_id, viagem_id, centro_custo_id, categoria_id, valor, data, pago_por, posto_fornecedor_id, litragem, preco_litro, descricao, criado_por, validado_por, validado_em)
+    VALUES (?, ?, ?, ?, ?, ?, 'Empresa', ?, ?, ?, ?, ?, ?, ?)
+  `).run(empresaId, viagem.id, centroCusto.id, categoria.id, valorCentavos, dataIso, extras.postoFornecedorId || null, extras.litragem || null, extras.precoLitro || null, extras.descricao || null, usuarioId, usuarioId, agoraDataHoraIsoBrasilia());
   const despesa = db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(info.lastInsertRowid);
 
   db.prepare(`

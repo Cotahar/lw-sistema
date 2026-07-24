@@ -6,6 +6,13 @@ import { formatarMoeda, formatarDataBr, hojeIsoLocal, attachDataMask, parseDataB
 import { criarOcorrencias } from '../../components/ocorrencias.js';
 
 const STATUS_BADGE = { Pendente: 'bg-amber-100 text-amber-700', Parcial: 'bg-amber-100 text-amber-700', Recebido: 'bg-emerald-100 text-emerald-700', Atrasado: 'bg-red-100 text-red-700' };
+const STATUS_OPCOES = [
+  { value: '', label: 'Todos' },
+  { value: 'Pendente', label: 'Pendente' },
+  { value: 'Parcial', label: 'Parcial' },
+  { value: 'Recebido', label: 'Recebido' },
+  { value: 'Atrasado', label: 'Atrasado' },
+];
 
 function saldoEmAberto(r) {
   return r.valor - r.valor_recebido - r.valor_descontado;
@@ -54,6 +61,10 @@ export async function render(container) {
     <h1 class="mb-4 text-xl font-bold text-slate-900">Saldos de Frete (Contas a Receber)</h1>
     <div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3" data-resumo></div>
     <div class="card mb-4 grid grid-cols-2 gap-3 p-4 lg:grid-cols-4">
+      <div>
+        <label class="label">Status</label>
+        <select class="input" data-filtro-status>${STATUS_OPCOES.map((o) => `<option value="${o.value}" ${o.value === 'Pendente' ? 'selected' : ''}>${o.label}</option>`).join('')}</select>
+      </div>
       <div><label class="label">Previsto de</label><input type="text" class="input" data-filtro-venc-de placeholder="dd/mm/aaaa" /></div>
       <div><label class="label">Previsto ate</label><input type="text" class="input" data-filtro-venc-ate placeholder="dd/mm/aaaa" /></div>
       <div><label class="label">Cadastro de</label><input type="text" class="input" data-filtro-cad-de placeholder="dd/mm/aaaa" /></div>
@@ -69,6 +80,7 @@ export async function render(container) {
   // comentario de badgePrazo acima. Filtrar por vencimento ate hoje por
   // padrao esconderia justamente os saldos futuros que o usuario pediu pra
   // sempre aparecer.
+  const selectStatus = container.querySelector('[data-filtro-status]');
   const inputVencDe = container.querySelector('[data-filtro-venc-de]');
   const inputVencAte = container.querySelector('[data-filtro-venc-ate]');
   const inputCadDe = container.querySelector('[data-filtro-cad-de]');
@@ -77,6 +89,7 @@ export async function render(container) {
     attachDataMask(input);
     input.addEventListener('change', () => tabela.recarregar());
   }
+  selectStatus.addEventListener('change', () => tabela.recarregar());
 
   const tabela = criarDataTable({
     colunas: [
@@ -91,6 +104,7 @@ export async function render(container) {
     ordenacaoInicial: { chave: 'data_prevista', direcao: 'asc' },
     buscarDados: async () => {
       const params = new URLSearchParams();
+      if (selectStatus.value) params.set('status', selectStatus.value);
       if (inputVencDe.value) params.set('data_vencimento_de', parseDataBrParaIso(inputVencDe.value));
       if (inputVencAte.value) params.set('data_vencimento_ate', parseDataBrParaIso(inputVencAte.value));
       if (inputCadDe.value) params.set('data_cadastro_de', parseDataBrParaIso(inputCadDe.value));

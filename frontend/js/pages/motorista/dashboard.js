@@ -3,10 +3,14 @@ import { navegar } from '../../router.js';
 import { formatarDataBr, formatarMoeda } from '../../masks.js';
 import { listarPendentes, tentarSincronizarTodos } from './offlineQueue.js';
 
+function formatarKmL(valor) {
+  return valor != null ? `${valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km/l` : '-';
+}
+
 export async function render(appEl) {
   const usuario = getUsuario();
   appEl.innerHTML = `
-    <div class="min-h-screen bg-brand-light">
+    <div class="min-h-screen bg-brand-light pb-6">
       <header class="flex items-center justify-between bg-brand-black px-4 py-3 text-white">
         <div>
           <p class="text-lg font-bold leading-tight">Frottex</p>
@@ -43,20 +47,71 @@ async function renderizarViagem(conteudo) {
       ${viagem ? `
         <div class="card p-4">
           <p class="text-xs font-medium uppercase text-slate-500">Viagem atual</p>
-          <p class="text-lg font-bold text-brand-black">${viagem.placas.join(' + ')}</p>
-          <p class="text-sm text-slate-500">Inicio em ${formatarDataBr(viagem.data_inicio)}</p>
-          <dl class="mt-3 grid grid-cols-2 gap-3 text-sm">
+          <p class="text-2xl font-bold leading-tight text-brand-black">${viagem.motorista_nome || ''}</p>
+          <p class="text-sm text-slate-500">Inicio em ${formatarDataBr(viagem.data_inicio)} - ${viagem.dias_fora} dia(s) fora</p>
+          <p class="text-xs text-slate-400">${viagem.placas.join(' + ')}</p>
+
+          <button type="button" data-ver-fretes class="mt-3 w-full rounded-lg border border-slate-200 p-3 text-left hover:bg-slate-50">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-medium uppercase text-slate-500">Faturamento (liquido)</span>
+              <span class="text-xs font-medium text-brand-black">Ver fretes &rsaquo;</span>
+            </div>
+            <p class="text-xl font-bold text-brand-black">${formatarMoeda(viagem.faturamento_liquido)}</p>
+          </button>
+
+          <dl class="mt-3 grid grid-cols-2 gap-x-3 gap-y-3 text-sm">
+            <div>
+              <dt class="text-slate-500">Media rastreador</dt>
+              <dd class="font-medium text-slate-900">${formatarKmL(viagem.media_telemetria_km_l)}</dd>
+              <dd class="text-[11px] text-slate-400">via Onixsat</dd>
+            </div>
+            <div>
+              <dt class="text-slate-500">Media abastecimentos</dt>
+              <dd class="font-medium text-slate-900">
+                ${formatarKmL(viagem.media_abastecimentos_km_l)}${viagem.percentual_comissao != null ? ` &rarr; ${viagem.percentual_comissao}%` : ''}
+              </dd>
+              <dd class="text-[11px] text-slate-400">lancado pelo motorista - usada na comissao</dd>
+            </div>
+            <div>
+              <dt class="text-slate-500">Adiantamentos</dt>
+              <dd class="font-medium text-slate-900">${formatarMoeda(viagem.adiantamentos_total)}</dd>
+            </div>
+            <div>
+              <dt class="text-slate-500">Comissao estimada</dt>
+              <dd class="font-medium text-slate-900">${viagem.comissao_estimada != null ? formatarMoeda(viagem.comissao_estimada) : '-'}</dd>
+            </div>
             <div><dt class="text-slate-500">Hodometro</dt><dd class="font-medium text-slate-900">${viagem.hodometro_atual != null ? `${viagem.hodometro_atual.toLocaleString('pt-BR')} km` : '-'}</dd></div>
             <div><dt class="text-slate-500">Localizacao</dt><dd class="font-medium text-slate-900">${viagem.localizacao_cidade ? `${viagem.localizacao_cidade}/${viagem.localizacao_uf}` : '-'}</dd></div>
           </dl>
         </div>
-        <button type="button" class="btn-primary w-full" data-lancar>+ Abastecimento</button>
+
+        ${viagem.frete_atual ? `
+          <button type="button" data-ver-fretes class="card block w-full p-4 text-left">
+            <p class="text-xs font-medium uppercase text-slate-500">Frete atual</p>
+            <p class="mt-1 font-semibold text-brand-black">${viagem.frete_atual.origem_cidade}/${viagem.frete_atual.origem_uf} &rarr; ${viagem.frete_atual.destino_cidade}/${viagem.frete_atual.destino_uf}</p>
+            <dl class="mt-2 grid grid-cols-2 gap-3 text-sm">
+              <div><dt class="text-slate-500">Transportadora</dt><dd class="font-medium text-slate-900">${viagem.frete_atual.transportadora_nome || '-'}</dd></div>
+              <div><dt class="text-slate-500">Peso</dt><dd class="font-medium text-slate-900">${viagem.frete_atual.peso_carga_kg != null ? `${viagem.frete_atual.peso_carga_kg.toLocaleString('pt-BR')} kg` : '-'}</dd></div>
+              <div class="col-span-2"><dt class="text-slate-500">Frete (liquido)</dt><dd class="font-semibold text-brand-black">${formatarMoeda(viagem.frete_atual.frete_liquido)}</dd></div>
+            </dl>
+          </button>
+        ` : ''}
+
+        <div class="grid grid-cols-2 gap-3">
+          <button type="button" class="btn-primary" data-lancar>+ Abastecimento</button>
+          <button type="button" class="btn-secondary" data-ver-acertos>Meus Acertos</button>
+        </div>
       ` : `
         <div class="card p-6 text-center text-slate-500">Nenhuma viagem em andamento no momento.</div>
+        <button type="button" class="btn-secondary w-full" data-ver-acertos>Meus Acertos</button>
       `}
       <div data-pendentes></div>
     `;
-    if (viagem) conteudo.querySelector('[data-lancar]').addEventListener('click', () => navegar('/motorista/abastecimento'));
+    if (viagem) {
+      conteudo.querySelector('[data-lancar]').addEventListener('click', () => navegar('/motorista/abastecimento'));
+      conteudo.querySelectorAll('[data-ver-fretes]').forEach((el) => el.addEventListener('click', () => navegar('/motorista/fretes')));
+    }
+    conteudo.querySelector('[data-ver-acertos]').addEventListener('click', () => navegar('/motorista/acertos'));
   } catch (err) {
     conteudo.innerHTML = `
       <div class="card p-6 text-center text-red-600">Nao foi possivel carregar a viagem. Confira sua conexao e tente novamente.</div>

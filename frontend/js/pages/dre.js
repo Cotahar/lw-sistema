@@ -1,7 +1,15 @@
 import { get } from '../api.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { mostrarErro } from '../components/toast.js';
-import { formatarMoeda, attachDataMask, parseDataBrParaIso } from '../masks.js';
+import { formatarMoeda, attachDataMask, parseDataBrParaIso, hojeIsoLocal } from '../masks.js';
+
+// Periodo padrao ao abrir a tela: mes corrente (dia 1 ate hoje) - antes
+// abria sem filtro nenhum (todo o historico), forcando o usuario a
+// preencher a data toda vez so pra ver o mes atual, o caso mais comum.
+function primeiroDiaMesAtualIso() {
+  const hoje = new Date(`${hojeIsoLocal()}T00:00:00`);
+  return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-01`;
+}
 
 async function buscarVeiculos(termo) {
   return (await get(`/veiculos${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((v) => ({ value: v.id, label: v.placa }));
@@ -71,17 +79,20 @@ async function renderVeiculo(resultadoEl, veiculoId, inicio, fim) {
 export async function render(container) {
   container.innerHTML = `
     <h1 class="mb-4 text-xl font-bold text-slate-900">DRE e Relatorios</h1>
-    <div class="card mb-6 grid grid-cols-1 gap-3 p-4 sm:grid-cols-4">
+    <div class="card mb-6 grid grid-cols-1 gap-3 p-4 sm:grid-cols-5">
       <div><label class="label">De</label><input type="text" class="input" data-inicio /></div>
       <div><label class="label">Ate</label><input type="text" class="input" data-fim /></div>
       <div class="sm:col-span-2"><label class="label">Veiculo (opcional, deixe vazio para DRE geral)</label><div data-veiculo></div></div>
+      <div class="flex items-end"><button type="button" class="btn-secondary w-full" data-exportar-pdf>Exportar PDF</button></div>
     </div>
     <div data-resultado></div>
   `;
   const inicioInput = container.querySelector('[data-inicio]');
   const fimInput = container.querySelector('[data-fim]');
-  attachDataMask(inicioInput);
-  attachDataMask(fimInput);
+  // Mes corrente por padrao (ver primeiroDiaMesAtualIso acima) - o usuario
+  // ainda pode limpar/trocar livremente pra ver outro periodo.
+  attachDataMask(inicioInput, primeiroDiaMesAtualIso());
+  attachDataMask(fimInput, hojeIsoLocal());
   const resultadoEl = container.querySelector('[data-resultado]');
 
   let veiculoId = null;
@@ -108,6 +119,16 @@ export async function render(container) {
     clearTimeout(debounceId);
     debounceId = setTimeout(atualizar, 400);
   }));
+
+  container.querySelector('[data-exportar-pdf]').addEventListener('click', () => {
+    const qs = new URLSearchParams();
+    const inicio = inicioInput.value ? parseDataBrParaIso(inicioInput.value) : null;
+    const fim = fimInput.value ? parseDataBrParaIso(fimInput.value) : null;
+    if (inicio) qs.set('data_inicio', inicio);
+    if (fim) qs.set('data_fim', fim);
+    if (veiculoId) qs.set('veiculo_id', veiculoId);
+    window.open(`${window.location.pathname}#/dre/relatorio?${qs.toString()}`, '_blank');
+  });
 
   await atualizar();
 }

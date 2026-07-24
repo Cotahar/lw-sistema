@@ -191,6 +191,10 @@ CREATE TABLE veiculos (
     localizacao_cidade      TEXT,
     localizacao_uf          TEXT,
     localizacao_atualizado_em TEXT,
+    -- Cache do nivel de combustivel mais recente (campo "lt" da Onixsat),
+    -- mesmo padrao do hodometro_atual - ver hodometro_eventos.nivel_tanque_litros
+    -- para o historico completo.
+    nivel_tanque_litros REAL,
     ativo               INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1)),
     criado_em           TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     atualizado_em       TEXT,
@@ -519,7 +523,11 @@ CREATE TABLE hodometro_eventos (
     origem          TEXT NOT NULL CHECK (origem IN ('Onixsat', 'Manual')),
     usuario_id      INTEGER REFERENCES usuarios(id),  -- obrigatorio quando origem='Manual'
     data_hora       TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
-    observacao      TEXT
+    observacao      TEXT,
+    -- Litros no tanque nesse instante (campo "lt" que a Onixsat ja manda em
+    -- toda RequestMensagemCB, junto do hodometro) - NULL em lancamentos
+    -- Manual. Usado pra estimar consumo "ao vivo" no painel do motorista.
+    nivel_tanque_litros REAL
 );
 CREATE INDEX idx_hodometro_eventos_veiculo ON hodometro_eventos(veiculo_id, data_hora);
 
@@ -663,6 +671,19 @@ CREATE TABLE despesas_viagem (
     -- despesa depois de uma resposta perdida. NULL nos demais lancamentos;
     -- UNIQUE aceita varios NULL sem conflito.
     idempotency_key     TEXT UNIQUE,
+    -- Só relevante para abastecimento lançado pelo app do motorista: se o
+    -- posto fatura depois ("assinar nota"), o vencimento real só é
+    -- conhecido na validação pelo escritório - ver validado_em abaixo.
+    forma_pagamento_posto TEXT CHECK (forma_pagamento_posto IN ('Imediato', 'AssinarNota')),
+    -- NULL = pendente de validação (só lançamentos do app do motorista
+    -- nascem assim; escritório e importação Drivvo já nascem validados).
+    validado_por        INTEGER REFERENCES usuarios(id),
+    validado_em         TEXT,
+    -- Liga a despesa de diesel a sua Arla irmã (mesmo lançamento unificado,
+    -- 2 linhas sem elo hoje) - usado na validação pra somar os dois valores
+    -- numa única conta a pagar combinada quando forma_pagamento_posto for
+    -- 'AssinarNota' (contas_pagar_id fica NULL em ambas até validar).
+    despesa_arla_id     INTEGER REFERENCES despesas_viagem(id),
     criado_por          INTEGER REFERENCES usuarios(id),
     criado_em           TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
 );

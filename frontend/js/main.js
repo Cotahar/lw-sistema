@@ -2,6 +2,7 @@ import { iniciarRouter, registrar, navegar } from './router.js';
 import { getToken, getUsuario, limparSessao, podeVisualizar, getEmpresaAtiva, salvarEmpresaAtiva } from './api.js';
 import { renderLogin } from './pages/login.js';
 import { renderRelatorio } from './pages/acertoRelatorio.js';
+import { renderDreRelatorio } from './pages/dreRelatorio.js';
 import { GRUPOS_MENU, ROTA_PAINEL, ITEM_ADMIN, ITEM_AUDITORIA, ITENS_CONFIGURACAO } from './modulosConfig.js';
 
 const appEl = document.getElementById('app');
@@ -96,7 +97,7 @@ function renderShellHtml() {
         <nav data-menu>${montarSidebarHtml()}</nav>
       </aside>
       <div class="fixed inset-0 z-20 hidden bg-slate-900/40 lg:hidden" data-overlay></div>
-      <div class="flex min-h-screen flex-1 flex-col lg:pl-0">
+      <div class="flex min-h-screen min-w-0 flex-1 flex-col lg:pl-0">
         <header class="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 shadow-sm">
           <button type="button" class="rounded-lg p-2 text-slate-500 hover:bg-slate-100 lg:hidden" data-abrir-menu>
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
@@ -211,6 +212,13 @@ registrar('/acertos/:viagemId/relatorio', (params, query) => {
   renderRelatorio(appEl, params, query);
 });
 
+// Pagina de impressao do DRE detalhado: mesmo padrao acima, fora do shell
+// pra sair limpa na impressao/PDF.
+registrar('/dre/relatorio', (params, query) => {
+  shellConstruido = false;
+  renderDreRelatorio(appEl, params, query);
+});
+
 registrar('/', () => {
   if (!getToken()) { navegar('/login'); return; }
   navegar(getUsuario()?.perfil === 'Motorista' ? '/motorista' : ROTA_PAINEL);
@@ -226,6 +234,18 @@ registrar('/motorista', () => {
 registrar('/motorista/abastecimento', () => {
   shellConstruido = false;
   import('./pages/motorista/abastecimento.js').then((m) => m.render(appEl));
+});
+registrar('/motorista/fretes', () => {
+  shellConstruido = false;
+  import('./pages/motorista/fretes.js').then((m) => m.render(appEl));
+});
+registrar('/motorista/acertos', () => {
+  shellConstruido = false;
+  import('./pages/motorista/acertos.js').then((m) => m.render(appEl));
+});
+registrar('/motorista/acertos/:id', (params) => {
+  shellConstruido = false;
+  import('./pages/motorista/acertos.js').then((m) => m.render(appEl, params));
 });
 
 function registrarPagina(rota, carregarModulo, moduloPermissao) {

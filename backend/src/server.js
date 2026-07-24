@@ -106,9 +106,9 @@ app.listen(PORT, () => {
 });
 
 // Sincronizacao automatica de posicao/hodometro via Onixsat. Intervalo em
-// minutos configuravel por ONIXSAT_POLL_MINUTOS (default 5 - o mapeamento de
+// minutos configuravel por ONIXSAT_POLL_MINUTOS (default 3 - o mapeamento de
 // veiculos, que tem limite de 5 min entre chamadas, fica cacheado em
-// onixsatSync.js, entao so a consulta de mensagens roda a cada ciclo);
-// ONIXSAT_POLL_MINUTOS=0 desativa.
+// onixsatSync.js, entao so a consulta de mensagens roda a cada ciclo - essa
+// tem limite de 30s, entao 3min de folga e seguro); ONIXSAT_POLL_MINUTOS=0 desativa.
 const { iniciarAgendadorOnixsat } = require('./utils/onixsatScheduler');
-iniciarAgendadorOnixsat(process.env.ONIXSAT_POLL_MINUTOS !== undefined ? Number(process.env.ONIXSAT_POLL_MINUTOS) : 5);
+iniciarAgendadorOnixsat(process.env.ONIXSAT_POLL_MINUTOS !== undefined ? Number(process.env.ONIXSAT_POLL_MINUTOS) : 3);

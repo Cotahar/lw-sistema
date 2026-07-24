@@ -43,7 +43,14 @@ router.get('/', requerAcessoModulo('contas_pagar', 'Visualizar'), exigirEmpresaE
   const params = [req.empresaId];
   if (status) { condicoes.push('cp.status = ?'); params.push(status); }
   if (origem_tipo) { condicoes.push('cp.origem_tipo = ?'); params.push(origem_tipo); }
-  if (categoria_id) { condicoes.push('COALESCE(dv.categoria_id, df.categoria_id) = ?'); params.push(categoria_id); }
+  // Number(...) e necessario aqui porque o valor chega como string da
+  // query string, mas o lado esquerdo e uma expressao COALESCE (nao uma
+  // referencia direta de coluna) - sem afinidade de coluna pra coagir o
+  // tipo, o SQLite compara '1' (TEXT) com 1 (INTEGER) como classes de
+  // armazenamento diferentes e nunca da match, mesmo quando os valores
+  // "sao os mesmos". Os outros filtros desta rota nao precisam disso
+  // porque comparam contra coluna de verdade (cp.status, vc.id...).
+  if (categoria_id) { condicoes.push('COALESCE(dv.categoria_id, df.categoria_id) = ?'); params.push(Number(categoria_id)); }
   if (veiculo_id) { condicoes.push('vc.id = ?'); params.push(veiculo_id); }
   if (search) { condicoes.push('cp.descricao LIKE ?'); params.push(`%${search}%`); }
   if (financiamento_id) {

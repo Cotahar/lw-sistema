@@ -1,4 +1,4 @@
-import { get, post, del, podeGerenciar } from '../api.js';
+import { get, post, patch, del, podeGerenciar } from '../api.js';
 import { criarDataTable } from '../components/dataTable.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { abrirModal, fecharModal, confirmarAcao } from '../components/modal.js';
@@ -467,6 +467,64 @@ function abrirOcorrenciasDespesa(despesa, gerenciar) {
   abrirModal({ titulo: 'Ocorrencias da despesa', conteudo: ocorrencias.el, largura: 'max-w-lg' });
 }
 
+// Valida uma despesa lancada pelo app do motorista. So pede a data de
+// vencimento quando o motorista marcou "Assinar nota" e a conta a pagar
+// ainda nao existe (o backend so cria ela agora, com essa data - ver
+// PATCH /viagens/despesas/:id/validar) - nos demais casos e so uma
+// confirmacao, sem campo nenhum.
+function abrirValidarDespesa(despesa, recarregar) {
+  const precisaVencimento = despesa.forma_pagamento_posto === 'AssinarNota' && !despesa.contas_pagar_id;
+  if (!precisaVencimento) {
+    confirmarAcao({
+      titulo: 'Validar despesa',
+      mensagem: 'Confirma que revisou esta despesa lancada pelo motorista?',
+      textoConfirmar: 'Validar',
+      perigo: false,
+    }).then(async (ok) => {
+      if (!ok) return;
+      try {
+        await patch(`/viagens/despesas/${despesa.id}/validar`, {});
+        mostrarToast('Despesa validada.');
+        recarregar();
+      } catch (err) {
+        mostrarErro(err);
+      }
+    });
+    return;
+  }
+
+  const form = document.createElement('form');
+  form.className = 'space-y-4';
+  form.innerHTML = `
+    <p class="text-sm text-slate-600">O motorista marcou este abastecimento como "Assinar nota" - informe a data de vencimento da fatura do posto para validar.</p>
+    <div><label class="label">Data de vencimento *</label><input type="text" name="data_vencimento" class="input" required /></div>
+    <p class="hidden text-sm text-red-600" data-erro></p>
+    <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Validar</button></div>
+  `;
+  attachDataMask(form.data_vencimento);
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const erro = form.querySelector('[data-erro]');
+    erro.classList.add('hidden');
+    const dataVencimento = parseDataBrParaIso(form.data_vencimento.value);
+    if (!dataVencimento) {
+      erro.textContent = 'Informe uma data de vencimento valida.';
+      erro.classList.remove('hidden');
+      return;
+    }
+    try {
+      await patch(`/viagens/despesas/${despesa.id}/validar`, { data_vencimento: dataVencimento });
+      mostrarToast('Despesa validada e conta a pagar criada.');
+      fecharModal();
+      recarregar();
+    } catch (err) {
+      erro.textContent = err.message;
+      erro.classList.remove('hidden');
+    }
+  });
+  abrirModal({ titulo: 'Validar despesa - Assinar nota', conteudo: form });
+}
+
 // ---- Adiantamentos ao motorista ----
 
 async function abrirNovoAdiantamento(viagemId, recarregar) {
@@ -752,12 +810,27 @@ export async function render(container, params) {
     });
     container.querySelector('[data-tabela-fretes]').appendChild(tabelaFretes.el);
 
+    // Despesas lancadas pelo app do motorista nascem com validado_em nulo
+    // (ver despesaViagemHelper.js) - o escritorio precisa revisar cada uma
+    // antes de considerar "processada" (e informar o vencimento real, se o
+    // posto for faturar depois). A despesa de Arla (quando existe) e
+    // validada junto da despesa de diesel que a referencia via
+    // despesa_arla_id - por isso nao ganha um botao "Validar" proprio, so o
+    // badge (evita tentar validar a mesma conta combinada duas vezes).
+    const idsArlaFilhas = new Set(despesas.map((d) => d.despesa_arla_id).filter(Boolean));
     const tabelaDespesas = criarDataTable({
       colunas: [
         { chave: 'data', titulo: 'Data', render: (d) => formatarDataBr(d.data) },
         { chave: 'categoria', titulo: 'Categoria', render: (d) => nomeCategoriasPorId[d.categoria_id] || d.categoria_id },
         { chave: 'valor', titulo: 'Valor', render: (d) => formatarMoeda(d.valor) },
         { chave: 'pago_por', titulo: 'Pago por' },
+        {
+          chave: 'status_validacao',
+          titulo: 'Status',
+          render: (d) => (d.validado_em
+            ? '<span class="text-xs text-slate-400">Validada</span>'
+            : `<span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">Pendente de validacao${d.forma_pagamento_posto === 'AssinarNota' ? ' (assinar nota)' : ''}</span>`),
+        },
         { chave: 'vencimento', titulo: 'Vencimento', render: (d) => (d.data_vencimento ? formatarDataBr(d.data_vencimento) : '-') + (d.contas_pagar_id ? ' <a href="#/contas-pagar" class="text-xs text-brand-black hover:underline">(ver conta)</a>' : '') },
       ],
       buscarDados: (termo) => {
@@ -770,7 +843,12 @@ export async function render(container, params) {
       },
       onNovo: podeEditar ? () => abrirNovaDespesa(viagemId, recarregarPagina) : undefined,
       tituloNovo: 'Despesa',
-      acoesExtras: (d) => [{ label: 'Ocorrencias', onClick: () => abrirOcorrenciasDespesa(d, gerenciar) }],
+      acoesExtras: (d) => [
+        ...(gerenciar && !d.validado_em && !idsArlaFilhas.has(d.id)
+          ? [{ label: 'Validar', onClick: () => abrirValidarDespesa(d, recarregarPagina) }]
+          : []),
+        { label: 'Ocorrencias', onClick: () => abrirOcorrenciasDespesa(d, gerenciar) },
+      ],
       vazio: 'Nenhuma despesa lancada.',
     });
     container.querySelector('[data-tabela-despesas]').appendChild(tabelaDespesas.el);

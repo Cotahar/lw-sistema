@@ -75,7 +75,7 @@ async function sincronizarEmpresa(empresaId, usuarioId = null) {
   if (!veiculosOnixsat) {
     return {
       veiculosOnixsat: 0, veiculosMapeados: 0, mensagensProcessadas: 0,
-      hodometroAtualizados: 0, localizacaoAtualizados: 0, mensagensIgnoradas: 0,
+      hodometroAtualizados: 0, localizacaoAtualizados: 0, nivelTanqueAtualizados: 0, mensagensIgnoradas: 0,
       aviso: 'Nenhum equipamento Onixsat vinculado a esta conta ainda.',
     };
   }
@@ -83,7 +83,7 @@ async function sincronizarEmpresa(empresaId, usuarioId = null) {
   if (!mapaVeiIdParaVeiculoId.size) {
     return {
       veiculosOnixsat, veiculosMapeados: 0, mensagensProcessadas: 0,
-      hodometroAtualizados: 0, localizacaoAtualizados: 0, mensagensIgnoradas: 0,
+      hodometroAtualizados: 0, localizacaoAtualizados: 0, nivelTanqueAtualizados: 0, mensagensIgnoradas: 0,
       aviso: 'Nenhuma placa dos equipamentos Onixsat bate com veiculos cadastrados nesta empresa.',
     };
   }
@@ -99,6 +99,7 @@ async function sincronizarEmpresa(empresaId, usuarioId = null) {
 
   let hodometroAtualizados = 0;
   let localizacaoAtualizados = 0;
+  let nivelTanqueAtualizados = 0;
   let mensagensIgnoradas = 0;
   let maiorMid = mIdInicial;
   const veiculosComHodometroAtualizado = new Set();
@@ -112,18 +113,32 @@ async function sincronizarEmpresa(empresaId, usuarioId = null) {
       const dataHora = converterDataHoraOnixsat(msg.dt);
       if (!veiculoId || !dataHora) { mensagensIgnoradas++; continue; }
 
+      // "lt" = litros no tanque nesse instante (RequestMensagemCB ja manda
+      // esse campo junto do odometro/posicao, so nao era lido ate agora).
+      // Usado pro calculo de media "ao vivo" do painel do motorista - ver
+      // motorista.routes.js.
+      const nivelTanque = paraNumeroDecimal(msg.lt);
+
       const odometro = msg.odm ? parseInt(msg.odm, 10) : null;
       if (odometro && Number.isFinite(odometro)) {
         const veiculo = db.prepare('SELECT hodometro_atual FROM veiculos WHERE id = ?').get(veiculoId);
         if (odometro > veiculo.hodometro_atual) {
           db.prepare(`
-            INSERT INTO hodometro_eventos (empresa_id, veiculo_id, km, origem, data_hora)
-            VALUES (?, ?, ?, 'Onixsat', ?)
-          `).run(empresaId, veiculoId, odometro, dataHora);
+            INSERT INTO hodometro_eventos (empresa_id, veiculo_id, km, origem, data_hora, nivel_tanque_litros)
+            VALUES (?, ?, ?, 'Onixsat', ?, ?)
+          `).run(empresaId, veiculoId, odometro, dataHora, nivelTanque);
           db.prepare('UPDATE veiculos SET hodometro_atual = ? WHERE id = ?').run(odometro, veiculoId);
           hodometroAtualizados++;
           veiculosComHodometroAtualizado.add(veiculoId);
         }
+      }
+
+      // Cache do nivel de tanque mais recente atualiza independente do
+      // hodometro ter avancado (mesmo padrao da localizacao logo abaixo) -
+      // um abastecimento parado, por exemplo, nao move o odometro.
+      if (nivelTanque !== null) {
+        db.prepare('UPDATE veiculos SET nivel_tanque_litros = ? WHERE id = ?').run(nivelTanque, veiculoId);
+        nivelTanqueAtualizados++;
       }
 
       const latitude = paraNumeroDecimal(msg.lat);
@@ -159,6 +174,7 @@ async function sincronizarEmpresa(empresaId, usuarioId = null) {
     mensagensProcessadas: mensagens.length,
     hodometroAtualizados,
     localizacaoAtualizados,
+    nivelTanqueAtualizados,
     mensagensIgnoradas,
     ultimoMid: maiorMid,
     alertasDisparados,
