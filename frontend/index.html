@@ -6,6 +6,13 @@
   <title>Frottex - Gestão de Frota e Transporte</title>
   <link rel="icon" type="image/png" href="/img/favicon.png" />
   <link rel="stylesheet" href="/dist/output.css" />
+  <!-- PWA do modulo do motorista (ver frontend/js/main.js) - inofensivo pro
+       resto do app, so afeta quem instala/abre via /#/motorista. -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" href="/img/favicon.png" />
 </head>
 <body class="bg-brand-light text-slate-900">
   <div id="app"></div>

@@ -1,5 +1,6 @@
 import { post, salvarSessao, salvarEmpresaAtiva, getEmpresaAtiva } from '../api.js';
 import { navegar } from '../router.js';
+import { ROTA_PAINEL } from '../modulosConfig.js';
 
 export function renderLogin(root) {
   root.innerHTML = '';
@@ -13,8 +14,8 @@ export function renderLogin(root) {
       </div>
       <form class="card space-y-4 border-t-4 border-brand-yellow p-6">
         <div>
-          <label class="label">E-mail</label>
-          <input type="email" name="email" class="input" required autofocus />
+          <label class="label">Usuario</label>
+          <input type="text" name="username" class="input" required autofocus autocapitalize="off" />
         </div>
         <div>
           <label class="label">Senha</label>
@@ -36,7 +37,7 @@ export function renderLogin(root) {
     botao.disabled = true;
     try {
       const { token, usuario, permissoes, empresas, podeTodas } = await post('/auth/login', {
-        email: form.email.value.trim(),
+        username: form.username.value.trim(),
         senha: form.senha.value,
       });
       salvarSessao(token, { ...usuario, permissoes, empresas, podeTodas });
@@ -45,7 +46,7 @@ export function renderLogin(root) {
       if (!getEmpresaAtiva() && empresas && empresas.length) {
         salvarEmpresaAtiva(empresas[0].id);
       }
-      window.location.hash = '#/dashboard';
+      window.location.hash = usuario.perfil === 'Motorista' ? '#/motorista' : `#${ROTA_PAINEL}`;
       window.location.reload();
     } catch (err) {
       erro.textContent = err.message || 'Nao foi possivel entrar.';

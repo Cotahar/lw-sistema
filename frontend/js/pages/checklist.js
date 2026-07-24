@@ -3,6 +3,7 @@ import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { abrirModal, confirmarAcao } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
 import { formatarDataBr, hojeIsoLocal } from '../masks.js';
+import { comprimirImagem } from '../imageCompress.js';
 
 async function buscarConjuntos(termo) {
   const conjuntos = await get('/conjuntos');
@@ -127,21 +128,6 @@ async function carregarVistorias(conjunto, container, gerenciar) {
   } catch (err) {
     mostrarErro(err);
   }
-}
-
-// Reduz a foto (tipicamente varios MB direto do celular) para um tamanho
-// razoavel antes de enviar - lado maximo 1600px e JPEG 80%, o suficiente
-// para comparar o estado do veiculo sem pesar no armazenamento.
-async function comprimirImagem(arquivo, ladoMaximo = 1600, qualidade = 0.8) {
-  const bitmap = await createImageBitmap(arquivo);
-  const escala = Math.min(1, ladoMaximo / Math.max(bitmap.width, bitmap.height));
-  const largura = Math.round(bitmap.width * escala);
-  const altura = Math.round(bitmap.height * escala);
-  const canvas = document.createElement('canvas');
-  canvas.width = largura;
-  canvas.height = altura;
-  canvas.getContext('2d').drawImage(bitmap, 0, 0, largura, altura);
-  return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', qualidade));
 }
 
 async function enviarFoto(veiculoId, momento, blob) {

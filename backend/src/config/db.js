@@ -22,12 +22,13 @@ if (isNewDatabase) {
 const usuarioCount = db.prepare('SELECT COUNT(*) AS total FROM usuarios').get().total;
 if (usuarioCount === 0) {
   const email = process.env.ADMIN_EMAIL || 'admin@frotista.local';
+  const username = process.env.ADMIN_USERNAME || 'admin';
   const senha = process.env.ADMIN_SENHA || 'admin123';
   const senhaHash = bcrypt.hashSync(senha, 10);
   db.prepare(
-    `INSERT INTO usuarios (nome, email, senha_hash, perfil, ativo) VALUES (?, ?, ?, 'Admin', 1)`
-  ).run('Administrador', email, senhaHash);
-  console.log(`Usuario Admin inicial criado: ${email} / senha definida em ADMIN_SENHA (.env)`);
+    `INSERT INTO usuarios (nome, email, username, senha_hash, perfil, ativo) VALUES (?, ?, ?, ?, 'Admin', 1)`
+  ).run('Administrador', email, username, senhaHash);
+  console.log(`Usuario Admin inicial criado: ${username} / senha definida em ADMIN_SENHA (.env)`);
 }
 
 module.exports = db;

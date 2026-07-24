@@ -5,63 +5,95 @@ const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const { requerAdmin, nivelBaseDoPerfil } = require('../middleware/auth');
 const { registrarAuditoria } = require('../utils/audit');
+const { withTransaction } = require('../utils/transaction');
 
 const NIVEIS = ['Nenhum', 'Visualizar', 'Gerenciar'];
+const PERFIS = ['Admin', 'Comum', 'Visualizacao', 'Motorista'];
 
 const router = express.Router();
-const SELECT_SEGURO = 'SELECT id, nome, email, perfil, ativo, criado_em, atualizado_em FROM usuarios';
+// LEFT JOIN so pra exibir o nome do motorista vinculado no formulario de
+// edicao (perfil Motorista) - motorista_id continua vindo da propria tabela.
+const SELECT_SEGURO = `
+  SELECT u.id, u.nome, u.email, u.username, u.perfil, u.motorista_id, u.ativo, u.criado_em, u.atualizado_em, m.nome AS motorista_nome
+  FROM usuarios u LEFT JOIN motoristas m ON m.id = u.motorista_id
+`;
 
 router.use(requerAdmin); // gestao de usuarios e restrita ao Admin (regra do PRD)
 
+// Garante que o usuario Motorista tenha uma linha em usuario_empresas pra
+// empresa do motorista vinculado (resolverEmpresa exige o grant explicito,
+// mesma regra que ja vale pros demais perfis) - sem isso, o motorista logaria
+// mas nao conseguiria selecionar/usar a propria empresa.
+function garantirGrantEmpresaDoMotorista(usuarioId, motoristaId) {
+  const motorista = db.prepare('SELECT empresa_id FROM motoristas WHERE id = ?').get(motoristaId);
+  if (!motorista) throw new ApiError(400, 'Motorista informado nao encontrado.');
+  const jaTem = db.prepare('SELECT 1 FROM usuario_empresas WHERE usuario_id = ? AND empresa_id = ?').get(usuarioId, motorista.empresa_id);
+  if (!jaTem) {
+    db.prepare('INSERT INTO usuario_empresas (usuario_id, empresa_id) VALUES (?, ?)').run(usuarioId, motorista.empresa_id);
+  }
+}
+
 router.get('/', asyncHandler(async (req, res) => {
-  res.json(db.prepare(`${SELECT_SEGURO} ORDER BY nome`).all());
+  res.json(db.prepare(`${SELECT_SEGURO} ORDER BY u.nome`).all());
 }));
 
 router.get('/:id', asyncHandler(async (req, res) => {
-  const usuario = db.prepare(`${SELECT_SEGURO} WHERE id = ?`).get(req.params.id);
+  const usuario = db.prepare(`${SELECT_SEGURO} WHERE u.id = ?`).get(req.params.id);
   if (!usuario) throw new ApiError(404, 'Usuario nao encontrado.');
   res.json(usuario);
 }));
 
 router.post('/', asyncHandler(async (req, res) => {
-  const { nome, email, senha, perfil } = req.body;
-  if (!nome || !email || !senha || !perfil) throw new ApiError(400, 'Preencha nome, email, senha e perfil.');
-  if (!['Admin', 'Comum', 'Visualizacao'].includes(perfil)) throw new ApiError(400, 'Perfil invalido.');
+  const { nome, email, username, senha, perfil, motorista_id } = req.body;
+  if (!nome || !email || !username || !senha || !perfil) throw new ApiError(400, 'Preencha nome, email, usuario, senha e perfil.');
+  if (!PERFIS.includes(perfil)) throw new ApiError(400, 'Perfil invalido.');
+  if (perfil === 'Motorista' && !motorista_id) throw new ApiError(400, 'Selecione o motorista vinculado a este usuario.');
 
   const senhaHash = bcrypt.hashSync(senha, 10);
-  const info = db
-    .prepare('INSERT INTO usuarios (nome, email, senha_hash, perfil) VALUES (?, ?, ?, ?)')
-    .run(nome, email, senhaHash, perfil);
-  const usuario = db.prepare(`${SELECT_SEGURO} WHERE id = ?`).get(info.lastInsertRowid);
+  const usuario = withTransaction(db, () => {
+    const info = db
+      .prepare('INSERT INTO usuarios (nome, email, username, senha_hash, perfil, motorista_id) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(nome, email, username, senhaHash, perfil, perfil === 'Motorista' ? motorista_id : null);
+    if (perfil === 'Motorista') garantirGrantEmpresaDoMotorista(info.lastInsertRowid, motorista_id);
+    return db.prepare(`${SELECT_SEGURO} WHERE u.id = ?`).get(info.lastInsertRowid);
+  });
   registrarAuditoria({ usuarioId: req.usuario.id, tabela: 'usuarios', registroId: usuario.id, acao: 'INSERT', depois: usuario });
   res.status(201).json(usuario);
 }));
 
 router.put('/:id', asyncHandler(async (req, res) => {
-  const antes = db.prepare(`${SELECT_SEGURO} WHERE id = ?`).get(req.params.id);
+  const antes = db.prepare(`${SELECT_SEGURO} WHERE u.id = ?`).get(req.params.id);
   if (!antes) throw new ApiError(404, 'Usuario nao encontrado.');
 
-  const { nome, email, senha, perfil, ativo } = req.body;
-  if (perfil && !['Admin', 'Comum', 'Visualizacao'].includes(perfil)) throw new ApiError(400, 'Perfil invalido.');
+  const { nome, email, username, senha, perfil, motorista_id, ativo } = req.body;
+  if (perfil && !PERFIS.includes(perfil)) throw new ApiError(400, 'Perfil invalido.');
+  const perfilFinal = perfil !== undefined ? perfil : antes.perfil;
+  const motoristaIdFinal = motorista_id !== undefined ? motorista_id : antes.motorista_id;
+  if (perfilFinal === 'Motorista' && !motoristaIdFinal) throw new ApiError(400, 'Selecione o motorista vinculado a este usuario.');
 
   const campos = [];
   const valores = [];
   if (nome !== undefined) { campos.push('nome = ?'); valores.push(nome); }
   if (email !== undefined) { campos.push('email = ?'); valores.push(email); }
+  if (username !== undefined) { campos.push('username = ?'); valores.push(username); }
   if (perfil !== undefined) { campos.push('perfil = ?'); valores.push(perfil); }
+  if (motorista_id !== undefined) { campos.push('motorista_id = ?'); valores.push(perfilFinal === 'Motorista' ? motorista_id : null); }
   if (ativo !== undefined) { campos.push('ativo = ?'); valores.push(ativo ? 1 : 0); }
   if (senha) { campos.push('senha_hash = ?'); valores.push(bcrypt.hashSync(senha, 10)); }
   if (!campos.length) throw new ApiError(400, 'Nenhum campo valido informado.');
   campos.push("atualizado_em = datetime('now', '-3 hours')");
 
-  db.prepare(`UPDATE usuarios SET ${campos.join(', ')} WHERE id = ?`).run(...valores, req.params.id);
-  const depois = db.prepare(`${SELECT_SEGURO} WHERE id = ?`).get(req.params.id);
+  const depois = withTransaction(db, () => {
+    db.prepare(`UPDATE usuarios SET ${campos.join(', ')} WHERE id = ?`).run(...valores, req.params.id);
+    if (perfilFinal === 'Motorista') garantirGrantEmpresaDoMotorista(Number(req.params.id), motoristaIdFinal);
+    return db.prepare(`${SELECT_SEGURO} WHERE u.id = ?`).get(req.params.id);
+  });
   registrarAuditoria({ usuarioId: req.usuario.id, tabela: 'usuarios', registroId: depois.id, acao: 'UPDATE', antes, depois });
   res.json(depois);
 }));
 
 router.delete('/:id', asyncHandler(async (req, res) => {
-  const antes = db.prepare(`${SELECT_SEGURO} WHERE id = ?`).get(req.params.id);
+  const antes = db.prepare(`${SELECT_SEGURO} WHERE u.id = ?`).get(req.params.id);
   if (!antes) throw new ApiError(404, 'Usuario nao encontrado.');
   if (Number(req.params.id) === req.usuario.id) throw new ApiError(400, 'Voce nao pode excluir o proprio usuario.');
   db.prepare('DELETE FROM usuarios WHERE id = ?').run(req.params.id);

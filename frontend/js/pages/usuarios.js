@@ -1,33 +1,66 @@
 import { get, post, put, del, ehAdmin } from '../api.js';
 import { criarDataTable } from '../components/dataTable.js';
+import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { abrirModal, fecharModal } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
 import { renderizarAcessoNegado } from '../components/acessoNegado.js';
 
-const PERFIS = ['Admin', 'Comum', 'Visualizacao'];
+const PERFIS = ['Admin', 'Comum', 'Visualizacao', 'Motorista'];
 const NIVEIS = ['Nenhum', 'Visualizar', 'Gerenciar'];
+
+async function buscarMotoristas(termo) {
+  return (await get(`/motoristas${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((m) => ({ value: m.id, label: m.nome }));
+}
 
 function montarFormularioUsuario(registro, aoSalvar) {
   const form = document.createElement('form');
   form.className = 'space-y-4';
   form.innerHTML = `
     <div><label class="label">Nome *</label><input type="text" name="nome" class="input" required /></div>
-    <div><label class="label">E-mail *</label><input type="email" name="email" class="input" required /></div>
+    <div class="grid grid-cols-2 gap-3">
+      <div><label class="label">E-mail *</label><input type="email" name="email" class="input" required /></div>
+      <div><label class="label">Usuario (login) *</label><input type="text" name="username" class="input" required autocapitalize="off" /></div>
+    </div>
     <div><label class="label">Senha ${registro ? '(deixe vazio para manter)' : '*'}</label><input type="password" name="senha" class="input" ${registro ? '' : 'required'} /></div>
     <div><label class="label">Perfil *</label><select name="perfil" class="input" required>${PERFIS.map((p) => `<option value="${p}">${p}</option>`).join('')}</select></div>
+    <div class="hidden" data-bloco-motorista><label class="label">Motorista vinculado *</label><div data-motorista-select></div></div>
     ${registro ? '<div class="flex items-center gap-2"><input type="checkbox" name="ativo" id="ativo-usuario" class="h-4 w-4" /><label for="ativo-usuario" class="text-sm">Ativo</label></div>' : ''}
     <p class="hidden text-sm text-red-600" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">${registro ? 'Salvar alteracoes' : 'Cadastrar'}</button></div>
   `;
   form.nome.value = registro?.nome || '';
   form.email.value = registro?.email || '';
+  form.username.value = registro?.username || '';
   form.perfil.value = registro?.perfil || 'Comum';
   if (registro) form.ativo.checked = Boolean(registro.ativo);
+
+  const motoristaSelect = criarSearchableSelect({
+    buscar: buscarMotoristas,
+    valorInicial: registro?.motorista_id ?? null,
+    labelInicial: registro?.motorista_nome || '',
+    placeholder: 'Pesquisar motorista...',
+  });
+  form.querySelector('[data-motorista-select]').appendChild(motoristaSelect.el);
+
+  function atualizarBlocoMotorista() {
+    form.querySelector('[data-bloco-motorista]').classList.toggle('hidden', form.perfil.value !== 'Motorista');
+  }
+  form.perfil.addEventListener('change', atualizarBlocoMotorista);
+  atualizarBlocoMotorista();
+
   const erro = form.querySelector('[data-erro]');
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     erro.classList.add('hidden');
-    const valores = { nome: form.nome.value, email: form.email.value, perfil: form.perfil.value };
+    if (form.perfil.value === 'Motorista' && !motoristaSelect.getValue()) {
+      erro.textContent = 'Selecione o motorista vinculado a este usuario.';
+      erro.classList.remove('hidden');
+      return;
+    }
+    const valores = {
+      nome: form.nome.value, email: form.email.value, username: form.username.value, perfil: form.perfil.value,
+      motorista_id: form.perfil.value === 'Motorista' ? motoristaSelect.getValue() : null,
+    };
     if (form.senha.value) valores.senha = form.senha.value;
     if (registro) valores.ativo = form.ativo.checked ? 1 : 0;
     try {
@@ -145,7 +178,7 @@ export async function render(container) {
     onNovo: () => abrirFormularioUsuario(null, tabela.recarregar),
     onEditar: (r) => abrirFormularioUsuario(r, tabela.recarregar),
     onExcluir: (r) => del(`/usuarios/${r.id}`),
-    acoesExtras: (r) => (r.perfil === 'Admin' ? [] : [{ label: 'Permissoes', onClick: abrirPermissoes }, { label: 'Empresas', onClick: abrirEmpresas }]),
+    acoesExtras: (r) => (['Admin', 'Motorista'].includes(r.perfil) ? [] : [{ label: 'Permissoes', onClick: abrirPermissoes }, { label: 'Empresas', onClick: abrirEmpresas }]),
     tituloNovo: 'Usuario',
   });
   container.querySelector('[data-tabela]').appendChild(tabela.el);

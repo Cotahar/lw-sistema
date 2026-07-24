@@ -211,11 +211,29 @@ registrar('/acertos/:viagemId/relatorio', (params, query) => {
   renderRelatorio(appEl, params, query);
 });
 
-registrar('/', () => navegar(getToken() ? ROTA_PAINEL : '/login'));
+registrar('/', () => {
+  if (!getToken()) { navegar('/login'); return; }
+  navegar(getUsuario()?.perfil === 'Motorista' ? '/motorista' : ROTA_PAINEL);
+});
+
+// Modulo mobile do motorista: fora do shell administrativo de proposito
+// (bare registrar(), mesmo padrao do /login acima) - o motorista nunca deve
+// ver o menu lateral/topbar do escritorio.
+registrar('/motorista', () => {
+  shellConstruido = false;
+  import('./pages/motorista/dashboard.js').then((m) => m.render(appEl));
+});
+registrar('/motorista/abastecimento', () => {
+  shellConstruido = false;
+  import('./pages/motorista/abastecimento.js').then((m) => m.render(appEl));
+});
 
 function registrarPagina(rota, carregarModulo, moduloPermissao) {
   registrar(rota, async (params, query) => {
     if (!garantirLogado()) return;
+    // Motorista nunca acessa o shell/paginas administrativas, mesmo digitando
+    // a rota direto na URL - so o modulo mobile proprio (ver acima).
+    if (getUsuario()?.perfil === 'Motorista') { navegar('/motorista'); return; }
     const conteudo = garantirShell();
     if (moduloPermissao && !podeVisualizar(moduloPermissao)) {
       conteudo.innerHTML = '<div class="card p-8 text-center text-slate-400">Voce nao tem acesso a este modulo.</div>';
@@ -258,3 +276,14 @@ registrarPagina('/config/comissao-faixas', () => import('./pages/config/comissao
 registrarPagina('/config/checklist-catalogo', () => import('./pages/config/checklistCatalogo.js'));
 
 iniciarRouter();
+
+// Service worker (cache do shell + Background Sync das pendencias offline) so
+// pra sessoes do motorista - nao registra pra Admin/Comum/Visualizacao de
+// proposito, pra nao arriscar cache/staleness na parte administrativa, que
+// muda o tempo todo.
+if ('serviceWorker' in navigator && getUsuario()?.perfil === 'Motorista') {
+  navigator.serviceWorker.register('/sw.js', { type: 'module' }).catch(() => {
+    // sem suporte no navegador - o app mobile continua funcionando online,
+    // so sem cache de shell/Background Sync.
+  });
+}

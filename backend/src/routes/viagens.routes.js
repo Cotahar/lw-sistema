@@ -10,6 +10,7 @@ const { withTransaction } = require('../utils/transaction');
 const { verificarAlertasDoVeiculo } = require('../utils/alertaEngine');
 const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 const { hojeIsoBrasilia } = require('../utils/dataHora');
+const { criarDespesaViagem } = require('../utils/despesaViagemHelper');
 
 const router = express.Router();
 
@@ -470,56 +471,11 @@ router.post('/:id/despesas', requerAcessoModulo('viagens', 'Gerenciar'), exigirE
   const ultimoFrete = db.prepare('SELECT id FROM fretes WHERE viagem_id = ? ORDER BY id DESC LIMIT 1').get(req.params.id);
   const freteId = ultimoFrete ? ultimoFrete.id : null;
 
-  const despesa = withTransaction(db, () => {
-    const info = db.prepare(`
-      INSERT INTO despesas_viagem (
-        empresa_id, viagem_id, frete_id, centro_custo_id, categoria_id, valor, data, pago_por, pago_por_usuario_id,
-        posto_fornecedor_id, preco_litro, litragem, km_abastecimento, data_vencimento, descricao, criado_por
-      ) VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      req.empresaId, req.params.id, freteId, centroCusto.id, categoria_id, valor, data || null, pago_por, pago_por_usuario_id || null,
-      posto_fornecedor_id || null, preco_litro || null, litragem || null, km_abastecimento || null, data_vencimento || null, descricao || null, req.usuario.id
-    );
-    const novaDespesa = db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(info.lastInsertRowid);
-
-    // Arla lancada junto (abastecimento unificado): mesma nota/parada, mas
-    // categoria propria pra continuar aparecendo separada nos relatorios.
-    let arlaDespesa = null;
-    if (arla && arla.valor > 0) {
-      const categoriaArla = db.prepare("SELECT id FROM categorias_despesa WHERE lower(trim(nome)) = 'arla'").get();
-      if (!categoriaArla) throw new ApiError(400, 'Categoria "Arla" nao encontrada no cadastro.');
-      const infoArla = db.prepare(`
-        INSERT INTO despesas_viagem (
-          empresa_id, viagem_id, frete_id, centro_custo_id, categoria_id, valor, data, pago_por, pago_por_usuario_id,
-          posto_fornecedor_id, preco_litro, litragem, criado_por
-        ) VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), ?, ?, ?, ?, ?, ?)
-      `).run(
-        req.empresaId, req.params.id, freteId, centroCusto.id, categoriaArla.id, arla.valor, data || null, pago_por, pago_por_usuario_id || null,
-        posto_fornecedor_id || null, arla.preco_litro || null, arla.litragem || null, req.usuario.id
-      );
-      arlaDespesa = db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(infoArla.lastInsertRowid);
-    }
-
-    // Uma so conta a pagar com o total combinado (diesel + arla) - e uma
-    // parada/nota so, um pagamento so ao posto.
-    if (pago_por === 'Empresa' || pago_por === 'AdminOutros') {
-      const categoria = db.prepare('SELECT nome FROM categorias_despesa WHERE id = ?').get(categoria_id);
-      const quemDesembolsou = pago_por === 'AdminOutros'
-        ? db.prepare('SELECT nome FROM usuarios WHERE id = ?').get(pago_por_usuario_id)
-        : null;
-      const nomeDespesa = `${categoria ? categoria.nome : 'Despesa'}${arlaDespesa ? ' + Arla' : ''}`;
-      const descricaoConta = pago_por === 'AdminOutros'
-        ? `Reembolso a ${quemDesembolsou ? quemDesembolsou.nome : 'usuario'} - ${nomeDespesa} (viagem #${viagem.id})`
-        : `${nomeDespesa} - viagem #${viagem.id}`;
-      const valorConta = valor + (arlaDespesa ? arlaDespesa.valor : 0);
-      const infoConta = db.prepare(`
-        INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
-        VALUES (?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), 'Pendente', 'DespesaViagem', ?)
-      `).run(req.empresaId, posto_fornecedor_id || null, descricaoConta, valorConta, data_vencimento || data || null, novaDespesa.id);
-      db.prepare('UPDATE despesas_viagem SET contas_pagar_id = ? WHERE id = ?').run(infoConta.lastInsertRowid, novaDespesa.id);
-    }
-
-    return db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(novaDespesa.id);
+  const despesa = criarDespesaViagem({
+    empresaId: req.empresaId, viagem, freteId, centroCustoId: centroCusto.id, categoriaId: categoria_id, valor, data,
+    pagoPor: pago_por, pagoPorUsuarioId: pago_por_usuario_id, postoFornecedorId: posto_fornecedor_id,
+    precoLitro: preco_litro, litragem, kmAbastecimento: km_abastecimento, dataVencimento: data_vencimento,
+    descricao, arla, usuarioId: req.usuario.id,
   });
 
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'despesas_viagem', registroId: despesa.id, acao: 'INSERT', depois: despesa });

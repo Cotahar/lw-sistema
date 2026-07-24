@@ -1,7 +1,11 @@
 const jwt = require('jsonwebtoken');
 const db = require('../config/db');
 
-const RANK_PERFIL = { Visualizacao: 0, Comum: 1, Admin: 2 };
+// Motorista fica de fora da escala normal (nao e "menor que Visualizacao",
+// e um perfil a parte, restrito ao modulo mobile proprio) - sem esse valor
+// explicito, RANK_PERFIL['Motorista'] seria undefined e `undefined < N`
+// avalia false em JS, liberando acesso em vez de negar em requerPerfilMinimo.
+const RANK_PERFIL = { Motorista: -1, Visualizacao: 0, Comum: 1, Admin: 2 };
 const RANK_NIVEL = { Nenhum: 0, Visualizar: 1, Gerenciar: 2 };
 
 function gerarToken(usuario) {
@@ -13,6 +17,8 @@ function gerarToken(usuario) {
 
 // Nivel que um usuario tem em um modulo por padrao, quando nao ha excecao
 // especifica em usuario_permissoes (ver comentario da tabela no schema.sql).
+// Motorista cai no fallback 'Nenhum' de proposito: ele nao usa a matriz de
+// modulos, so o modulo mobile proprio atras de requerMotorista.
 function nivelBaseDoPerfil(perfil) {
   if (perfil === 'Comum') return 'Gerenciar';
   if (perfil === 'Visualizacao') return 'Visualizar';
@@ -48,7 +54,7 @@ function autenticar(req, res, next) {
   } catch (err) {
     return res.status(401).json({ erro: 'Token invalido ou expirado.' });
   }
-  const usuario = db.prepare('SELECT id, nome, email, perfil, ativo FROM usuarios WHERE id = ?').get(payload.id);
+  const usuario = db.prepare('SELECT id, nome, email, username, perfil, motorista_id, ativo FROM usuarios WHERE id = ?').get(payload.id);
   if (!usuario || !usuario.ativo) {
     return res.status(401).json({ erro: 'Usuario nao encontrado ou desativado.' });
   }
@@ -75,6 +81,15 @@ function requerAdmin(req, res, next) {
   next();
 }
 
+// Modulo mobile do motorista: restrito a usuarios perfil Motorista com um
+// motorista_id vinculado (sem isso nao ha como resolver "a viagem dele").
+function requerMotorista(req, res, next) {
+  if (!req.usuario || req.usuario.perfil !== 'Motorista' || !req.usuario.motorista_id) {
+    return res.status(403).json({ erro: 'Acao restrita ao perfil Motorista.' });
+  }
+  next();
+}
+
 // Controle de acesso granular por modulo/tela (ver usuario_permissoes no
 // schema). nivelMinimo e 'Visualizar' (leitura) ou 'Gerenciar' (escrita).
 function requerAcessoModulo(modulo, nivelMinimo) {
@@ -93,6 +108,7 @@ module.exports = {
   autenticar,
   requerPerfilMinimo,
   requerAdmin,
+  requerMotorista,
   requerAcessoModulo,
   calcularPermissoesEfetivas,
   nivelBaseDoPerfil,

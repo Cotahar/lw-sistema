@@ -1,0 +1,13 @@
+{
+  "name": "Frottex Motorista",
+  "short_name": "Frottex",
+  "start_url": "/#/motorista",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F9FAFB",
+  "theme_color": "#111827",
+  "icons": [
+    { "src": "/img/favicon.png", "sizes": "376x376", "type": "image/png" },
+    { "src": "/img/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

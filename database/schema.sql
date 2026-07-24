@@ -31,6 +31,11 @@ CREATE TABLE usuarios (
     id              INTEGER PRIMARY KEY,
     nome            TEXT NOT NULL,
     email           TEXT NOT NULL UNIQUE,
+    -- Login passou a ser por username (mais pratico pro motorista digitar no
+    -- celular do que um e-mail) - email vira so um dado de contato. Nullable
+    -- no banco (obrigatoriedade fica na aplicacao) pra nao exigir rebuild
+    -- de tabela toda vez; UNIQUE ja aceita varios NULL sem conflito.
+    username        TEXT UNIQUE,
     senha_hash      TEXT NOT NULL,
     -- "perfil" e o PERFIL BASE do usuario (o que ele tem por padrao em todo
     -- modulo que nao tiver uma excecao especifica em usuario_permissoes):
@@ -39,7 +44,14 @@ CREATE TABLE usuarios (
     -- tem so leitura em tudo por padrao. Ver usuario_permissoes para os casos
     -- em que um usuario Comum/Visualizacao precisa de um nivel diferente do
     -- padrao em um modulo especifico (ex.: sem acesso nenhum a Financeiro).
-    perfil          TEXT NOT NULL CHECK (perfil IN ('Admin', 'Comum', 'Visualizacao')),
+    -- Motorista e um perfil a parte: nao passa pela matriz de permissoes (fica
+    -- de fora, nivel sempre 'Nenhum' la) e sim pelo modulo mobile proprio
+    -- (ver motorista.routes.js), restrito aos dados do motorista_id vinculado.
+    perfil          TEXT NOT NULL CHECK (perfil IN ('Admin', 'Comum', 'Visualizacao', 'Motorista')),
+    -- Preenchido somente quando perfil='Motorista': liga este login ao
+    -- cadastro do motorista (tabela motoristas) cuja viagem atual ele pode
+    -- ver/lancar abastecimento. NULL para os demais perfis.
+    motorista_id    INTEGER REFERENCES motoristas(id),
     ativo           INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1)),
     criado_em       TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     atualizado_em   TEXT
@@ -642,6 +654,15 @@ CREATE TABLE despesas_viagem (
     data_vencimento     TEXT,
     contas_pagar_id     INTEGER REFERENCES contas_pagar(id),
     descricao           TEXT,
+    -- Foto da NFe/cupom fiscal (nome do arquivo, mesmo padrao de
+    -- veiculo_checklist_fotos.arquivo) - preenchida quando o abastecimento
+    -- vem do app do motorista; NULL nos lancamentos feitos pelo escritorio.
+    foto_recibo         TEXT,
+    -- Chave gerada no celular do motorista (crypto.randomUUID) pra evitar
+    -- duplicar o lancamento se a sincronizacao offline reenviar a mesma
+    -- despesa depois de uma resposta perdida. NULL nos demais lancamentos;
+    -- UNIQUE aceita varios NULL sem conflito.
+    idempotency_key     TEXT UNIQUE,
     criado_por          INTEGER REFERENCES usuarios(id),
     criado_em           TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
 );
