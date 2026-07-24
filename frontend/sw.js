@@ -6,7 +6,7 @@
 // administrativa, que muda o tempo todo e nao deve arriscar cache/staleness.
 import { tentarSincronizarTodos } from './js/pages/motorista/offlineQueue.js';
 
-const CACHE_VERSION = 'frottex-motorista-v1';
+const CACHE_VERSION = 'frottex-motorista-v2';
 const ARQUIVOS_SHELL = [
   '/',
   '/index.html',
@@ -43,22 +43,26 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// Rede primeiro, cache so como fallback pra quando estiver sem sinal. A
+// versao anterior fazia o contrario (cache primeiro, rede so atualizava o
+// cache em segundo plano pro PROXIMO carregamento) - isso significava que
+// qualquer correcao/deploy novo so aparecia pro motorista depois de DOIS
+// carregamentos, nunca no primeiro. Com o app sendo atualizado com
+// frequencia, "funciona offline" nao pode significar "sempre atrasado
+// quando online".
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   // API sempre vai pra rede - nunca serve resposta de API velha do cache.
   if (url.pathname.startsWith('/api/') || event.request.method !== 'GET') return;
 
   event.respondWith(
-    caches.match(event.request).then((doCache) => {
-      const daRede = fetch(event.request)
-        .then((resposta) => {
-          const copia = resposta.clone();
-          caches.open(CACHE_VERSION).then((cache) => cache.put(event.request, copia));
-          return resposta;
-        })
-        .catch(() => doCache);
-      return doCache || daRede;
-    })
+    fetch(event.request)
+      .then((resposta) => {
+        const copia = resposta.clone();
+        caches.open(CACHE_VERSION).then((cache) => cache.put(event.request, copia));
+        return resposta;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
 

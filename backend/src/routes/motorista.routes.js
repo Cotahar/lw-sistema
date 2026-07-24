@@ -66,35 +66,6 @@ function calcularMediaAbastecimentos(viagemId, kmInicial, hodometroAtual) {
   return litrosTotal > 0 && kmTotal > 0 ? kmTotal / litrosTotal : null;
 }
 
-// Media "em tempo real" a partir da telemetria do tanque (Onixsat, campo
-// "lt" - ver onixsatSync.js): litros que sumiram do tanque desde o ultimo
-// abastecimento LANCADO ate agora, dividido pelo km rodado no mesmo
-// periodo. Pode divergir da media oficial acima (sensor de tanque, nao
-// litros efetivamente colocados) - por isso e exibida a parte, rotulada
-// como vinda do rastreador, nunca usada no calculo da comissao.
-function calcularMediaTelemetria(viagemId, veiculoId, hodometroAtual, nivelTanqueAtual) {
-  if (nivelTanqueAtual === null || hodometroAtual === null) return null;
-  const categoriaAbastecimento = db.prepare("SELECT id FROM categorias_despesa WHERE lower(trim(nome)) = 'abastecimento'").get();
-  if (!categoriaAbastecimento) return null;
-  const ultimoAbastecimento = db.prepare(`
-    SELECT * FROM despesas_viagem
-    WHERE viagem_id = ? AND categoria_id = ? AND km_abastecimento IS NOT NULL
-    ORDER BY criado_em DESC LIMIT 1
-  `).get(viagemId, categoriaAbastecimento.id);
-  if (!ultimoAbastecimento) return null;
-
-  const leituraNoAbastecimento = db.prepare(`
-    SELECT nivel_tanque_litros FROM hodometro_eventos
-    WHERE veiculo_id = ? AND nivel_tanque_litros IS NOT NULL AND data_hora >= ?
-    ORDER BY data_hora ASC LIMIT 1
-  `).get(veiculoId, ultimoAbastecimento.criado_em);
-  if (!leituraNoAbastecimento) return null;
-
-  const litrosConsumidos = leituraNoAbastecimento.nivel_tanque_litros - nivelTanqueAtual;
-  const kmPercorridos = hodometroAtual - ultimoAbastecimento.km_abastecimento;
-  return litrosConsumidos > 0 && kmPercorridos > 0 ? kmPercorridos / litrosConsumidos : null;
-}
-
 function montarFreteResumo(frete, percentualImposto) {
   if (!frete) return null;
   const valorImposto = percentualImposto ? Math.round(frete.frete_bruto * (percentualImposto / 100)) : 0;
@@ -146,10 +117,6 @@ router.get('/viagem-atual', asyncHandler(async (req, res) => {
     ? Math.round(faturamentoLiquido * (percentualComissao / 100)) - adiantamentosTotal
     : null;
 
-  const mediaTelemetria = tratora
-    ? calcularMediaTelemetria(viagem.id, tratora.id, hodometroAtual, tratora.nivel_tanque_litros)
-    : null;
-
   res.json({
     viagem: {
       id: viagem.id,
@@ -166,7 +133,6 @@ router.get('/viagem-atual', asyncHandler(async (req, res) => {
       faturamento_liquido: faturamentoLiquido,
       percentual_imposto: percentualImposto,
       media_abastecimentos_km_l: mediaAbastecimentos,
-      media_telemetria_km_l: mediaTelemetria,
       percentual_comissao: percentualComissao,
       comissao_estimada: comissaoEstimada,
       adiantamentos_total: adiantamentosTotal,

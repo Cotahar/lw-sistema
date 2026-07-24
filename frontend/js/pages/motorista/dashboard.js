@@ -61,16 +61,10 @@ async function renderizarViagem(conteudo) {
 
           <dl class="mt-3 grid grid-cols-2 gap-x-3 gap-y-3 text-sm">
             <div>
-              <dt class="text-slate-500">Media rastreador</dt>
-              <dd class="font-medium text-slate-900">${formatarKmL(viagem.media_telemetria_km_l)}</dd>
-              <dd class="text-[11px] text-slate-400">via Onixsat</dd>
-            </div>
-            <div>
-              <dt class="text-slate-500">Media abastecimentos</dt>
+              <dt class="text-slate-500">Media de consumo</dt>
               <dd class="font-medium text-slate-900">
                 ${formatarKmL(viagem.media_abastecimentos_km_l)}${viagem.percentual_comissao != null ? ` &rarr; ${viagem.percentual_comissao}%` : ''}
               </dd>
-              <dd class="text-[11px] text-slate-400">lancado pelo motorista - usada na comissao</dd>
             </div>
             <div>
               <dt class="text-slate-500">Adiantamentos</dt>
@@ -81,7 +75,7 @@ async function renderizarViagem(conteudo) {
               <dd class="font-medium text-slate-900">${viagem.comissao_estimada != null ? formatarMoeda(viagem.comissao_estimada) : '-'}</dd>
             </div>
             <div><dt class="text-slate-500">Hodometro</dt><dd class="font-medium text-slate-900">${viagem.hodometro_atual != null ? `${viagem.hodometro_atual.toLocaleString('pt-BR')} km` : '-'}</dd></div>
-            <div><dt class="text-slate-500">Localizacao</dt><dd class="font-medium text-slate-900">${viagem.localizacao_cidade ? `${viagem.localizacao_cidade}/${viagem.localizacao_uf}` : '-'}</dd></div>
+            <div class="col-span-2"><dt class="text-slate-500">Localizacao</dt><dd class="font-medium text-slate-900">${viagem.localizacao_cidade ? `${viagem.localizacao_cidade}/${viagem.localizacao_uf}` : '-'}</dd></div>
           </dl>
         </div>
 
