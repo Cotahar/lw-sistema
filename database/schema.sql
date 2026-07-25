@@ -1007,6 +1007,9 @@ CREATE TABLE empresas (
     onixsat_usuario         TEXT,
     onixsat_senha           TEXT,
     onixsat_ultimo_mid      INTEGER, -- cursor de paginacao do RequestMensagemCB (ver onixsatClient.js)
+    -- Intervalo (minutos) da sincronizacao automatica de posicao/hodometro
+    -- desta empresa (ver onixsatScheduler.js) - NULL usa o padrao do sistema.
+    onixsat_poll_minutos    INTEGER,
     -- % de imposto a descontar do frete bruto no fechamento do Acerto (varia
     -- por empresa). Quando preenchido, o Acerto lanca/destaca "Imposto (nome
     -- da empresa)" sobre o frete bruto da viagem - ver acertos.routes.js.

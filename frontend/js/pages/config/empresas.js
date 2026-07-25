@@ -44,6 +44,10 @@ function abrirFormEmpresa(registro, recarregar) {
         <div><label class="label">Usuário Onixsat</label><input type="text" name="onixsat_usuario" class="input" autocomplete="off" /></div>
         <div><label class="label">Senha Onixsat</label><input type="password" name="onixsat_senha" class="input" autocomplete="new-password" /></div>
       </div>
+      <div class="mt-3 max-w-[16rem]">
+        <label class="label">Atualização automática (minutos)</label>
+        <input type="number" min="1" step="1" name="onixsat_poll_minutos" class="input" placeholder="Padrão do sistema (3 min)" />
+      </div>
     </div>
     <div class="border-t border-slate-200 pt-3">
       <h3 class="mb-1 text-sm font-semibold text-slate-900">Imposto sobre o frete</h3>
@@ -63,7 +67,7 @@ function abrirFormEmpresa(registro, recarregar) {
   const campos = [
     'razao_social', 'nome_fantasia', 'cnpj', 'inscricao_estadual',
     'endereco_logradouro', 'endereco_numero', 'endereco_complemento', 'endereco_bairro', 'endereco_cidade', 'endereco_uf', 'endereco_cep',
-    'telefone', 'email', 'onixsat_usuario', 'onixsat_senha', 'percentual_desconto_geral',
+    'telefone', 'email', 'onixsat_usuario', 'onixsat_senha', 'onixsat_poll_minutos', 'percentual_desconto_geral',
   ];
   for (const nome of campos) {
     if (registro && registro[nome] != null) form.elements[nome].value = registro[nome];
@@ -117,6 +121,7 @@ function abrirFormEmpresa(registro, recarregar) {
     for (const nome of campos) valores[nome] = form.elements[nome].value || null;
     valores.cnpj = cnpjDigitos;
     valores.percentual_desconto_geral = form.percentual_desconto_geral.value ? Number(form.percentual_desconto_geral.value) : null;
+    valores.onixsat_poll_minutos = form.onixsat_poll_minutos.value ? Number(form.onixsat_poll_minutos.value) : null;
     try {
       if (registro) await put(`/empresas/${registro.id}`, valores);
       else await post('/empresas', valores);
