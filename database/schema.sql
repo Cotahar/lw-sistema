@@ -148,6 +148,11 @@ CREATE TABLE fornecedores (
     cnpj            TEXT UNIQUE,        -- somente digitos
     tipo_id         INTEGER NOT NULL REFERENCES fornecedor_tipos(id),
     telefone        TEXT,
+    -- Texto livre (ex.: "Cidade/UF" ou o nome do local) - usado principalmente
+    -- pelo posto cadastrado na hora pelo app do motorista (pre-preenchido com
+    -- a localizacao rastreada da viagem, editavel). Sem geocodificacao -
+    -- so um texto pra ajudar o escritorio a identificar o posto depois.
+    localizacao     TEXT,
     ativo           INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1)),
     criado_em       TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     atualizado_em   TEXT

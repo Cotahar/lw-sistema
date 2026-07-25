@@ -9,6 +9,7 @@ const { requerMotorista } = require('../middleware/auth');
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 const { criarDespesaViagem } = require('../utils/despesaViagemHelper');
+const { registrarAuditoria } = require('../utils/audit');
 
 const router = express.Router();
 router.use(requerMotorista, exigirEmpresaEspecifica);
@@ -235,6 +236,50 @@ router.post('/abastecimentos', upload.single('foto'), asyncHandler(async (req, r
         formaPagamentoPosto: forma_pagamento_posto || null, precisaValidacao: true, arla: null,
       });
   res.status(201).json(despesa);
+}));
+
+function buscarPostoTipoId() {
+  const tipo = db.prepare("SELECT id FROM fornecedor_tipos WHERE lower(trim(nome)) = 'posto'").get();
+  if (!tipo) throw new ApiError(400, 'Tipo de fornecedor "Posto" nao encontrado no cadastro.');
+  return tipo.id;
+}
+
+// Busca de posto pelo app do motorista - so retorna fornecedores do tipo
+// "Posto" (mesmo filtro que a tela do escritorio ja usa em
+// viagemDetalhe.js/buscarFornecedoresFiltrado), restrito a empresa do
+// motorista logado.
+router.get('/postos', asyncHandler(async (req, res) => {
+  const { search } = req.query;
+  const tipoId = buscarPostoTipoId();
+  const condicoes = ['empresa_id = ?', 'tipo_id = ?'];
+  const params = [req.empresaId, tipoId];
+  if (search) { condicoes.push('nome LIKE ?'); params.push(`%${search}%`); }
+  const postos = db.prepare(`SELECT id, nome, localizacao FROM fornecedores WHERE ${condicoes.join(' AND ')} ORDER BY nome`).all(...params);
+  res.json(postos);
+}));
+
+// Cria um posto na hora, com so o nome que o motorista digitou (nao achou no
+// cadastro). Se ja existir um posto com esse nome (case-insensitive) nesta
+// empresa, devolve o existente em vez de duplicar - protege contra reenvio
+// (ex.: duplo toque, retry offline) e contra o motorista digitar o mesmo
+// nome de um posto que outro motorista ja cadastrou.
+router.post('/postos', asyncHandler(async (req, res) => {
+  const { nome, localizacao } = req.body;
+  if (!nome || !nome.trim()) throw new ApiError(400, 'Informe o nome do posto.');
+  const tipoId = buscarPostoTipoId();
+
+  const existente = db.prepare(`
+    SELECT id, nome, localizacao FROM fornecedores
+    WHERE empresa_id = ? AND tipo_id = ? AND lower(trim(nome)) = lower(trim(?))
+  `).get(req.empresaId, tipoId, nome);
+  if (existente) return res.status(200).json(existente);
+
+  const info = db.prepare(`
+    INSERT INTO fornecedores (empresa_id, nome, tipo_id, localizacao, ativo) VALUES (?, ?, ?, ?, 1)
+  `).run(req.empresaId, nome.trim(), tipoId, localizacao || null);
+  const criado = db.prepare('SELECT id, nome, localizacao FROM fornecedores WHERE id = ?').get(info.lastInsertRowid);
+  registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'fornecedores', registroId: criado.id, acao: 'INSERT', depois: criado });
+  res.status(201).json(criado);
 }));
 
 function buscarCategoriaAbastecimentoId() {

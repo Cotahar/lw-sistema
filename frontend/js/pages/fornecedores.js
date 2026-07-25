@@ -9,6 +9,7 @@ async function camposFormulario() {
     { nome: 'cnpj', label: 'CPF/CNPJ', tipo: 'cpf_cnpj' },
     { nome: 'tipo_id', label: 'Tipo', tipo: 'select', obrigatorio: true, opcoes: tipos.map((t) => ({ label: t.nome, value: t.id })) },
     { nome: 'telefone', label: 'Telefone', tipo: 'texto' },
+    { nome: 'localizacao', label: 'Localizacao', tipo: 'texto' },
   ];
 }
 
@@ -23,6 +24,7 @@ export const render = criarPaginaCrud({
     { chave: 'cnpj', titulo: 'CPF/CNPJ', render: (r) => (r.cnpj ? formatarCpfCnpj(r.cnpj) : '-') },
     { chave: 'tipo_nome', titulo: 'Tipo' },
     { chave: 'telefone', titulo: 'Telefone', render: (r) => r.telefone || '-' },
+    { chave: 'localizacao', titulo: 'Localizacao', render: (r) => r.localizacao || '-' },
     { chave: 'ativo', titulo: 'Status', render: (r) => (r.ativo ? '<span class="badge bg-emerald-100 text-emerald-700">Ativo</span>' : '<span class="badge bg-slate-100 text-slate-500">Inativo</span>') },
   ],
   transformarListagem: async (linhas) => {

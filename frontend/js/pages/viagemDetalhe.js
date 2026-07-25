@@ -1,4 +1,4 @@
-import { get, post, patch, del, podeGerenciar, getUsuario } from '../api.js';
+import { get, post, put, patch, del, podeGerenciar, getUsuario } from '../api.js';
 import { criarDataTable } from '../components/dataTable.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { abrirModal, fecharModal, confirmarAcao, modalAberto } from '../components/modal.js';
@@ -45,6 +45,13 @@ async function buscarUsuarios(termo) {
     const filtrados = termo ? usuarios.filter((u) => u.nome.toLowerCase().includes(termo.toLowerCase())) : usuarios;
     return filtrados.map((u) => ({ value: u.id, label: u.nome }));
   } catch { return []; }
+}
+// Deixa escolher onde a despesa entra no DRE (o veiculo da viagem ou
+// "Base/Administrativo", quando o gasto e visto como aporte pessoal do
+// proprietario em vez de custo do veiculo) - mesmo padrao ja usado em
+// Despesas Fixas.
+async function buscarCentrosCusto(termo) {
+  return (await get(`/centros-custo${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((c) => ({ value: c.id, label: c.nome }));
 }
 
 // ---- Fretes ----
@@ -264,6 +271,11 @@ async function abrirNovaDespesa(viagemId, recarregar) {
     <div data-bloco-usuario class="hidden"><label class="label">Quem desembolsou *</label><div data-usuario-select></div></div>
     <div data-bloco-vencimento class="hidden"><label class="label">Data de vencimento (se faturada)</label><input type="text" name="data_vencimento" class="input" placeholder="Deixe em branco se ja foi paga" /></div>
     <div><label class="label">Fornecedor</label><div data-fornecedor-select></div></div>
+    <div>
+      <label class="label">Centro de custo</label>
+      <div data-centro-custo-select></div>
+      <p class="mt-1 text-xs text-slate-400">Deixe em branco para usar o veiculo da viagem (padrao). Escolha "Base/Administrativo" se este gasto nao deve entrar no resultado do veiculo (ex.: aporte pessoal).</p>
+    </div>
     <div class="rounded-lg border border-slate-200 p-3" data-bloco-abastecimento>
       <p class="mb-2 text-xs font-medium uppercase text-slate-500">Campos de abastecimento (se aplicavel)</p>
       <div class="grid grid-cols-2 gap-3">
@@ -311,6 +323,8 @@ async function abrirNovaDespesa(viagemId, recarregar) {
     placeholder: 'Pesquisar fornecedor...',
   });
   form.querySelector('[data-fornecedor-select]').appendChild(fornecedorSelect.el);
+  const centroCustoSelect = criarSearchableSelect({ buscar: buscarCentrosCusto, placeholder: 'Pesquisar centro de custo (opcional)...' });
+  form.querySelector('[data-centro-custo-select]').appendChild(centroCustoSelect.el);
 
   function categoriaEhAbastecimento() {
     return categoriaAbastecimentoId !== null && Number(form.categoria_id.value) === categoriaAbastecimentoId;
@@ -416,6 +430,7 @@ async function abrirNovaDespesa(viagemId, recarregar) {
         km_abastecimento: categoriaEhAbastecimento() && form.km_abastecimento.value ? Number(form.km_abastecimento.value) : null,
         data_vencimento: form.pago_por.value === 'Empresa' && form.data_vencimento.value ? parseDataBrParaIso(form.data_vencimento.value) : null,
         arla: montarArlaPayload(),
+        centro_custo_id: centroCustoSelect.getValue(),
       });
       if (form.observacao.value.trim()) {
         await post('/ocorrencias', { entidade_tipo: 'DespesaViagem', entidade_id: despesa.id, texto: form.observacao.value.trim() });
@@ -487,15 +502,15 @@ function abrirOcorrenciasDespesa(despesa, gerenciar) {
   abrirModal({ titulo: 'Ocorrencias da despesa', conteudo: ocorrencias.el, largura: 'max-w-lg' });
 }
 
-// Valida uma despesa lancada pelo app do motorista - abre com os campos ja
-// preenchidos (e a despesa de Arla vinculada, se houver) e a foto da nota/
-// cupom, pra o escritorio poder corrigir um valor digitado errado pelo
-// motorista antes de confirmar (em vez de so aceitar como esta). So pede
-// vencimento quando "Assinar nota" e a conta a pagar ainda nao existe (o
-// backend so cria ela agora, com essa data - ver PATCH .../validar).
-function abrirValidarDespesa(despesa, arlaDespesa, categoriaNome, fornecedorLabelInicial, recarregar) {
+// Monta o formulario compartilhado por "Validar" (despesa pendente, vinda do
+// app do motorista) e "Editar" (despesa ja validada, lancada pelo escritorio
+// ou ja revisada) - mesma estrutura de campos (inclusive o bloco de Arla
+// vinculada e a foto do cupom, quando existir). incluirFormaPagamento so e
+// true no fluxo de Validar (so faz sentido perguntar "como foi pago"/
+// vencimento antes da conta a pagar existir).
+function montarFormularioDespesaExistente({ despesa, arlaDespesa, categoriaNome, fornecedorLabelInicial, centroCustoLabelInicial, incluirFormaPagamento, textoSubmit }) {
   const ehArlaIsolada = (categoriaNome || '').trim().toLowerCase() === 'arla';
-  const mostrarVencimento = despesa.forma_pagamento_posto === 'AssinarNota' && !despesa.contas_pagar_id;
+  const mostrarVencimento = incluirFormaPagamento && despesa.forma_pagamento_posto === 'AssinarNota' && !despesa.contas_pagar_id;
 
   const form = document.createElement('form');
   form.className = 'space-y-4';
@@ -516,13 +531,16 @@ function abrirValidarDespesa(despesa, arlaDespesa, categoriaNome, fornecedorLabe
     </div>
     <div class="max-w-[12rem]"><label class="label">KM no abastecimento</label><input type="number" name="km_abastecimento" class="input" /></div>
     <div><label class="label">Posto</label><div data-posto-select></div></div>
-    <div>
-      <label class="label">Como foi pago?</label>
-      <select name="forma_pagamento_posto" class="input">
-        <option value="Imediato">Pago no ato</option>
-        <option value="AssinarNota">Assinar nota (posto fatura depois)</option>
-      </select>
-    </div>
+    <div><label class="label">Centro de custo</label><div data-centro-custo-select></div></div>
+    ${incluirFormaPagamento ? `
+      <div>
+        <label class="label">Como foi pago?</label>
+        <select name="forma_pagamento_posto" class="input">
+          <option value="Imediato">Pago no ato</option>
+          <option value="AssinarNota">Assinar nota (posto fatura depois)</option>
+        </select>
+      </div>
+    ` : ''}
     ${arlaDespesa ? `
       <div class="rounded-lg border border-slate-200 p-3">
         <p class="mb-2 text-xs font-medium uppercase text-slate-500">Arla</p>
@@ -533,12 +551,14 @@ function abrirValidarDespesa(despesa, arlaDespesa, categoriaNome, fornecedorLabe
         <div class="mt-3"><label class="label">Valor Arla</label><input type="text" name="arla_valor" class="input" /></div>
       </div>
     ` : ''}
-    <div class="${mostrarVencimento ? '' : 'hidden'}" data-bloco-vencimento>
-      <label class="label">Data de vencimento *</label>
-      <input type="text" name="data_vencimento" class="input" placeholder="Fatura do posto" />
-    </div>
+    ${incluirFormaPagamento ? `
+      <div class="${mostrarVencimento ? '' : 'hidden'}" data-bloco-vencimento>
+        <label class="label">Data de vencimento *</label>
+        <input type="text" name="data_vencimento" class="input" placeholder="Fatura do posto" />
+      </div>
+    ` : ''}
     <p class="hidden text-sm text-red-600" data-erro></p>
-    <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Validar</button></div>
+    <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">${textoSubmit}</button></div>
   `;
 
   attachMoedaMask(form.valor, despesa.valor || 0);
@@ -546,8 +566,15 @@ function abrirValidarDespesa(despesa, arlaDespesa, categoriaNome, fornecedorLabe
   attachMoedaMask(form.preco_litro, despesa.preco_litro || 0);
   form.litragem.value = despesa.litragem ?? '';
   form.km_abastecimento.value = despesa.km_abastecimento ?? '';
-  form.forma_pagamento_posto.value = despesa.forma_pagamento_posto || 'Imediato';
-  attachDataMask(form.data_vencimento);
+  if (incluirFormaPagamento) {
+    form.forma_pagamento_posto.value = despesa.forma_pagamento_posto || 'Imediato';
+    attachDataMask(form.data_vencimento);
+    form.forma_pagamento_posto.addEventListener('change', () => {
+      if (!despesa.contas_pagar_id) {
+        form.querySelector('[data-bloco-vencimento]').classList.toggle('hidden', form.forma_pagamento_posto.value !== 'AssinarNota');
+      }
+    });
+  }
 
   const postoSelect = criarSearchableSelect({
     buscar: (termo) => buscarFornecedoresFiltrado(termo, true),
@@ -557,11 +584,13 @@ function abrirValidarDespesa(despesa, arlaDespesa, categoriaNome, fornecedorLabe
   });
   form.querySelector('[data-posto-select]').appendChild(postoSelect.el);
 
-  form.forma_pagamento_posto.addEventListener('change', () => {
-    if (!despesa.contas_pagar_id) {
-      form.querySelector('[data-bloco-vencimento]').classList.toggle('hidden', form.forma_pagamento_posto.value !== 'AssinarNota');
-    }
+  const centroCustoSelect = criarSearchableSelect({
+    buscar: buscarCentrosCusto,
+    valorInicial: despesa.centro_custo_id,
+    labelInicial: centroCustoLabelInicial || '',
+    placeholder: 'Pesquisar centro de custo...',
   });
+  form.querySelector('[data-centro-custo-select]').appendChild(centroCustoSelect.el);
 
   form.valor.addEventListener('input', () => recalcularTrio(form.preco_litro, form.litragem, form.valor, form.valor));
   form.preco_litro.addEventListener('input', () => recalcularTrio(form.preco_litro, form.litragem, form.valor, form.preco_litro));
@@ -585,6 +614,21 @@ function abrirValidarDespesa(despesa, arlaDespesa, categoriaNome, fornecedorLabe
     });
   }
 
+  return { form, postoSelect, centroCustoSelect };
+}
+
+// Valida uma despesa lancada pelo app do motorista - abre com os campos ja
+// preenchidos (e a despesa de Arla vinculada, se houver) e a foto da nota/
+// cupom, pra o escritorio poder corrigir um valor digitado errado pelo
+// motorista antes de confirmar (em vez de so aceitar como esta). So pede
+// vencimento quando "Assinar nota" e a conta a pagar ainda nao existe (o
+// backend so cria ela agora, com essa data - ver PATCH .../validar).
+function abrirValidarDespesa(despesa, arlaDespesa, categoriaNome, fornecedorLabelInicial, centroCustoLabelInicial, recarregar) {
+  const { form, postoSelect, centroCustoSelect } = montarFormularioDespesaExistente({
+    despesa, arlaDespesa, categoriaNome, fornecedorLabelInicial, centroCustoLabelInicial,
+    incluirFormaPagamento: true, textoSubmit: 'Validar',
+  });
+
   const erro = form.querySelector('[data-erro]');
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
@@ -597,6 +641,7 @@ function abrirValidarDespesa(despesa, arlaDespesa, categoriaNome, fornecedorLabe
       litragem: form.litragem.value ? Number(form.litragem.value) : undefined,
       km_abastecimento: form.km_abastecimento.value ? Number(form.km_abastecimento.value) : undefined,
       posto_fornecedor_id: postoSelect.getValue(),
+      centro_custo_id: centroCustoSelect.getValue(),
       forma_pagamento_posto: form.forma_pagamento_posto.value || undefined,
     };
     if (arlaDespesa) {
@@ -626,6 +671,48 @@ function abrirValidarDespesa(despesa, arlaDespesa, categoriaNome, fornecedorLabe
     }
   });
   abrirModal({ titulo: 'Validar despesa', conteudo: form, largura: 'max-w-lg' });
+}
+
+// Edita uma despesa ja validada (lancada pelo escritorio ou ja revisada) -
+// mesmos campos do Validar, sem forma de pagamento/vencimento (a conta a
+// pagar, se existir, ja foi criada e nao muda de tipo depois). Se o valor
+// mudar e ja existir uma conta a pagar vinculada, o backend resincroniza o
+// valor dela automaticamente (mesma logica de PATCH .../validar).
+function abrirEditarDespesa(despesa, arlaDespesa, categoriaNome, fornecedorLabelInicial, centroCustoLabelInicial, recarregar) {
+  const { form, postoSelect, centroCustoSelect } = montarFormularioDespesaExistente({
+    despesa, arlaDespesa, categoriaNome, fornecedorLabelInicial, centroCustoLabelInicial,
+    incluirFormaPagamento: false, textoSubmit: 'Salvar alteracoes',
+  });
+
+  const erro = form.querySelector('[data-erro]');
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    erro.classList.add('hidden');
+    const payload = {
+      valor: getMoedaValue(form.valor) || undefined,
+      data: form.data.value ? parseDataBrParaIso(form.data.value) : undefined,
+      preco_litro: form.preco_litro.value ? getMoedaValue(form.preco_litro) : undefined,
+      litragem: form.litragem.value ? Number(form.litragem.value) : undefined,
+      km_abastecimento: form.km_abastecimento.value ? Number(form.km_abastecimento.value) : undefined,
+      posto_fornecedor_id: postoSelect.getValue(),
+      centro_custo_id: centroCustoSelect.getValue(),
+    };
+    if (arlaDespesa) {
+      payload.arla_valor = getMoedaValue(form.arla_valor) || undefined;
+      payload.arla_preco_litro = form.arla_preco.value ? getMoedaValue(form.arla_preco) : undefined;
+      payload.arla_litragem = form.arla_qtd.value ? Number(form.arla_qtd.value) : undefined;
+    }
+    try {
+      await put(`/viagens/despesas/${despesa.id}`, payload);
+      mostrarToast('Despesa atualizada.');
+      fecharModal();
+      recarregar();
+    } catch (err) {
+      erro.textContent = err.message;
+      erro.classList.remove('hidden');
+    }
+  });
+  abrirModal({ titulo: 'Editar despesa', conteudo: form, largura: 'max-w-lg' });
 }
 
 // ---- Adiantamentos ao motorista ----
@@ -770,16 +857,18 @@ export async function render(container, params) {
 
   async function recarregarPagina() {
     const viagem = await get(`/viagens/${viagemId}`);
-    const [conjunto, motorista, despesas, categorias, adiantamentos, fornecedores] = await Promise.all([
+    const [conjunto, motorista, despesas, categorias, adiantamentos, fornecedores, centrosCusto] = await Promise.all([
       get(`/conjuntos/${viagem.conjunto_id}`),
       get(`/motoristas/${viagem.motorista_id}`),
       get(`/viagens/${viagemId}/despesas`),
       get('/categorias-despesa'),
       get(`/viagens/${viagemId}/adiantamentos`),
       get('/fornecedores'),
+      get('/centros-custo'),
     ]);
     const nomeCategoriasPorId = Object.fromEntries(categorias.map((c) => [c.id, c.nome]));
     const nomeFornecedoresPorId = Object.fromEntries(fornecedores.map((f) => [f.id, f.nome]));
+    const nomeCentrosCustoPorId = Object.fromEntries(centrosCusto.map((c) => [c.id, c.nome]));
 
     const tratora = conjunto.itens.find((i) => TIPOS_TRATORA.includes(i.tipo));
     // hodometro_atual do veiculo so e uma leitura confiavel da posicao atual
@@ -980,6 +1069,20 @@ export async function render(container, params) {
                 d.despesa_arla_id ? despesas.find((x) => x.id === d.despesa_arla_id) : null,
                 nomeCategoriasPorId[d.categoria_id],
                 d.posto_fornecedor_id ? nomeFornecedoresPorId[d.posto_fornecedor_id] : '',
+                d.centro_custo_id ? nomeCentrosCustoPorId[d.centro_custo_id] : '',
+                recarregarPagina,
+              ),
+            }]
+          : []),
+        ...(podeEditar && d.validado_em && !idsArlaFilhas.has(d.id)
+          ? [{
+              label: 'Editar',
+              onClick: () => abrirEditarDespesa(
+                d,
+                d.despesa_arla_id ? despesas.find((x) => x.id === d.despesa_arla_id) : null,
+                nomeCategoriasPorId[d.categoria_id],
+                d.posto_fornecedor_id ? nomeFornecedoresPorId[d.posto_fornecedor_id] : '',
+                d.centro_custo_id ? nomeCentrosCustoPorId[d.centro_custo_id] : '',
                 recarregarPagina,
               ),
             }]

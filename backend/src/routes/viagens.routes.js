@@ -495,7 +495,7 @@ router.post('/:id/despesas', requerAcessoModulo('viagens', 'Gerenciar'), exigirE
   const {
     categoria_id, valor, data, pago_por, pago_por_usuario_id,
     posto_fornecedor_id, preco_litro, litragem, km_abastecimento, descricao,
-    data_vencimento, arla,
+    data_vencimento, arla, centro_custo_id,
   } = req.body;
   if (!categoria_id || !pago_por) throw new ApiError(400, 'Preencha categoria_id e pago_por.');
   if (!PAGO_POR.includes(pago_por)) throw new ApiError(400, `pago_por invalido. Use um de: ${PAGO_POR.join(', ')}`);
@@ -516,8 +516,19 @@ router.post('/:id/despesas', requerAcessoModulo('viagens', 'Gerenciar'), exigirE
   }
 
   const tratora = buscarUnidadeTratora(viagem.conjunto_id);
-  const centroCusto = tratora ? buscarCentroCustoDoVeiculo(tratora.id) : null;
-  if (!centroCusto) throw new ApiError(400, 'Nao foi possivel resolver o centro de custo da viagem.');
+  const centroCustoPadrao = tratora ? buscarCentroCustoDoVeiculo(tratora.id) : null;
+  if (!centroCustoPadrao) throw new ApiError(400, 'Nao foi possivel resolver o centro de custo da viagem.');
+
+  // O escritorio pode apontar a despesa pra outro centro de custo (ex.:
+  // "Base/Administrativo" quando o gasto e visto como aporte pessoal, nao
+  // custo do veiculo) - por padrao continua sendo o veiculo da viagem.
+  const centroCustoId = centro_custo_id
+    ? (() => {
+        const c = db.prepare('SELECT id FROM centros_custo WHERE id = ? AND empresa_id = ?').get(centro_custo_id, req.empresaId);
+        if (!c) throw new ApiError(400, 'Centro de custo invalido para esta empresa.');
+        return c.id;
+      })()
+    : centroCustoPadrao.id;
 
   // Despesa pertence ao ultimo frete cadastrado da viagem ate ali (ver
   // POST /:id/fretes para o vinculo retroativo de despesas ainda sem frete).
@@ -529,7 +540,7 @@ router.post('/:id/despesas', requerAcessoModulo('viagens', 'Gerenciar'), exigirE
     const categoriaArla = db.prepare("SELECT id FROM categorias_despesa WHERE lower(trim(nome)) = 'arla'").get();
     if (!categoriaArla) throw new ApiError(400, 'Categoria "Arla" nao encontrada no cadastro.');
     despesa = criarDespesaViagem({
-      empresaId: req.empresaId, viagem, freteId, centroCustoId: centroCusto.id,
+      empresaId: req.empresaId, viagem, freteId, centroCustoId,
       categoriaId: categoriaArla.id, valor: arlaValor, data,
       pagoPor: pago_por, pagoPorUsuarioId: pago_por_usuario_id, postoFornecedorId: posto_fornecedor_id,
       precoLitro: arla.preco_litro, litragem: arla.litragem, kmAbastecimento: km_abastecimento, dataVencimento: data_vencimento,
@@ -537,7 +548,7 @@ router.post('/:id/despesas', requerAcessoModulo('viagens', 'Gerenciar'), exigirE
     });
   } else {
     despesa = criarDespesaViagem({
-      empresaId: req.empresaId, viagem, freteId, centroCustoId: centroCusto.id, categoriaId: categoria_id, valor: Number(valor), data,
+      empresaId: req.empresaId, viagem, freteId, centroCustoId, categoriaId: categoria_id, valor: Number(valor), data,
       pagoPor: pago_por, pagoPorUsuarioId: pago_por_usuario_id, postoFornecedorId: posto_fornecedor_id,
       precoLitro: preco_litro, litragem, kmAbastecimento: km_abastecimento, dataVencimento: data_vencimento,
       descricao, arla, usuarioId: req.usuario.id,
@@ -555,14 +566,48 @@ router.put('/despesas/:despesaId', requerAcessoModulo('viagens', 'Gerenciar'), e
   if (viagemDaDespesa && viagemDaDespesa.status === 'Finalizada') throw new ApiError(400, 'Viagem ja finalizada nao aceita edicao de despesas.');
   // pago_por nao e editavel aqui: mudar o tipo de pagamento depois de gerar (ou nao) a
   // Conta a Pagar correspondente exigiria desfazer/refazer o lancamento financeiro.
-  const campos = ['categoria_id', 'valor', 'data', 'posto_fornecedor_id', 'preco_litro', 'litragem', 'km_abastecimento', 'descricao'];
+  if (req.body.centro_custo_id !== undefined) {
+    const c = db.prepare('SELECT id FROM centros_custo WHERE id = ? AND empresa_id = ?').get(req.body.centro_custo_id, req.empresaId);
+    if (!c) throw new ApiError(400, 'Centro de custo invalido para esta empresa.');
+  }
+
+  const arlaDespesa = antes.despesa_arla_id
+    ? db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(antes.despesa_arla_id)
+    : null;
+
+  const campos = ['categoria_id', 'valor', 'data', 'posto_fornecedor_id', 'preco_litro', 'litragem', 'km_abastecimento', 'descricao', 'centro_custo_id'];
   const sets = [];
   const valores = [];
   for (const campo of campos) {
     if (req.body[campo] !== undefined) { sets.push(`${campo} = ?`); valores.push(req.body[campo]); }
   }
-  if (!sets.length) throw new ApiError(400, 'Nenhum campo valido informado.');
-  db.prepare(`UPDATE despesas_viagem SET ${sets.join(', ')} WHERE id = ?`).run(...valores, req.params.despesaId);
+  const { arla_valor, arla_preco_litro, arla_litragem } = req.body;
+  const camposArla = arlaDespesa ? { valor: arla_valor, preco_litro: arla_preco_litro, litragem: arla_litragem } : {};
+  const setsArla = [];
+  const valoresArla = [];
+  for (const [campo, valorCampo] of Object.entries(camposArla)) {
+    if (valorCampo !== undefined) { setsArla.push(`${campo} = ?`); valoresArla.push(valorCampo); }
+  }
+  if (!sets.length && !setsArla.length) throw new ApiError(400, 'Nenhum campo valido informado.');
+
+  withTransaction(db, () => {
+    if (sets.length) {
+      db.prepare(`UPDATE despesas_viagem SET ${sets.join(', ')} WHERE id = ?`).run(...valores, req.params.despesaId);
+    }
+    if (setsArla.length) {
+      db.prepare(`UPDATE despesas_viagem SET ${setsArla.join(', ')} WHERE id = ?`).run(...valoresArla, arlaDespesa.id);
+    }
+    // Se ja existe conta a pagar vinculada (gerada na criacao ou na
+    // validacao) e o valor mudou, ela precisa acompanhar - mesma correcao ja
+    // aplicada em PATCH .../validar, pro escritorio nao pagar um valor velho.
+    if (antes.contas_pagar_id && (sets.length || setsArla.length)) {
+      const despesaAtualizada = db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(antes.id);
+      const arlaAtualizada = arlaDespesa ? db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(arlaDespesa.id) : null;
+      const novoValor = despesaAtualizada.valor + (arlaAtualizada ? arlaAtualizada.valor : 0);
+      db.prepare('UPDATE contas_pagar SET valor = ? WHERE id = ?').run(novoValor, antes.contas_pagar_id);
+    }
+  });
+
   const depois = db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(req.params.despesaId);
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'despesas_viagem', registroId: depois.id, acao: 'UPDATE', antes, depois });
   res.json(depois);
@@ -626,10 +671,14 @@ router.patch('/despesas/:despesaId/validar', requerAcessoModulo('viagens', 'Gere
 
   const {
     data_vencimento, valor, data, preco_litro, litragem, km_abastecimento, posto_fornecedor_id, forma_pagamento_posto,
-    arla_valor, arla_preco_litro, arla_litragem,
+    arla_valor, arla_preco_litro, arla_litragem, centro_custo_id,
   } = req.body;
   if (forma_pagamento_posto !== undefined && forma_pagamento_posto !== null && !['Imediato', 'AssinarNota'].includes(forma_pagamento_posto)) {
     throw new ApiError(400, 'forma_pagamento_posto invalida.');
+  }
+  if (centro_custo_id !== undefined) {
+    const c = db.prepare('SELECT id FROM centros_custo WHERE id = ? AND empresa_id = ?').get(centro_custo_id, req.empresaId);
+    if (!c) throw new ApiError(400, 'Centro de custo invalido para esta empresa.');
   }
 
   const arlaDespesa = despesa.despesa_arla_id
@@ -639,7 +688,7 @@ router.patch('/despesas/:despesaId/validar', requerAcessoModulo('viagens', 'Gere
   // A validacao agora tambem serve pra corrigir o lancamento do motorista
   // (ver frontend/js/pages/viagemDetalhe.js abrirValidarDespesa) - so aplica
   // os campos que vieram no body, deixando o resto como estava.
-  const camposDespesa = { valor, data, preco_litro, litragem, km_abastecimento, posto_fornecedor_id, forma_pagamento_posto, data_vencimento };
+  const camposDespesa = { valor, data, preco_litro, litragem, km_abastecimento, posto_fornecedor_id, forma_pagamento_posto, data_vencimento, centro_custo_id };
   const setsDespesa = [];
   const valoresDespesa = [];
   for (const [campo, valorCampo] of Object.entries(camposDespesa)) {
