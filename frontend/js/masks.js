@@ -29,6 +29,34 @@ export function attachMoedaMask(input, centavosIniciais = 0) {
   aplicar(centavosIniciais);
 }
 
+// Variante para valores totais (frete, financiamento, conta a pagar/receber
+// etc.) - digitar "150" preenche direto "R$ 150,00" (reais inteiros, os dois
+// zeros de centavos ficam implicitos); so entra em modo centavos quando o
+// usuario digita a virgula ele mesmo. Ao contrario da mascara "de caixa"
+// acima (attachMoedaMask), que serve pra valores por unidade digitados com
+// frequencia em centavos (preco/litro de combustivel) - nao trocar essa.
+export function attachMoedaMaskReais(input, centavosIniciais = 0) {
+  const aplicarFinal = (centavos) => {
+    input.dataset.valorCentavos = String(centavos);
+    input.value = formatarMoeda(centavos);
+  };
+  input.addEventListener('input', () => {
+    const [parteInteira, ...resto] = input.value.split(',');
+    const temVirgula = resto.length > 0;
+    const inteiros = apenasDigitos(parteInteira);
+    const decimais = temVirgula ? apenasDigitos(resto.join('')).slice(0, 2) : '';
+    const centavos = (inteiros ? parseInt(inteiros, 10) : 0) * 100 + (decimais ? parseInt(decimais.padEnd(2, '0'), 10) : 0);
+    input.dataset.valorCentavos = String(centavos);
+    const inteirosFormatados = inteiros ? Number(inteiros).toLocaleString('pt-BR') : '0';
+    input.value = temVirgula ? `${inteirosFormatados},${decimais}` : inteirosFormatados;
+  });
+  input.addEventListener('blur', () => aplicarFinal(getMoedaValue(input)));
+  input.addEventListener('focus', () => {
+    requestAnimationFrame(() => input.setSelectionRange(input.value.length, input.value.length));
+  });
+  aplicarFinal(centavosIniciais);
+}
+
 export function getMoedaValue(input) {
   return parseInt(input.dataset.valorCentavos || '0', 10);
 }

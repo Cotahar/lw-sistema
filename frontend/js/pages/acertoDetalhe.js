@@ -1,7 +1,7 @@
 import { get, post, podeGerenciar } from '../api.js';
 import { abrirModal } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
-import { formatarMoeda, attachMoedaMask, getMoedaValue, setMoedaValue, formatarDataBr } from '../masks.js';
+import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, setMoedaValue, formatarDataBr } from '../masks.js';
 import { navegar } from '../router.js';
 import { criarOcorrencias } from '../components/ocorrencias.js';
 
@@ -96,9 +96,9 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
   const inicial = await buscarPreview(false);
   form.percentual.value = inicial.percentualAplicado ?? '';
   setMoedaValue(form.reembolsos, inicial.valorReembolsos || 0);
-  attachMoedaMask(form.reembolsos, inicial.valorReembolsos || 0);
+  attachMoedaMaskReais(form.reembolsos, inicial.valorReembolsos || 0);
   setMoedaValue(form.descontos, inicial.valorDescontosSugerido || 0);
-  attachMoedaMask(form.descontos, inicial.valorDescontosSugerido || 0);
+  attachMoedaMaskReais(form.descontos, inicial.valorDescontosSugerido || 0);
 
   form.addEventListener('input', () => {
     clearTimeout(debounceId);

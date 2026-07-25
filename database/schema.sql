@@ -680,6 +680,13 @@ CREATE TABLE despesas_viagem (
     -- posto fatura depois ("assinar nota"), o vencimento real só é
     -- conhecido na validação pelo escritório - ver validado_em abaixo.
     forma_pagamento_posto TEXT CHECK (forma_pagamento_posto IN ('Imediato', 'AssinarNota')),
+    -- Parte do valor total (combinado com a Arla, se houver) que o motorista
+    -- pagou com dinheiro que já tinha em mãos (adiantamento em espécie -
+    -- ver viagem_adiantamentos.conta_bancaria_id NULL) em vez de ir para
+    -- contas_pagar. Reduz o valor da conta a pagar gerada; se cobrir o total,
+    -- nenhuma conta a pagar é criada. Sempre 0 nas despesas de Arla filhas
+    -- (o valor fica só na despesa principal, mesmo padrão de contas_pagar_id).
+    valor_pago_dinheiro INTEGER NOT NULL DEFAULT 0,
     -- NULL = pendente de validação (só lançamentos do app do motorista
     -- nascem assim; escritório e importação Drivvo já nascem validados).
     validado_por        INTEGER REFERENCES usuarios(id),

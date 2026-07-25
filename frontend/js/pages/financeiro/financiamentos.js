@@ -3,7 +3,7 @@ import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { abrirModal, fecharModal } from '../../components/modal.js';
 import { mostrarToast, mostrarErro } from '../../components/toast.js';
-import { formatarMoeda, attachMoedaMask, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso } from '../../masks.js';
+import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso } from '../../masks.js';
 import { navegar } from '../../router.js';
 
 async function buscarCentrosCusto(termo) {
@@ -33,8 +33,8 @@ async function abrirNovoFinanciamento(recarregar) {
     <p class="hidden text-sm text-red-600" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Cadastrar</button></div>
   `;
-  attachMoedaMask(form.valor_total, 0);
-  attachMoedaMask(form.valor_parcela, 0);
+  attachMoedaMaskReais(form.valor_total, 0);
+  attachMoedaMaskReais(form.valor_parcela, 0);
   attachDataMask(form.data_contrato);
   attachDataMask(form.primeira_parcela_vencimento);
   const centroSelect = criarSearchableSelect({ buscar: buscarCentrosCusto, placeholder: 'Pesquisar centro de custo...' });

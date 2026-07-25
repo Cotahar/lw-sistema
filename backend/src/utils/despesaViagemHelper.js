@@ -11,7 +11,7 @@ const { agoraDataHoraIsoBrasilia } = require('./dataHora');
 // pagar na despesa "principal" (diesel) - a Arla, quando existe, entra so
 // no valor somado, nunca ganha contas_pagar_id proprio (mesmo padrao de
 // sempre deste projeto).
-function criarContaPagarCombinada({ empresaId, viagemId, despesa, arlaDespesa, categoriaId, pagoPor, pagoPorUsuarioId, postoFornecedorId, dataVencimento, data }) {
+function criarContaPagarCombinada({ empresaId, viagemId, despesa, arlaDespesa, categoriaId, pagoPor, pagoPorUsuarioId, postoFornecedorId, dataVencimento, data, valorPagoDinheiro }) {
   const categoria = db.prepare('SELECT nome FROM categorias_despesa WHERE id = ?').get(categoriaId);
   const quemDesembolsou = pagoPor === 'AdminOutros'
     ? db.prepare('SELECT nome FROM usuarios WHERE id = ?').get(pagoPorUsuarioId)
@@ -20,13 +20,41 @@ function criarContaPagarCombinada({ empresaId, viagemId, despesa, arlaDespesa, c
   const descricaoConta = pagoPor === 'AdminOutros'
     ? `Reembolso a ${quemDesembolsou ? quemDesembolsou.nome : 'usuario'} - ${nomeDespesa} (viagem #${viagemId})`
     : `${nomeDespesa} - viagem #${viagemId}`;
-  const valorConta = despesa.valor + (arlaDespesa ? arlaDespesa.valor : 0);
+  // Parte paga em dinheiro (adiantamento em especie que o motorista ja tinha
+  // em maos) nao vira conta a pagar - so o restante (se sobrar algo) precisa
+  // ser cobrado do posto/fornecedor depois.
+  const valorConta = despesa.valor + (arlaDespesa ? arlaDespesa.valor : 0) - (valorPagoDinheiro || 0);
+  if (valorConta <= 0) return null;
   const infoConta = db.prepare(`
     INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
     VALUES (?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), 'Pendente', 'DespesaViagem', ?)
   `).run(empresaId, postoFornecedorId || null, descricaoConta, valorConta, dataVencimento || data || null, despesa.id);
   db.prepare('UPDATE despesas_viagem SET contas_pagar_id = ? WHERE id = ?').run(infoConta.lastInsertRowid, despesa.id);
   return infoConta.lastInsertRowid;
+}
+
+// Ajusta (ou remove) a conta a pagar de uma despesa apos uma edicao que
+// mudou o valor devido (valor total combinado - valor pago em dinheiro).
+// Se o novo valor for <= 0 (passou a ser totalmente coberto em dinheiro),
+// so remove a conta se ela ainda nao tiver nenhum pagamento/desconto
+// lancado - senao recusa, pra nao apagar um registro que ja afeta o caixa.
+// despesaId precisa da despesa que SEGURA a FK (contas_pagar_id) - ela tem
+// que ser desvinculada antes de apagar a conta, senao a FK acusa violacao
+// (mesma regra de ordem ja aplicada no DELETE de despesa com Arla).
+function resolverContaPagarAposEdicao({ contaPagarId, novoValor, despesaId }) {
+  if (!contaPagarId) return contaPagarId;
+  if (novoValor > 0) {
+    db.prepare('UPDATE contas_pagar SET valor = ? WHERE id = ?').run(novoValor, contaPagarId);
+    return contaPagarId;
+  }
+  const conta = db.prepare('SELECT * FROM contas_pagar WHERE id = ?').get(contaPagarId);
+  if (!conta) return null;
+  if (conta.valor_pago > 0 || conta.valor_descontado > 0) {
+    throw new ApiError(400, 'O valor em dinheiro informado zeraria uma conta a pagar que ja tem pagamento/desconto lancado. Estorne o pagamento antes de ajustar.');
+  }
+  db.prepare('UPDATE despesas_viagem SET contas_pagar_id = NULL WHERE id = ?').run(despesaId);
+  db.prepare('DELETE FROM contas_pagar WHERE id = ?').run(contaPagarId);
+  return null;
 }
 
 // Cria uma despesa de viagem (e, quando aplicavel, a despesa de Arla e a
@@ -50,7 +78,7 @@ function criarContaPagarCombinada({ empresaId, viagemId, despesa, arlaDespesa, c
 function criarDespesaViagem({
   empresaId, viagem, freteId, centroCustoId, categoriaId, valor, data, pagoPor, pagoPorUsuarioId,
   postoFornecedorId, precoLitro, litragem, kmAbastecimento, dataVencimento, descricao, arla, usuarioId,
-  fotoRecibo, idempotencyKey, formaPagamentoPosto, precisaValidacao,
+  fotoRecibo, idempotencyKey, formaPagamentoPosto, precisaValidacao, valorPagoDinheiro,
 }) {
   return withTransaction(db, () => {
     const validadoPor = precisaValidacao ? null : usuarioId;
@@ -60,12 +88,12 @@ function criarDespesaViagem({
       INSERT INTO despesas_viagem (
         empresa_id, viagem_id, frete_id, centro_custo_id, categoria_id, valor, data, pago_por, pago_por_usuario_id,
         posto_fornecedor_id, preco_litro, litragem, km_abastecimento, data_vencimento, descricao, criado_por,
-        foto_recibo, idempotency_key, forma_pagamento_posto, validado_por, validado_em
-      ) VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        foto_recibo, idempotency_key, forma_pagamento_posto, validado_por, validado_em, valor_pago_dinheiro
+      ) VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       empresaId, viagem.id, freteId, centroCustoId, categoriaId, valor, data || null, pagoPor, pagoPorUsuarioId || null,
       postoFornecedorId || null, precoLitro || null, litragem || null, kmAbastecimento || null, dataVencimento || null, descricao || null, usuarioId,
-      fotoRecibo || null, idempotencyKey || null, formaPagamentoPosto || null, validadoPor, validadoEm
+      fotoRecibo || null, idempotencyKey || null, formaPagamentoPosto || null, validadoPor, validadoEm, valorPagoDinheiro || 0
     );
     const novaDespesa = db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(info.lastInsertRowid);
 
@@ -95,7 +123,7 @@ function criarDespesaViagem({
     if ((pagoPor === 'Empresa' || pagoPor === 'AdminOutros') && formaPagamentoPosto !== 'AssinarNota') {
       criarContaPagarCombinada({
         empresaId, viagemId: viagem.id, despesa: novaDespesa, arlaDespesa, categoriaId, pagoPor, pagoPorUsuarioId,
-        postoFornecedorId, dataVencimento, data,
+        postoFornecedorId, dataVencimento, data, valorPagoDinheiro,
       });
     }
 
@@ -103,4 +131,4 @@ function criarDespesaViagem({
   });
 }
 
-module.exports = { criarDespesaViagem, criarContaPagarCombinada };
+module.exports = { criarDespesaViagem, criarContaPagarCombinada, resolverContaPagarAposEdicao };

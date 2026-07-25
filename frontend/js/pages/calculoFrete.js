@@ -1,5 +1,5 @@
 import { get, put } from '../api.js';
-import { formatarMoeda, attachMoedaMask, getMoedaValue, setMoedaValue } from '../masks.js';
+import { formatarMoeda, attachMoedaMask, attachMoedaMaskReais, getMoedaValue, setMoedaValue } from '../masks.js';
 
 // Calculadora de frete - replica a planilha "Calculo de frete.xlsx" ja usada
 // pela empresa. E uma ferramenta de apoio (nao persiste nada no banco, so
@@ -66,8 +66,12 @@ export async function render(container) {
   `;
 
   const form = container.querySelector('[data-form]');
-  const camposMoeda = ['valor_tonelada', 'frete_total', 'valor_diesel', 'pedagio', 'descarga'];
-  for (const nome of camposMoeda) attachMoedaMask(form.elements[nome], 0);
+  // Valor/tonelada e Valor do diesel sao taxas por unidade (poucos digitos,
+  // centavos relevantes) - mantem a mascara "de caixa". Frete total,
+  // pedagio e descarga sao valores totais grandes - usam a mascara que
+  // preenche ",00" automatico.
+  for (const nome of ['valor_tonelada', 'valor_diesel']) attachMoedaMask(form.elements[nome], 0);
+  for (const nome of ['frete_total', 'pedagio', 'descarga']) attachMoedaMaskReais(form.elements[nome], 0);
 
   let freteTotalTravado = false; // true quando o usuario digita o total direto, ao inves de peso x valor/ton
   let empresaImposto = null; // { razao_social, percentual_desconto_geral }
