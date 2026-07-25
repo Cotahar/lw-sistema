@@ -7,6 +7,13 @@ export function fecharModal() {
   }
 }
 
+// Usado pelas paginas com atualizacao automatica em segundo plano (Viagem,
+// Veiculos, Painel) pra nunca recarregar com um formulario aberto por cima -
+// perderia o que o usuario ja tinha preenchido no modal.
+export function modalAberto() {
+  return overlayAtual !== null;
+}
+
 // Abre um modal generico. `conteudo` pode ser string HTML ou um Node.
 // Retorna o elemento raiz do modal, para quem chamou poder buscar campos etc.
 export function abrirModal({ titulo, conteudo, largura = 'max-w-lg' }) {

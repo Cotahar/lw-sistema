@@ -1,7 +1,7 @@
 import { get, post, put, del, podeGerenciar } from '../api.js';
 import { criarDataTable } from '../components/dataTable.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
-import { abrirModal, fecharModal, confirmarAcao } from '../components/modal.js';
+import { abrirModal, fecharModal, confirmarAcao, modalAberto } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
 import { formatarDataBr, formatarDataHoraBr } from '../masks.js';
 import { criarBotaoSincronizarOnixsat } from '../components/onixsatSync.js';
@@ -234,8 +234,19 @@ export async function render(container) {
   });
   container.querySelector('[data-tabela]').appendChild(tabela.el);
 
+  // Nunca atualiza com um modal aberto (perderia o formulario preenchido,
+  // ex.: editar veiculo) nem com o usuario digitando em algum campo desta
+  // pagina (ex.: busca da tabela) - usado tanto pela atualizacao automatica
+  // quanto pelo botao manual de sincronizar Onixsat.
+  function recarregarSeSeguro() {
+    const campoAtivo = document.activeElement;
+    const digitando = campoAtivo && container.contains(campoAtivo) && ['INPUT', 'TEXTAREA'].includes(campoAtivo.tagName) && campoAtivo.value;
+    if (modalAberto() || digitando) return;
+    tabela.recarregar();
+  }
+
   if (gerenciar) {
-    container.querySelector('[data-onixsat-botao]').appendChild(criarBotaoSincronizarOnixsat({ onAtualizar: tabela.recarregar }));
+    container.querySelector('[data-onixsat-botao]').appendChild(criarBotaoSincronizarOnixsat({ onAtualizar: recarregarSeSeguro }));
   }
 
   // Onixsat sincroniza sozinho a cada 5min no backend, mas sem isso a tela
@@ -244,6 +255,6 @@ export async function render(container) {
   const hashInicio = window.location.hash;
   intervaloAtualizacao = setInterval(() => {
     if (window.location.hash !== hashInicio) { clearInterval(intervaloAtualizacao); return; }
-    tabela.recarregar();
+    recarregarSeSeguro();
   }, 5 * 60 * 1000);
 }

@@ -1,7 +1,7 @@
 import { get, post, patch, del, podeGerenciar, getUsuario } from '../api.js';
 import { criarDataTable } from '../components/dataTable.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
-import { abrirModal, fecharModal, confirmarAcao } from '../components/modal.js';
+import { abrirModal, fecharModal, confirmarAcao, modalAberto } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
 import { criarOcorrencias } from '../components/ocorrencias.js';
 import { formatarMoeda, attachMoedaMask, getMoedaValue, setMoedaValue, attachPesoMask, getPesoValue, attachDataMask, parseDataBrParaIso, formatarDataBr, formatarDataHoraBr, hojeIsoLocal } from '../masks.js';
@@ -899,7 +899,7 @@ export async function render(container, params) {
     const btnReabrir = container.querySelector('[data-reabrir]');
     if (btnReabrir) btnReabrir.addEventListener('click', () => reabrirViagem(viagem, recarregarPagina));
     if (gerenciar) {
-      container.querySelector('[data-onixsat-botao]').appendChild(criarBotaoSincronizarOnixsat({ onAtualizar: recarregarPagina }));
+      container.querySelector('[data-onixsat-botao]').appendChild(criarBotaoSincronizarOnixsat({ onAtualizar: recarregarSeSeguro }));
     }
     const btnNovoAdiantamento = container.querySelector('[data-novo-adiantamento]');
     if (btnNovoAdiantamento) btnNovoAdiantamento.addEventListener('click', () => abrirNovoAdiantamento(viagemId, recarregarPagina));
@@ -991,6 +991,18 @@ export async function render(container, params) {
     container.querySelector('[data-tabela-despesas]').appendChild(tabelaDespesas.el);
   }
 
+  // Nunca atualiza com um modal aberto (perderia o formulario preenchido,
+  // ex.: Nova Despesa) nem com o usuario digitando em algum campo desta
+  // pagina (ex.: registrar ocorrencia) - usado tanto pela atualizacao
+  // automatica quanto pelo botao manual de sincronizar Onixsat, pra nenhum
+  // dos dois caminhos arriscar apagar o que o usuario esta preenchendo.
+  function recarregarSeSeguro() {
+    const campoAtivo = document.activeElement;
+    const digitando = campoAtivo && container.contains(campoAtivo) && ['INPUT', 'TEXTAREA'].includes(campoAtivo.tagName) && campoAtivo.value;
+    if (modalAberto() || digitando) return;
+    recarregarPagina();
+  }
+
   await recarregarPagina();
 
   // Onixsat sincroniza sozinho a cada 5min no backend, mas sem isso a tela
@@ -999,6 +1011,6 @@ export async function render(container, params) {
   const hashInicio = window.location.hash;
   intervaloAtualizacao = setInterval(() => {
     if (window.location.hash !== hashInicio) { clearInterval(intervaloAtualizacao); return; }
-    recarregarPagina();
+    recarregarSeSeguro();
   }, 5 * 60 * 1000);
 }
