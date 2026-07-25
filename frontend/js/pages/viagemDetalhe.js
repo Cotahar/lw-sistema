@@ -1,4 +1,4 @@
-import { get, post, patch, del, podeGerenciar } from '../api.js';
+import { get, post, patch, del, podeGerenciar, getUsuario } from '../api.js';
 import { criarDataTable } from '../components/dataTable.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { abrirModal, fecharModal, confirmarAcao } from '../components/modal.js';
@@ -326,7 +326,11 @@ async function abrirNovaDespesa(viagemId, recarregar) {
       form.preco_litro.value = ''; form.litragem.value = ''; form.km_abastecimento.value = '';
       setMoedaValue(form.arla_preco, 0); form.arla_qtd.value = ''; setMoedaValue(form.arla_valor, 0);
     }
-    form.querySelector('[data-label-valor]').textContent = ativo ? 'Valor do diesel *' : 'Valor *';
+    // Abastecimento aceita lancar so o Arla (compra isolada, sem diesel) -
+    // o valor do diesel deixa de ser obrigatorio aqui; o submit exige pelo
+    // menos um dos dois preenchidos (ver validacao no listener de submit).
+    form.valor.required = !ativo;
+    form.querySelector('[data-label-valor]').textContent = ativo ? 'Valor do diesel' : 'Valor *';
     atualizarTotalDespesa();
   }
   form.categoria_id.addEventListener('change', () => {
@@ -448,6 +452,11 @@ async function abrirNovaDespesa(viagemId, recarregar) {
       erro.classList.remove('hidden');
       return;
     }
+    if (categoriaEhAbastecimento() && getMoedaValue(form.valor) <= 0 && getMoedaValue(form.arla_valor) <= 0) {
+      erro.textContent = 'Informe o valor do diesel ou do Arla.';
+      erro.classList.remove('hidden');
+      return;
+    }
     // "Prova real": com os 3 valores de diesel preenchidos, confere se
     // valor == preco_litro x litragem antes de gravar. Se nao bater, deixa o
     // usuario escolher qual dos 3 recalcular em vez de adivinhar. (O mesmo
@@ -478,54 +487,137 @@ function abrirOcorrenciasDespesa(despesa, gerenciar) {
   abrirModal({ titulo: 'Ocorrencias da despesa', conteudo: ocorrencias.el, largura: 'max-w-lg' });
 }
 
-// Valida uma despesa lancada pelo app do motorista. So pede a data de
-// vencimento quando o motorista marcou "Assinar nota" e a conta a pagar
-// ainda nao existe (o backend so cria ela agora, com essa data - ver
-// PATCH /viagens/despesas/:id/validar) - nos demais casos e so uma
-// confirmacao, sem campo nenhum.
-function abrirValidarDespesa(despesa, recarregar) {
-  const precisaVencimento = despesa.forma_pagamento_posto === 'AssinarNota' && !despesa.contas_pagar_id;
-  if (!precisaVencimento) {
-    confirmarAcao({
-      titulo: 'Validar despesa',
-      mensagem: 'Confirma que revisou esta despesa lancada pelo motorista?',
-      textoConfirmar: 'Validar',
-      perigo: false,
-    }).then(async (ok) => {
-      if (!ok) return;
-      try {
-        await patch(`/viagens/despesas/${despesa.id}/validar`, {});
-        mostrarToast('Despesa validada.');
-        recarregar();
-      } catch (err) {
-        mostrarErro(err);
-      }
-    });
-    return;
-  }
+// Valida uma despesa lancada pelo app do motorista - abre com os campos ja
+// preenchidos (e a despesa de Arla vinculada, se houver) e a foto da nota/
+// cupom, pra o escritorio poder corrigir um valor digitado errado pelo
+// motorista antes de confirmar (em vez de so aceitar como esta). So pede
+// vencimento quando "Assinar nota" e a conta a pagar ainda nao existe (o
+// backend so cria ela agora, com essa data - ver PATCH .../validar).
+function abrirValidarDespesa(despesa, arlaDespesa, categoriaNome, fornecedorLabelInicial, recarregar) {
+  const ehArlaIsolada = (categoriaNome || '').trim().toLowerCase() === 'arla';
+  const mostrarVencimento = despesa.forma_pagamento_posto === 'AssinarNota' && !despesa.contas_pagar_id;
 
   const form = document.createElement('form');
   form.className = 'space-y-4';
   form.innerHTML = `
-    <p class="text-sm text-slate-600">O motorista marcou este abastecimento como "Assinar nota" - informe a data de vencimento da fatura do posto para validar.</p>
-    <div><label class="label">Data de vencimento *</label><input type="text" name="data_vencimento" class="input" required /></div>
+    ${despesa.foto_recibo ? `
+      <div>
+        <label class="label">Foto da nota/cupom</label>
+        <img src="/uploads/abastecimentos/${despesa.foto_recibo}" class="h-32 w-32 cursor-pointer rounded-lg border border-slate-200 object-cover" data-ver-foto />
+      </div>
+    ` : ''}
+    <div class="grid grid-cols-2 gap-3">
+      <div><label class="label">${ehArlaIsolada ? 'Valor (Arla)' : 'Valor (diesel)'}</label><input type="text" name="valor" class="input" /></div>
+      <div><label class="label">Data</label><input type="text" name="data" class="input" /></div>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div><label class="label">${ehArlaIsolada ? 'Preco/Litro (Arla)' : 'Preco/Litro (diesel)'}</label><input type="text" name="preco_litro" class="input" /></div>
+      <div><label class="label">${ehArlaIsolada ? 'Litragem (Arla)' : 'Litragem (diesel)'}</label><input type="number" step="0.01" name="litragem" class="input" /></div>
+    </div>
+    <div class="max-w-[12rem]"><label class="label">KM no abastecimento</label><input type="number" name="km_abastecimento" class="input" /></div>
+    <div><label class="label">Posto</label><div data-posto-select></div></div>
+    <div>
+      <label class="label">Como foi pago?</label>
+      <select name="forma_pagamento_posto" class="input">
+        <option value="Imediato">Pago no ato</option>
+        <option value="AssinarNota">Assinar nota (posto fatura depois)</option>
+      </select>
+    </div>
+    ${arlaDespesa ? `
+      <div class="rounded-lg border border-slate-200 p-3">
+        <p class="mb-2 text-xs font-medium uppercase text-slate-500">Arla</p>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="label">Preco/Litro (Arla)</label><input type="text" name="arla_preco" class="input" /></div>
+          <div><label class="label">Litragem (Arla)</label><input type="number" step="0.01" name="arla_qtd" class="input" /></div>
+        </div>
+        <div class="mt-3"><label class="label">Valor Arla</label><input type="text" name="arla_valor" class="input" /></div>
+      </div>
+    ` : ''}
+    <div class="${mostrarVencimento ? '' : 'hidden'}" data-bloco-vencimento>
+      <label class="label">Data de vencimento *</label>
+      <input type="text" name="data_vencimento" class="input" placeholder="Fatura do posto" />
+    </div>
     <p class="hidden text-sm text-red-600" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Validar</button></div>
   `;
+
+  attachMoedaMask(form.valor, despesa.valor || 0);
+  attachDataMask(form.data, despesa.data);
+  attachMoedaMask(form.preco_litro, despesa.preco_litro || 0);
+  form.litragem.value = despesa.litragem ?? '';
+  form.km_abastecimento.value = despesa.km_abastecimento ?? '';
+  form.forma_pagamento_posto.value = despesa.forma_pagamento_posto || 'Imediato';
   attachDataMask(form.data_vencimento);
+
+  const postoSelect = criarSearchableSelect({
+    buscar: (termo) => buscarFornecedoresFiltrado(termo, true),
+    valorInicial: despesa.posto_fornecedor_id,
+    labelInicial: fornecedorLabelInicial || '',
+    placeholder: 'Pesquisar posto...',
+  });
+  form.querySelector('[data-posto-select]').appendChild(postoSelect.el);
+
+  form.forma_pagamento_posto.addEventListener('change', () => {
+    if (!despesa.contas_pagar_id) {
+      form.querySelector('[data-bloco-vencimento]').classList.toggle('hidden', form.forma_pagamento_posto.value !== 'AssinarNota');
+    }
+  });
+
+  form.valor.addEventListener('input', () => recalcularTrio(form.preco_litro, form.litragem, form.valor, form.valor));
+  form.preco_litro.addEventListener('input', () => recalcularTrio(form.preco_litro, form.litragem, form.valor, form.preco_litro));
+  form.litragem.addEventListener('input', () => recalcularTrio(form.preco_litro, form.litragem, form.valor, form.litragem));
+
+  if (arlaDespesa) {
+    attachMoedaMask(form.arla_preco, arlaDespesa.preco_litro || 0);
+    form.arla_qtd.value = arlaDespesa.litragem ?? '';
+    attachMoedaMask(form.arla_valor, arlaDespesa.valor || 0);
+    form.arla_valor.addEventListener('input', () => recalcularTrio(form.arla_preco, form.arla_qtd, form.arla_valor, form.arla_valor));
+    form.arla_preco.addEventListener('input', () => recalcularTrio(form.arla_preco, form.arla_qtd, form.arla_valor, form.arla_preco));
+    form.arla_qtd.addEventListener('input', () => recalcularTrio(form.arla_preco, form.arla_qtd, form.arla_valor, form.arla_qtd));
+  }
+
+  if (despesa.foto_recibo) {
+    form.querySelector('[data-ver-foto]').addEventListener('click', () => {
+      const img = document.createElement('img');
+      img.src = `/uploads/abastecimentos/${despesa.foto_recibo}`;
+      img.className = 'w-full rounded-lg';
+      abrirModal({ titulo: 'Foto da nota/cupom', conteudo: img, largura: 'max-w-2xl' });
+    });
+  }
+
+  const erro = form.querySelector('[data-erro]');
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
-    const erro = form.querySelector('[data-erro]');
     erro.classList.add('hidden');
-    const dataVencimento = parseDataBrParaIso(form.data_vencimento.value);
-    if (!dataVencimento) {
-      erro.textContent = 'Informe uma data de vencimento valida.';
-      erro.classList.remove('hidden');
-      return;
+
+    const payload = {
+      valor: getMoedaValue(form.valor) || undefined,
+      data: form.data.value ? parseDataBrParaIso(form.data.value) : undefined,
+      preco_litro: form.preco_litro.value ? getMoedaValue(form.preco_litro) : undefined,
+      litragem: form.litragem.value ? Number(form.litragem.value) : undefined,
+      km_abastecimento: form.km_abastecimento.value ? Number(form.km_abastecimento.value) : undefined,
+      posto_fornecedor_id: postoSelect.getValue(),
+      forma_pagamento_posto: form.forma_pagamento_posto.value || undefined,
+    };
+    if (arlaDespesa) {
+      payload.arla_valor = getMoedaValue(form.arla_valor) || undefined;
+      payload.arla_preco_litro = form.arla_preco.value ? getMoedaValue(form.arla_preco) : undefined;
+      payload.arla_litragem = form.arla_qtd.value ? Number(form.arla_qtd.value) : undefined;
     }
+    const vencimentoVisivel = !form.querySelector('[data-bloco-vencimento]').classList.contains('hidden');
+    if (vencimentoVisivel) {
+      const dataVencimento = parseDataBrParaIso(form.data_vencimento.value);
+      if (!dataVencimento) {
+        erro.textContent = 'Informe uma data de vencimento valida.';
+        erro.classList.remove('hidden');
+        return;
+      }
+      payload.data_vencimento = dataVencimento;
+    }
+
     try {
-      await patch(`/viagens/despesas/${despesa.id}/validar`, { data_vencimento: dataVencimento });
-      mostrarToast('Despesa validada e conta a pagar criada.');
+      await patch(`/viagens/despesas/${despesa.id}/validar`, payload);
+      mostrarToast('Despesa validada.');
       fecharModal();
       recarregar();
     } catch (err) {
@@ -533,7 +625,7 @@ function abrirValidarDespesa(despesa, recarregar) {
       erro.classList.remove('hidden');
     }
   });
-  abrirModal({ titulo: 'Validar despesa - Assinar nota', conteudo: form });
+  abrirModal({ titulo: 'Validar despesa', conteudo: form, largura: 'max-w-lg' });
 }
 
 // ---- Adiantamentos ao motorista ----
@@ -620,6 +712,28 @@ async function abrirFinalizar(viagem, recarregarPagina) {
   abrirModal({ titulo: 'Finalizar viagem', conteudo: form });
 }
 
+// Desfaz o Acerto fechado desta viagem e volta ela para EmAndamento (ver
+// POST /viagens/:id/reabrir) - restrito a Admin, so aparece quando a viagem
+// esta Finalizada. Acao com efeito financeiro (some a conta a pagar do
+// acerto e o saldo de conta corrente do motorista volta ao anterior), por
+// isso a confirmacao e explicita sobre o que vai acontecer.
+async function reabrirViagem(viagem, recarregarPagina) {
+  const ok = await confirmarAcao({
+    titulo: 'Reabrir viagem',
+    mensagem: 'Isso desfaz o acerto fechado desta viagem (a conta a pagar gerada e removida e o saldo de conta corrente do motorista volta ao valor anterior) e volta a viagem para Em Andamento, liberando km final e despesas/fretes para edicao de novo. So e possivel se a conta a pagar do acerto ainda nao tiver sido paga. Confirma?',
+    textoConfirmar: 'Reabrir viagem',
+    perigo: true,
+  });
+  if (!ok) return;
+  try {
+    await post(`/viagens/${viagem.id}/reabrir`, {});
+    mostrarToast('Viagem reaberta.');
+    recarregarPagina();
+  } catch (err) {
+    mostrarErro(err);
+  }
+}
+
 // Cabecalho de secao expansivel (Fretes/Despesas/Adiantamentos) - sem isso,
 // list-none (que tira a seta nativa do <summary> pra controlar o layout)
 // deixa a secao sem NENHUMA pista visual de que e clicavel/expande-e-recolhe.
@@ -701,6 +815,7 @@ export async function render(container, params) {
           <span class="badge ${viagem.status === 'EmAndamento' ? 'bg-emerald-100 text-emerald-700' : viagem.status === 'AguardandoAcerto' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}">${STATUS_LABEL[viagem.status]}</span>
           ${gerenciar && viagem.status === 'EmAndamento' ? '<button type="button" class="btn-primary" data-finalizar>Finalizar viagem</button>' : ''}
           ${viagem.status !== 'EmAndamento' ? `<button type="button" class="btn-secondary" data-ir-acerto>Ir para Acerto</button>` : ''}
+          ${getUsuario()?.perfil === 'Admin' && viagem.status === 'Finalizada' ? '<button type="button" class="btn-danger" data-reabrir>Reabrir viagem</button>' : ''}
         </div>
       </div>
 
@@ -781,6 +896,8 @@ export async function render(container, params) {
     }
     const btnFinalizar = container.querySelector('[data-finalizar]');
     if (btnFinalizar) btnFinalizar.addEventListener('click', () => abrirFinalizar(viagem, recarregarPagina));
+    const btnReabrir = container.querySelector('[data-reabrir]');
+    if (btnReabrir) btnReabrir.addEventListener('click', () => reabrirViagem(viagem, recarregarPagina));
     if (gerenciar) {
       container.querySelector('[data-onixsat-botao]').appendChild(criarBotaoSincronizarOnixsat({ onAtualizar: recarregarPagina }));
     }
@@ -856,7 +973,16 @@ export async function render(container, params) {
       tituloNovo: 'Despesa',
       acoesExtras: (d) => [
         ...(gerenciar && !d.validado_em && !idsArlaFilhas.has(d.id)
-          ? [{ label: 'Validar', onClick: () => abrirValidarDespesa(d, recarregarPagina) }]
+          ? [{
+              label: 'Validar',
+              onClick: () => abrirValidarDespesa(
+                d,
+                d.despesa_arla_id ? despesas.find((x) => x.id === d.despesa_arla_id) : null,
+                nomeCategoriasPorId[d.categoria_id],
+                d.posto_fornecedor_id ? nomeFornecedoresPorId[d.posto_fornecedor_id] : '',
+                recarregarPagina,
+              ),
+            }]
           : []),
         { label: 'Ocorrencias', onClick: () => abrirOcorrenciasDespesa(d, gerenciar) },
       ],

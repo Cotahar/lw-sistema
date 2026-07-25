@@ -189,7 +189,9 @@ router.post('/abastecimentos', upload.single('foto'), asyncHandler(async (req, r
     forma_pagamento_posto, arla_valor, arla_preco_litro, arla_litragem,
   } = req.body;
   if (!idempotency_key) throw new ApiError(400, 'idempotency_key obrigatoria.');
-  if (valor === undefined || Number(valor) <= 0) throw new ApiError(400, 'Informe o valor do abastecimento.');
+  const dieselValor = valor !== undefined && Number(valor) > 0 ? Number(valor) : 0;
+  const arlaValor = arla_valor ? Number(arla_valor) : 0;
+  if (dieselValor <= 0 && arlaValor <= 0) throw new ApiError(400, 'Informe o valor do abastecimento ou do Arla.');
   if (forma_pagamento_posto && !['Imediato', 'AssinarNota'].includes(forma_pagamento_posto)) {
     throw new ApiError(400, 'forma_pagamento_posto invalida.');
   }
@@ -206,26 +208,45 @@ router.post('/abastecimentos', upload.single('foto'), asyncHandler(async (req, r
   const centroCusto = tratora ? buscarCentroCustoDoVeiculo(tratora.id) : null;
   if (!centroCusto) throw new ApiError(400, 'Nao foi possivel resolver o centro de custo da viagem.');
 
-  const categoriaAbastecimento = db.prepare("SELECT id FROM categorias_despesa WHERE lower(trim(nome)) = 'abastecimento'").get();
-  if (!categoriaAbastecimento) throw new ApiError(400, 'Categoria "Abastecimento" nao encontrada no cadastro.');
-
   const ultimoFrete = db.prepare('SELECT id FROM fretes WHERE viagem_id = ? ORDER BY id DESC LIMIT 1').get(viagem.id);
   const freteId = ultimoFrete ? ultimoFrete.id : null;
 
-  const arlaValor = arla_valor ? Number(arla_valor) : 0;
-
-  const despesa = criarDespesaViagem({
-    empresaId: req.empresaId, viagem, freteId, centroCustoId: centroCusto.id, categoriaId: categoriaAbastecimento.id,
-    valor: Number(valor), data: data || null, pagoPor: 'Empresa', postoFornecedorId: posto_fornecedor_id || null,
-    precoLitro: preco_litro ? Number(preco_litro) : null, litragem: litragem ? Number(litragem) : null,
-    kmAbastecimento: km_abastecimento ? Number(km_abastecimento) : null, usuarioId: req.usuario.id,
-    fotoRecibo: req.file ? req.file.filename : null, idempotencyKey: idempotency_key,
-    formaPagamentoPosto: forma_pagamento_posto || null, precisaValidacao: true,
-    arla: arlaValor > 0
-      ? { valor: arlaValor, preco_litro: arla_preco_litro ? Number(arla_preco_litro) : null, litragem: arla_litragem ? Number(arla_litragem) : null }
-      : null,
-  });
+  // Arla pode ser comprada isoladamente (sem diesel junto) - nesse caso ela
+  // vira a despesa principal (propria categoria, sem despesa_arla_id), em
+  // vez de sempre depender de um lancamento de diesel companheiro.
+  const despesa = dieselValor > 0
+    ? criarDespesaViagem({
+        empresaId: req.empresaId, viagem, freteId, centroCustoId: centroCusto.id,
+        categoriaId: buscarCategoriaAbastecimentoId(), valor: dieselValor, data: data || null, pagoPor: 'Empresa',
+        postoFornecedorId: posto_fornecedor_id || null, precoLitro: preco_litro ? Number(preco_litro) : null,
+        litragem: litragem ? Number(litragem) : null, kmAbastecimento: km_abastecimento ? Number(km_abastecimento) : null,
+        usuarioId: req.usuario.id, fotoRecibo: req.file ? req.file.filename : null, idempotencyKey: idempotency_key,
+        formaPagamentoPosto: forma_pagamento_posto || null, precisaValidacao: true,
+        arla: arlaValor > 0
+          ? { valor: arlaValor, preco_litro: arla_preco_litro ? Number(arla_preco_litro) : null, litragem: arla_litragem ? Number(arla_litragem) : null }
+          : null,
+      })
+    : criarDespesaViagem({
+        empresaId: req.empresaId, viagem, freteId, centroCustoId: centroCusto.id,
+        categoriaId: buscarCategoriaArlaId(), valor: arlaValor, data: data || null, pagoPor: 'Empresa',
+        postoFornecedorId: posto_fornecedor_id || null, precoLitro: arla_preco_litro ? Number(arla_preco_litro) : null,
+        litragem: arla_litragem ? Number(arla_litragem) : null, kmAbastecimento: km_abastecimento ? Number(km_abastecimento) : null,
+        usuarioId: req.usuario.id, fotoRecibo: req.file ? req.file.filename : null, idempotencyKey: idempotency_key,
+        formaPagamentoPosto: forma_pagamento_posto || null, precisaValidacao: true, arla: null,
+      });
   res.status(201).json(despesa);
 }));
+
+function buscarCategoriaAbastecimentoId() {
+  const categoria = db.prepare("SELECT id FROM categorias_despesa WHERE lower(trim(nome)) = 'abastecimento'").get();
+  if (!categoria) throw new ApiError(400, 'Categoria "Abastecimento" nao encontrada no cadastro.');
+  return categoria.id;
+}
+
+function buscarCategoriaArlaId() {
+  const categoria = db.prepare("SELECT id FROM categorias_despesa WHERE lower(trim(nome)) = 'arla'").get();
+  if (!categoria) throw new ApiError(400, 'Categoria "Arla" nao encontrada no cadastro.');
+  return categoria.id;
+}
 
 module.exports = router;

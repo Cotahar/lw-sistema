@@ -57,7 +57,8 @@ export async function render(appEl) {
       </header>
       <main class="p-4">
         <form class="card space-y-4 p-4" data-form>
-          <div><label class="label">Valor total (diesel) *</label><input type="text" name="valor" class="input" required inputmode="decimal" /></div>
+          <div><label class="label">Valor total (diesel)</label><input type="text" name="valor" class="input" inputmode="decimal" /></div>
+          <p class="-mt-2 text-xs text-slate-400">Deixe em branco se for so Arla (compra isolada).</p>
           <div><label class="label">Data</label><input type="text" name="data" class="input" placeholder="DD/MM/AAAA" /></div>
           <div class="grid grid-cols-2 gap-3">
             <div><label class="label">Preco/Litro</label><input type="text" name="preco_litro" class="input" inputmode="decimal" /></div>
@@ -173,15 +174,15 @@ export async function render(appEl) {
       return;
     }
     const valor = getMoedaValue(form.valor);
-    if (!valor) {
-      erro.textContent = 'Informe o valor do abastecimento.';
+    const arla = montarArlaPayload();
+    if (!valor && !arla) {
+      erro.textContent = 'Informe o valor do abastecimento ou do Arla.';
       erro.classList.remove('hidden');
       return;
     }
 
-    const arla = montarArlaPayload();
     const payload = {
-      valor,
+      valor: valor || null,
       data: form.data.value ? parseDataBrParaIso(form.data.value) : null,
       preco_litro: form.preco_litro.value ? getMoedaValue(form.preco_litro) : null,
       litragem: form.litragem.value ? Number(form.litragem.value) : null,

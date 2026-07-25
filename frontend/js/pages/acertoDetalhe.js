@@ -15,6 +15,7 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
   container.innerHTML = `
     <h1 class="mb-1 text-xl font-bold text-slate-900">Acerto - Viagem #${viagem.id}</h1>
     <p class="mb-4 text-sm text-slate-500">${motorista.nome} · ${formatarDataBr(viagem.data_inicio)} a ${formatarDataBr(viagem.data_fim)} · ${(viagem.km_final - viagem.km_inicial).toLocaleString('pt-BR')} km</p>
+    <div class="mb-4 hidden rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800" data-aviso-pendentes></div>
     <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
       <div class="card p-4">
         <h2 class="mb-3 font-semibold text-slate-900">Dados calculados</h2>
@@ -41,8 +42,20 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
   const resumoEl = container.querySelector('[data-resumo]');
   const form = container.querySelector('[data-form]');
   const erroEl = container.querySelector('[data-erro]');
+  const avisoPendentesEl = container.querySelector('[data-aviso-pendentes]');
+  const btnFecharEl = container.querySelector('[data-fechar]');
 
   function renderResumo(p) {
+    if (btnFecharEl) {
+      const bloqueado = p.despesasPendentes > 0;
+      avisoPendentesEl.classList.toggle('hidden', !bloqueado);
+      if (bloqueado) {
+        avisoPendentesEl.innerHTML = `${p.despesasPendentes} despesa(s) desta viagem ainda ${p.despesasPendentes === 1 ? 'esta' : 'estao'} pendente(s) de validacao. <a href="#/viagens/${viagem.id}" class="font-medium underline">Valide-as na tela da viagem</a> antes de fechar o acerto.`;
+      }
+      btnFecharEl.disabled = bloqueado;
+      btnFecharEl.classList.toggle('opacity-50', bloqueado);
+      btnFecharEl.classList.toggle('cursor-not-allowed', bloqueado);
+    }
     resumoEl.innerHTML = [
       linha('Frete bruto total', formatarMoeda(p.freteBrutoTotal)),
       p.valorImposto > 0 ? linha(`Imposto (${p.empresa.razao_social})`, `- ${formatarMoeda(p.valorImposto)}`) : '',
