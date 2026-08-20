@@ -101,6 +101,15 @@ try {
   totalLinhas += totalCentrosVeiculo;
   console.log(`centros_custo (tipo Veiculo): ${totalCentrosVeiculo} linha(s) apagada(s). (tipo Base preservado)`);
 
+  // Usuarios com perfil Motorista guardam motorista_id (usuarios e
+  // mantido, mas motoristas foi zerado acima) - sem isso a referencia fica
+  // orfa (aponta pra um id que nao existe mais).
+  const { changes: usuariosCorrigidos } = db.prepare(`
+    UPDATE usuarios SET motorista_id = NULL
+    WHERE motorista_id IS NOT NULL AND motorista_id NOT IN (SELECT id FROM motoristas)
+  `).run();
+  if (usuariosCorrigidos > 0) console.log(`usuarios.motorista_id: ${usuariosCorrigidos} referencia(s) orfa(s) zerada(s).`);
+
   db.exec('COMMIT');
   console.log(`\nLimpeza concluida: ${totalLinhas} linha(s) apagada(s) no total.`);
   console.log('Preservados: usuarios, empresas, usuario_empresas, usuario_permissoes, modulos_sistema,');
