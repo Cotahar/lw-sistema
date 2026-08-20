@@ -2,7 +2,7 @@ const express = require('express');
 const db = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
-const { requerAcessoModulo } = require('../middleware/auth');
+const { requerAcessoModulo, requerAdmin } = require('../middleware/auth');
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { condicaoEmpresa } = require('../utils/empresaScope');
 const { registrarAuditoria } = require('../utils/audit');
@@ -10,7 +10,7 @@ const { withTransaction } = require('../utils/transaction');
 const { verificarAlertasDoVeiculo } = require('../utils/alertaEngine');
 const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 const { hojeIsoBrasilia, agoraDataHoraIsoBrasilia } = require('../utils/dataHora');
-const { criarDespesaViagem, criarContaPagarCombinada } = require('../utils/despesaViagemHelper');
+const { criarDespesaViagem, criarContaPagarCombinada, resolverContaPagarAposEdicao } = require('../utils/despesaViagemHelper');
 
 const router = express.Router();
 
@@ -155,6 +155,43 @@ router.post('/:id/finalizar', requerAcessoModulo('viagens', 'Gerenciar'), exigir
   res.json({ ...viagem, alertasDisparados });
 }));
 
+// Reabre uma viagem Finalizada de volta para EmAndamento - desfaz o Acerto
+// fechado (mesma logica de reverterAcertoViagem em admin.routes.js: apaga a
+// conta a pagar gerada se ainda nao paga, devolve o saldo de conta corrente
+// do motorista, apaga o lancamento do razao e o acerto) e tambem desfaz o
+// "Finalizar" (km_final/data_fim voltam a NULL). Restrito a Admin - desfaz
+// um fechamento financeiro ja processado, nao e uma edicao comum de viagem.
+// Efeito colateral aceito: o bump de hodometro feito em /finalizar nao e
+// revertido (o Onixsat realimenta o valor real de qualquer forma).
+router.post('/:id/reabrir', requerAdmin, exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const viagem = db.prepare('SELECT * FROM viagens WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
+  if (!viagem) throw new ApiError(404, 'Viagem nao encontrada.');
+  if (viagem.status !== 'Finalizada') throw new ApiError(400, 'Somente viagens Finalizadas podem ser reabertas.');
+
+  const acerto = db.prepare("SELECT * FROM acertos_viagem WHERE viagem_id = ? AND status = 'Fechado'").get(viagem.id);
+  if (!acerto) throw new ApiError(400, 'Nao foi encontrado um acerto fechado para esta viagem - estado inconsistente, fale com o suporte.');
+
+  const contasPagarAcerto = db.prepare("SELECT * FROM contas_pagar WHERE origem_tipo = 'AcertoViagem' AND origem_id = ?").all(acerto.id);
+  if (contasPagarAcerto.some((c) => c.valor_pago > 0)) {
+    throw new ApiError(400, 'O acerto desta viagem gerou uma conta a pagar que ja teve pagamento lancado. Estorne o pagamento antes de reabrir a viagem.');
+  }
+  const lancamento = db.prepare('SELECT * FROM motorista_conta_corrente_lancamentos WHERE acerto_id = ?').get(acerto.id);
+
+  withTransaction(db, () => {
+    for (const cp of contasPagarAcerto) db.prepare('DELETE FROM contas_pagar WHERE id = ?').run(cp.id);
+    if (lancamento) {
+      db.prepare('UPDATE motoristas SET saldo_conta_corrente = ? WHERE id = ?').run(lancamento.saldo_anterior, lancamento.motorista_id);
+      db.prepare('DELETE FROM motorista_conta_corrente_lancamentos WHERE id = ?').run(lancamento.id);
+    }
+    db.prepare('DELETE FROM acertos_viagem WHERE id = ?').run(acerto.id);
+    db.prepare("UPDATE viagens SET status = 'EmAndamento', km_final = NULL, data_fim = NULL WHERE id = ?").run(viagem.id);
+  });
+
+  const depois = db.prepare('SELECT * FROM viagens WHERE id = ?').get(viagem.id);
+  registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'viagens', registroId: viagem.id, acao: 'UPDATE', antes: viagem, depois });
+  res.json(depois);
+}));
+
 router.delete('/:id', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const viagem = db.prepare('SELECT * FROM viagens WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
   if (!viagem) throw new ApiError(404, 'Viagem nao encontrada.');
@@ -231,6 +268,8 @@ router.post('/:id/fretes', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmp
 router.put('/fretes/:freteId', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const antes = db.prepare('SELECT * FROM fretes WHERE id = ? AND empresa_id = ?').get(req.params.freteId, req.empresaId);
   if (!antes) throw new ApiError(404, 'Frete nao encontrado.');
+  const viagemDoFrete = db.prepare('SELECT status FROM viagens WHERE id = ?').get(antes.viagem_id);
+  if (viagemDoFrete && viagemDoFrete.status === 'Finalizada') throw new ApiError(400, 'Viagem ja finalizada nao aceita edicao de fretes.');
 
   const campos = ['transportadora_id', 'origem_cidade', 'origem_uf', 'destino_cidade', 'destino_uf', 'peso_carga_kg', 'frete_bruto'];
   const sets = [];
@@ -456,27 +495,74 @@ router.post('/:id/despesas', requerAcessoModulo('viagens', 'Gerenciar'), exigirE
   const {
     categoria_id, valor, data, pago_por, pago_por_usuario_id,
     posto_fornecedor_id, preco_litro, litragem, km_abastecimento, descricao,
-    data_vencimento, arla,
+    data_vencimento, arla, centro_custo_id, valor_pago_dinheiro,
   } = req.body;
-  if (!categoria_id || valor === undefined || !pago_por) throw new ApiError(400, 'Preencha categoria_id, valor e pago_por.');
+  if (!categoria_id || !pago_por) throw new ApiError(400, 'Preencha categoria_id e pago_por.');
   if (!PAGO_POR.includes(pago_por)) throw new ApiError(400, `pago_por invalido. Use um de: ${PAGO_POR.join(', ')}`);
   if (pago_por === 'AdminOutros' && !pago_por_usuario_id) throw new ApiError(400, 'Informe pago_por_usuario_id para despesas pagas por Admin/Outros.');
 
+  // Abastecimento aceita lancar so o Arla (compra isolada, sem diesel junto)
+  // - nesse caso a Arla vira a despesa principal (propria categoria, sem
+  // despesa_arla_id) em vez de sempre depender de um diesel companheiro.
+  // Qualquer outra categoria continua exigindo valor normalmente.
+  const categoriaAbastecimento = db.prepare("SELECT id FROM categorias_despesa WHERE lower(trim(nome)) = 'abastecimento'").get();
+  const ehAbastecimento = categoriaAbastecimento && Number(categoria_id) === categoriaAbastecimento.id;
+  const dieselValor = valor !== undefined && Number(valor) > 0 ? Number(valor) : 0;
+  const arlaValor = arla && arla.valor > 0 ? Number(arla.valor) : 0;
+  if (ehAbastecimento) {
+    if (dieselValor <= 0 && arlaValor <= 0) throw new ApiError(400, 'Informe o valor do diesel ou do Arla.');
+  } else if (valor === undefined || Number(valor) <= 0) {
+    throw new ApiError(400, 'Preencha o valor.');
+  }
+
+  // Parte paga com dinheiro que o motorista ja tinha em maos (adiantamento
+  // em especie) - nao pode passar do total da despesa (ver
+  // despesaViagemHelper.js/criarContaPagarCombinada).
+  const valorPagoDinheiro = valor_pago_dinheiro ? Number(valor_pago_dinheiro) : 0;
+  const totalCombinado = ehAbastecimento ? dieselValor + arlaValor : Number(valor);
+  if (valorPagoDinheiro < 0 || valorPagoDinheiro > totalCombinado) {
+    throw new ApiError(400, 'Valor pago em dinheiro invalido: nao pode ser negativo nem maior que o total da despesa.');
+  }
+
   const tratora = buscarUnidadeTratora(viagem.conjunto_id);
-  const centroCusto = tratora ? buscarCentroCustoDoVeiculo(tratora.id) : null;
-  if (!centroCusto) throw new ApiError(400, 'Nao foi possivel resolver o centro de custo da viagem.');
+  const centroCustoPadrao = tratora ? buscarCentroCustoDoVeiculo(tratora.id) : null;
+  if (!centroCustoPadrao) throw new ApiError(400, 'Nao foi possivel resolver o centro de custo da viagem.');
+
+  // O escritorio pode apontar a despesa pra outro centro de custo (ex.:
+  // "Base/Administrativo" quando o gasto e visto como aporte pessoal, nao
+  // custo do veiculo) - por padrao continua sendo o veiculo da viagem.
+  const centroCustoId = centro_custo_id
+    ? (() => {
+        const c = db.prepare('SELECT id FROM centros_custo WHERE id = ? AND empresa_id = ?').get(centro_custo_id, req.empresaId);
+        if (!c) throw new ApiError(400, 'Centro de custo invalido para esta empresa.');
+        return c.id;
+      })()
+    : centroCustoPadrao.id;
 
   // Despesa pertence ao ultimo frete cadastrado da viagem ate ali (ver
   // POST /:id/fretes para o vinculo retroativo de despesas ainda sem frete).
   const ultimoFrete = db.prepare('SELECT id FROM fretes WHERE viagem_id = ? ORDER BY id DESC LIMIT 1').get(req.params.id);
   const freteId = ultimoFrete ? ultimoFrete.id : null;
 
-  const despesa = criarDespesaViagem({
-    empresaId: req.empresaId, viagem, freteId, centroCustoId: centroCusto.id, categoriaId: categoria_id, valor, data,
-    pagoPor: pago_por, pagoPorUsuarioId: pago_por_usuario_id, postoFornecedorId: posto_fornecedor_id,
-    precoLitro: preco_litro, litragem, kmAbastecimento: km_abastecimento, dataVencimento: data_vencimento,
-    descricao, arla, usuarioId: req.usuario.id,
-  });
+  let despesa;
+  if (ehAbastecimento && dieselValor <= 0 && arlaValor > 0) {
+    const categoriaArla = db.prepare("SELECT id FROM categorias_despesa WHERE lower(trim(nome)) = 'arla'").get();
+    if (!categoriaArla) throw new ApiError(400, 'Categoria "Arla" nao encontrada no cadastro.');
+    despesa = criarDespesaViagem({
+      empresaId: req.empresaId, viagem, freteId, centroCustoId,
+      categoriaId: categoriaArla.id, valor: arlaValor, data,
+      pagoPor: pago_por, pagoPorUsuarioId: pago_por_usuario_id, postoFornecedorId: posto_fornecedor_id,
+      precoLitro: arla.preco_litro, litragem: arla.litragem, kmAbastecimento: km_abastecimento, dataVencimento: data_vencimento,
+      descricao, usuarioId: req.usuario.id, arla: null, valorPagoDinheiro,
+    });
+  } else {
+    despesa = criarDespesaViagem({
+      empresaId: req.empresaId, viagem, freteId, centroCustoId, categoriaId: categoria_id, valor: Number(valor), data,
+      pagoPor: pago_por, pagoPorUsuarioId: pago_por_usuario_id, postoFornecedorId: posto_fornecedor_id,
+      precoLitro: preco_litro, litragem, kmAbastecimento: km_abastecimento, dataVencimento: data_vencimento,
+      descricao, arla, usuarioId: req.usuario.id, valorPagoDinheiro,
+    });
+  }
 
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'despesas_viagem', registroId: despesa.id, acao: 'INSERT', depois: despesa });
   res.status(201).json(despesa);
@@ -485,16 +571,57 @@ router.post('/:id/despesas', requerAcessoModulo('viagens', 'Gerenciar'), exigirE
 router.put('/despesas/:despesaId', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const antes = db.prepare('SELECT * FROM despesas_viagem WHERE id = ? AND empresa_id = ?').get(req.params.despesaId, req.empresaId);
   if (!antes) throw new ApiError(404, 'Despesa nao encontrada.');
+  const viagemDaDespesa = db.prepare('SELECT status FROM viagens WHERE id = ?').get(antes.viagem_id);
+  if (viagemDaDespesa && viagemDaDespesa.status === 'Finalizada') throw new ApiError(400, 'Viagem ja finalizada nao aceita edicao de despesas.');
   // pago_por nao e editavel aqui: mudar o tipo de pagamento depois de gerar (ou nao) a
   // Conta a Pagar correspondente exigiria desfazer/refazer o lancamento financeiro.
-  const campos = ['categoria_id', 'valor', 'data', 'posto_fornecedor_id', 'preco_litro', 'litragem', 'km_abastecimento', 'descricao'];
+  if (req.body.centro_custo_id !== undefined) {
+    const c = db.prepare('SELECT id FROM centros_custo WHERE id = ? AND empresa_id = ?').get(req.body.centro_custo_id, req.empresaId);
+    if (!c) throw new ApiError(400, 'Centro de custo invalido para esta empresa.');
+  }
+
+  const arlaDespesa = antes.despesa_arla_id
+    ? db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(antes.despesa_arla_id)
+    : null;
+
+  const campos = ['categoria_id', 'valor', 'data', 'posto_fornecedor_id', 'preco_litro', 'litragem', 'km_abastecimento', 'descricao', 'centro_custo_id', 'valor_pago_dinheiro'];
   const sets = [];
   const valores = [];
   for (const campo of campos) {
     if (req.body[campo] !== undefined) { sets.push(`${campo} = ?`); valores.push(req.body[campo]); }
   }
-  if (!sets.length) throw new ApiError(400, 'Nenhum campo valido informado.');
-  db.prepare(`UPDATE despesas_viagem SET ${sets.join(', ')} WHERE id = ?`).run(...valores, req.params.despesaId);
+  const { arla_valor, arla_preco_litro, arla_litragem } = req.body;
+  const camposArla = arlaDespesa ? { valor: arla_valor, preco_litro: arla_preco_litro, litragem: arla_litragem } : {};
+  const setsArla = [];
+  const valoresArla = [];
+  for (const [campo, valorCampo] of Object.entries(camposArla)) {
+    if (valorCampo !== undefined) { setsArla.push(`${campo} = ?`); valoresArla.push(valorCampo); }
+  }
+  if (!sets.length && !setsArla.length) throw new ApiError(400, 'Nenhum campo valido informado.');
+
+  withTransaction(db, () => {
+    if (sets.length) {
+      db.prepare(`UPDATE despesas_viagem SET ${sets.join(', ')} WHERE id = ?`).run(...valores, req.params.despesaId);
+    }
+    if (setsArla.length) {
+      db.prepare(`UPDATE despesas_viagem SET ${setsArla.join(', ')} WHERE id = ?`).run(...valoresArla, arlaDespesa.id);
+    }
+    const despesaAtualizada = db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(antes.id);
+    const arlaAtualizada = arlaDespesa ? db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(arlaDespesa.id) : null;
+    const totalCombinado = despesaAtualizada.valor + (arlaAtualizada ? arlaAtualizada.valor : 0);
+    if (despesaAtualizada.valor_pago_dinheiro < 0 || despesaAtualizada.valor_pago_dinheiro > totalCombinado) {
+      throw new ApiError(400, 'Valor pago em dinheiro invalido: nao pode ser negativo nem maior que o total da despesa.');
+    }
+    // Se ja existe conta a pagar vinculada (gerada na criacao ou na
+    // validacao) e o valor (ou o valor pago em dinheiro) mudou, ela precisa
+    // acompanhar - mesma correcao ja aplicada em PATCH .../validar, pro
+    // escritorio nao pagar um valor velho.
+    if (antes.contas_pagar_id && (sets.length || setsArla.length)) {
+      const novoValor = totalCombinado - despesaAtualizada.valor_pago_dinheiro;
+      resolverContaPagarAposEdicao({ contaPagarId: antes.contas_pagar_id, novoValor, despesaId: despesaAtualizada.id });
+    }
+  });
+
   const depois = db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(req.params.despesaId);
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'despesas_viagem', registroId: depois.id, acao: 'UPDATE', antes, depois });
   res.json(depois);
@@ -506,11 +633,34 @@ router.delete('/despesas/:despesaId', requerAcessoModulo('viagens', 'Gerenciar')
   const contaPagar = db.prepare("SELECT * FROM contas_pagar WHERE origem_tipo = 'DespesaViagem' AND origem_id = ?").get(antes.id);
   if (contaPagar && contaPagar.status !== 'Pendente') throw new ApiError(400, 'Esta despesa ja possui pagamento lancado e nao pode ser excluida.');
 
+  // Despesa "combo" (diesel + Arla vinculada via despesa_arla_id): exclui a
+  // Arla junto, senao ela vira orfa (sem elo, sem conta a pagar propria).
+  // Checa uma conta a pagar propria da Arla so por seguranca - hoje ela
+  // nunca deveria ter uma (ver criarContaPagarCombinada), mas se tivesse,
+  // nao pode ficar presa a uma despesa que nao existe mais.
+  const arlaDespesa = antes.despesa_arla_id
+    ? db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(antes.despesa_arla_id)
+    : null;
+  const contaPagarArla = arlaDespesa
+    ? db.prepare("SELECT * FROM contas_pagar WHERE origem_tipo = 'DespesaViagem' AND origem_id = ?").get(arlaDespesa.id)
+    : null;
+  if (contaPagarArla && contaPagarArla.status !== 'Pendente') {
+    throw new ApiError(400, 'A despesa de Arla vinculada ja possui pagamento lancado e nao pode ser excluida.');
+  }
+
   withTransaction(db, () => {
-    // despesas_viagem.contas_pagar_id aponta pra contas_pagar - precisa apagar
-    // a despesa antes (ou a FK acusa violacao ao apagar a conta ainda referenciada).
+    // despesa_arla_id e contas_pagar_id sao colunas da propria despesa
+    // principal, apontando pra Arla e pra conta a pagar respectivamente -
+    // a despesa principal (quem "segura" as duas referencias) precisa sair
+    // primeiro, senao a FK acusa violacao ao tentar apagar algo que ela
+    // ainda referencia. So depois de ela sumir e que a Arla e a conta a
+    // pagar ficam livres pra serem apagadas.
     db.prepare('DELETE FROM despesas_viagem WHERE id = ?').run(req.params.despesaId);
     if (contaPagar) db.prepare('DELETE FROM contas_pagar WHERE id = ?').run(contaPagar.id);
+    if (arlaDespesa) {
+      db.prepare('DELETE FROM despesas_viagem WHERE id = ?').run(arlaDespesa.id);
+      if (contaPagarArla) db.prepare('DELETE FROM contas_pagar WHERE id = ?').run(contaPagarArla.id);
+    }
   });
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'despesas_viagem', registroId: antes.id, acao: 'DELETE', antes });
   res.status(204).send();
@@ -526,26 +676,81 @@ router.patch('/despesas/:despesaId/validar', requerAcessoModulo('viagens', 'Gere
   const despesa = db.prepare('SELECT * FROM despesas_viagem WHERE id = ? AND empresa_id = ?').get(req.params.despesaId, req.empresaId);
   if (!despesa) throw new ApiError(404, 'Despesa nao encontrada.');
   if (despesa.validado_em) throw new ApiError(400, 'Despesa ja foi validada.');
+  // Uma despesa de Arla vinculada (despesa_arla_id de outra) nao tem
+  // validacao propria - ela e validada junto da despesa principal que a
+  // referencia (ver abaixo). O frontend ja esconde o botao nesse caso; isto
+  // e so defesa em profundidade contra uma chamada direta a API.
+  const ehArlaVinculada = db.prepare('SELECT 1 FROM despesas_viagem WHERE despesa_arla_id = ?').get(despesa.id);
+  if (ehArlaVinculada) throw new ApiError(400, 'Esta e uma despesa de Arla vinculada a outro lancamento; valide pela despesa principal.');
 
-  const { data_vencimento } = req.body;
-  const precisaContaPagar = (despesa.pago_por === 'Empresa' || despesa.pago_por === 'AdminOutros') && !despesa.contas_pagar_id;
-
-  if (precisaContaPagar && despesa.forma_pagamento_posto === 'AssinarNota' && !data_vencimento) {
-    throw new ApiError(400, 'Informe a data de vencimento para validar uma despesa "Assinar nota".');
+  const {
+    data_vencimento, valor, data, preco_litro, litragem, km_abastecimento, posto_fornecedor_id, forma_pagamento_posto,
+    arla_valor, arla_preco_litro, arla_litragem, centro_custo_id, valor_pago_dinheiro,
+  } = req.body;
+  if (forma_pagamento_posto !== undefined && forma_pagamento_posto !== null && !['Imediato', 'AssinarNota'].includes(forma_pagamento_posto)) {
+    throw new ApiError(400, 'forma_pagamento_posto invalida.');
+  }
+  if (centro_custo_id !== undefined) {
+    const c = db.prepare('SELECT id FROM centros_custo WHERE id = ? AND empresa_id = ?').get(centro_custo_id, req.empresaId);
+    if (!c) throw new ApiError(400, 'Centro de custo invalido para esta empresa.');
   }
 
   const arlaDespesa = despesa.despesa_arla_id
     ? db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(despesa.despesa_arla_id)
     : null;
 
+  // A validacao agora tambem serve pra corrigir o lancamento do motorista
+  // (ver frontend/js/pages/viagemDetalhe.js abrirValidarDespesa) - so aplica
+  // os campos que vieram no body, deixando o resto como estava.
+  const camposDespesa = { valor, data, preco_litro, litragem, km_abastecimento, posto_fornecedor_id, forma_pagamento_posto, data_vencimento, centro_custo_id, valor_pago_dinheiro };
+  const setsDespesa = [];
+  const valoresDespesa = [];
+  for (const [campo, valorCampo] of Object.entries(camposDespesa)) {
+    if (valorCampo !== undefined) { setsDespesa.push(`${campo} = ?`); valoresDespesa.push(valorCampo); }
+  }
+  const camposArla = arlaDespesa ? { valor: arla_valor, preco_litro: arla_preco_litro, litragem: arla_litragem } : {};
+  const setsArla = [];
+  const valoresArla = [];
+  for (const [campo, valorCampo] of Object.entries(camposArla)) {
+    if (valorCampo !== undefined) { setsArla.push(`${campo} = ?`); valoresArla.push(valorCampo); }
+  }
+
+  const formaPagamentoFinal = forma_pagamento_posto !== undefined ? forma_pagamento_posto : despesa.forma_pagamento_posto;
+  const precisaContaPagar = (despesa.pago_por === 'Empresa' || despesa.pago_por === 'AdminOutros') && !despesa.contas_pagar_id;
+
+  if (precisaContaPagar && formaPagamentoFinal === 'AssinarNota' && !data_vencimento) {
+    throw new ApiError(400, 'Informe a data de vencimento para validar uma despesa "Assinar nota".');
+  }
+
   withTransaction(db, () => {
+    if (setsDespesa.length) {
+      db.prepare(`UPDATE despesas_viagem SET ${setsDespesa.join(', ')} WHERE id = ?`).run(...valoresDespesa, despesa.id);
+    }
+    if (setsArla.length) {
+      db.prepare(`UPDATE despesas_viagem SET ${setsArla.join(', ')} WHERE id = ?`).run(...valoresArla, arlaDespesa.id);
+    }
+    const despesaAtualizada = db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(despesa.id);
+    const arlaAtualizada = arlaDespesa ? db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(arlaDespesa.id) : null;
+    const totalCombinado = despesaAtualizada.valor + (arlaAtualizada ? arlaAtualizada.valor : 0);
+    if (despesaAtualizada.valor_pago_dinheiro < 0 || despesaAtualizada.valor_pago_dinheiro > totalCombinado) {
+      throw new ApiError(400, 'Valor pago em dinheiro invalido: nao pode ser negativo nem maior que o total da despesa.');
+    }
+
     if (precisaContaPagar) {
       criarContaPagarCombinada({
-        empresaId: req.empresaId, viagemId: despesa.viagem_id, despesa, arlaDespesa, categoriaId: despesa.categoria_id,
-        pagoPor: despesa.pago_por, pagoPorUsuarioId: despesa.pago_por_usuario_id, postoFornecedorId: despesa.posto_fornecedor_id,
-        dataVencimento: data_vencimento, data: despesa.data,
+        empresaId: req.empresaId, viagemId: despesaAtualizada.viagem_id, despesa: despesaAtualizada, arlaDespesa: arlaAtualizada, categoriaId: despesaAtualizada.categoria_id,
+        pagoPor: despesaAtualizada.pago_por, pagoPorUsuarioId: despesaAtualizada.pago_por_usuario_id, postoFornecedorId: despesaAtualizada.posto_fornecedor_id,
+        dataVencimento: data_vencimento, data: despesaAtualizada.data, valorPagoDinheiro: despesaAtualizada.valor_pago_dinheiro,
       });
+    } else if (despesaAtualizada.contas_pagar_id && (setsDespesa.length || setsArla.length)) {
+      // A conta a pagar ja existia (forma_pagamento_posto='Imediato' cria na
+      // hora, ver despesaViagemHelper.js) - se o valor (ou o valor pago em
+      // dinheiro) foi corrigido durante a revisao, a conta precisa
+      // acompanhar, senao o escritorio pagaria um valor desatualizado.
+      const novoValor = totalCombinado - despesaAtualizada.valor_pago_dinheiro;
+      resolverContaPagarAposEdicao({ contaPagarId: despesaAtualizada.contas_pagar_id, novoValor, despesaId: despesaAtualizada.id });
     }
+
     const agora = agoraDataHoraIsoBrasilia();
     db.prepare('UPDATE despesas_viagem SET validado_por = ?, validado_em = ? WHERE id = ?').run(req.usuario.id, agora, despesa.id);
     if (arlaDespesa) {

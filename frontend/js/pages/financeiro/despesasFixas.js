@@ -3,7 +3,7 @@ import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { abrirModal, fecharModal } from '../../components/modal.js';
 import { mostrarToast } from '../../components/toast.js';
-import { formatarMoeda, attachMoedaMask, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr } from '../../masks.js';
+import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr } from '../../masks.js';
 import { navegar } from '../../router.js';
 
 async function buscarCentrosCusto(termo) {
@@ -40,7 +40,7 @@ async function montarFormulario(registro, aoSalvar) {
   `;
   const centroSelect = criarSearchableSelect({ buscar: buscarCentrosCusto, placeholder: 'Pesquisar centro de custo...', valorInicial: registro?.centro_custo_id, labelInicial: registro?.centro_custo_nome || '' });
   form.querySelector('[data-centro]').appendChild(centroSelect.el);
-  attachMoedaMask(form.valor, registro?.valor || 0);
+  attachMoedaMaskReais(form.valor, registro?.valor || 0);
   attachDataMask(form.data, registro?.data);
   if (registro) {
     form.categoria_id.value = registro.categoria_id;
@@ -49,7 +49,7 @@ async function montarFormulario(registro, aoSalvar) {
   }
 
   if (!registro) {
-    attachMoedaMask(form.valor_parcela, 0);
+    attachMoedaMaskReais(form.valor_parcela, 0);
     attachDataMask(form.primeira_parcela_vencimento);
     function recalcularParcelas() {
       const valorTotal = getMoedaValue(form.valor);

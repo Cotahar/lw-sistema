@@ -1,4 +1,4 @@
-import { get, authHeaders } from '../../api.js';
+import { get, post, authHeaders } from '../../api.js';
 import { navegar } from '../../router.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { mostrarToast, mostrarErro } from '../../components/toast.js';
@@ -6,18 +6,12 @@ import { attachMoedaMask, getMoedaValue, setMoedaValue, attachDataMask, parseDat
 import { comprimirImagem } from '../../imageCompress.js';
 import { adicionarPendente, registrarSyncBackground } from './offlineQueue.js';
 
-let postoTipoIdCache = null;
-async function obterPostoTipoId() {
-  if (postoTipoIdCache !== null) return postoTipoIdCache;
-  const tipos = await get('/fornecedor-tipos');
-  const posto = tipos.find((t) => t.nome.trim().toLowerCase() === 'posto');
-  postoTipoIdCache = posto ? posto.id : null;
-  return postoTipoIdCache;
-}
+// Endpoint dedicado (nao GET /fornecedores) porque o perfil Motorista nao
+// tem acesso ao modulo "fornecedores" na matriz de permissoes - ver
+// backend/src/routes/motorista.routes.js.
 async function buscarPostos(termo) {
-  const todos = await get(`/fornecedores${termo ? `?search=${encodeURIComponent(termo)}` : ''}`);
-  const tipoId = await obterPostoTipoId();
-  return todos.filter((f) => f.tipo_id === tipoId).map((f) => ({ value: f.id, label: f.nome }));
+  const postos = await get(`/motorista/postos${termo ? `?search=${encodeURIComponent(termo)}` : ''}`);
+  return postos.map((p) => ({ value: p.id, label: p.nome }));
 }
 
 // Auto-calculo do trio preco/litragem/valor - sempre baseado em qual campo
@@ -57,14 +51,28 @@ export async function render(appEl) {
       </header>
       <main class="p-4">
         <form class="card space-y-4 p-4" data-form>
-          <div><label class="label">Valor total (diesel) *</label><input type="text" name="valor" class="input" required inputmode="decimal" /></div>
+          <div><label class="label">Valor total (diesel)</label><input type="text" name="valor" class="input" inputmode="decimal" /></div>
+          <p class="-mt-2 text-xs text-slate-400">Deixe em branco se for so Arla (compra isolada).</p>
           <div><label class="label">Data</label><input type="text" name="data" class="input" placeholder="DD/MM/AAAA" /></div>
           <div class="grid grid-cols-2 gap-3">
             <div><label class="label">Preco/Litro</label><input type="text" name="preco_litro" class="input" inputmode="decimal" /></div>
             <div><label class="label">Litragem</label><input type="number" step="0.01" name="litragem" class="input" /></div>
           </div>
           <div><label class="label">KM no abastecimento</label><input type="number" name="km_abastecimento" class="input" /></div>
-          <div><label class="label">Posto</label><div data-posto-select></div></div>
+          <div>
+            <label class="label">Posto</label>
+            <div data-posto-select></div>
+            <button type="button" class="mt-1 text-xs text-brand-black hover:underline" data-abrir-novo-posto>Nao encontrou? Cadastrar novo posto</button>
+            <div class="mt-2 hidden space-y-3 rounded-lg border border-slate-200 p-3" data-novo-posto-bloco>
+              <div><label class="label">Nome do novo posto</label><input type="text" class="input" data-novo-posto-nome /></div>
+              <div><label class="label">Localizacao</label><input type="text" class="input" data-novo-posto-localizacao placeholder="Cidade/UF ou nome do local" /></div>
+              <p class="hidden text-xs text-red-600" data-erro-novo-posto></p>
+              <div class="flex gap-2">
+                <button type="button" class="btn-primary flex-1" data-confirmar-novo-posto>Cadastrar e usar</button>
+                <button type="button" class="btn-secondary" data-cancelar-novo-posto>Cancelar</button>
+              </div>
+            </div>
+          </div>
 
           <div>
             <label class="label">Como foi pago? *</label>
@@ -113,14 +121,53 @@ export async function render(appEl) {
   // sempre lanca o abastecimento no ato, entao isso evita digitar de novo um
   // numero que o rastreador ja sabe. Continua editavel (o rastreador pode
   // estar desatualizado ou o veiculo pode ter ficado sem sinal).
+  let localizacaoAtualTexto = '';
   get('/motorista/viagem-atual').then(({ viagem }) => {
     if (viagem && viagem.hodometro_atual != null) {
       form.km_abastecimento.value = viagem.hodometro_atual;
+    }
+    if (viagem && viagem.localizacao_cidade) {
+      localizacaoAtualTexto = `${viagem.localizacao_cidade}/${viagem.localizacao_uf}`;
     }
   }).catch(() => {});
 
   const postoSelect = criarSearchableSelect({ buscar: buscarPostos, placeholder: 'Pesquisar posto...' });
   form.querySelector('[data-posto-select]').appendChild(postoSelect.el);
+
+  // Cadastro de posto na hora - so pede o nome (a localizacao ja vem
+  // preenchida com a posicao rastreada da viagem, editavel) porque o
+  // motorista nao tem acesso ao cadastro completo de Fornecedores.
+  const blocoNovoPosto = form.querySelector('[data-novo-posto-bloco]');
+  const inputNovoPostoNome = form.querySelector('[data-novo-posto-nome]');
+  const inputNovoPostoLocalizacao = form.querySelector('[data-novo-posto-localizacao]');
+  const erroNovoPosto = form.querySelector('[data-erro-novo-posto]');
+
+  form.querySelector('[data-abrir-novo-posto]').addEventListener('click', () => {
+    inputNovoPostoNome.value = postoSelect.el.querySelector('input').value.trim();
+    inputNovoPostoLocalizacao.value = localizacaoAtualTexto;
+    erroNovoPosto.classList.add('hidden');
+    blocoNovoPosto.classList.remove('hidden');
+  });
+  form.querySelector('[data-cancelar-novo-posto]').addEventListener('click', () => {
+    blocoNovoPosto.classList.add('hidden');
+  });
+  form.querySelector('[data-confirmar-novo-posto]').addEventListener('click', async () => {
+    const nome = inputNovoPostoNome.value.trim();
+    if (!nome) {
+      erroNovoPosto.textContent = 'Informe o nome do posto.';
+      erroNovoPosto.classList.remove('hidden');
+      return;
+    }
+    try {
+      const criado = await post('/motorista/postos', { nome, localizacao: inputNovoPostoLocalizacao.value.trim() || null });
+      postoSelect.setValue(criado.id, criado.nome);
+      blocoNovoPosto.classList.add('hidden');
+      mostrarToast('Posto cadastrado.');
+    } catch (err) {
+      erroNovoPosto.textContent = err.message;
+      erroNovoPosto.classList.remove('hidden');
+    }
+  });
 
   form.valor.addEventListener('input', () => recalcularTrio(form.preco_litro, form.litragem, form.valor, form.valor));
   form.preco_litro.addEventListener('input', () => recalcularTrio(form.preco_litro, form.litragem, form.valor, form.preco_litro));
@@ -173,15 +220,15 @@ export async function render(appEl) {
       return;
     }
     const valor = getMoedaValue(form.valor);
-    if (!valor) {
-      erro.textContent = 'Informe o valor do abastecimento.';
+    const arla = montarArlaPayload();
+    if (!valor && !arla) {
+      erro.textContent = 'Informe o valor do abastecimento ou do Arla.';
       erro.classList.remove('hidden');
       return;
     }
 
-    const arla = montarArlaPayload();
     const payload = {
-      valor,
+      valor: valor || null,
       data: form.data.value ? parseDataBrParaIso(form.data.value) : null,
       preco_litro: form.preco_litro.value ? getMoedaValue(form.preco_litro) : null,
       litragem: form.litragem.value ? Number(form.litragem.value) : null,

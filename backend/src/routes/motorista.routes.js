@@ -9,6 +9,7 @@ const { requerMotorista } = require('../middleware/auth');
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 const { criarDespesaViagem } = require('../utils/despesaViagemHelper');
+const { registrarAuditoria } = require('../utils/audit');
 
 const router = express.Router();
 router.use(requerMotorista, exigirEmpresaEspecifica);
@@ -189,7 +190,9 @@ router.post('/abastecimentos', upload.single('foto'), asyncHandler(async (req, r
     forma_pagamento_posto, arla_valor, arla_preco_litro, arla_litragem,
   } = req.body;
   if (!idempotency_key) throw new ApiError(400, 'idempotency_key obrigatoria.');
-  if (valor === undefined || Number(valor) <= 0) throw new ApiError(400, 'Informe o valor do abastecimento.');
+  const dieselValor = valor !== undefined && Number(valor) > 0 ? Number(valor) : 0;
+  const arlaValor = arla_valor ? Number(arla_valor) : 0;
+  if (dieselValor <= 0 && arlaValor <= 0) throw new ApiError(400, 'Informe o valor do abastecimento ou do Arla.');
   if (forma_pagamento_posto && !['Imediato', 'AssinarNota'].includes(forma_pagamento_posto)) {
     throw new ApiError(400, 'forma_pagamento_posto invalida.');
   }
@@ -206,26 +209,89 @@ router.post('/abastecimentos', upload.single('foto'), asyncHandler(async (req, r
   const centroCusto = tratora ? buscarCentroCustoDoVeiculo(tratora.id) : null;
   if (!centroCusto) throw new ApiError(400, 'Nao foi possivel resolver o centro de custo da viagem.');
 
-  const categoriaAbastecimento = db.prepare("SELECT id FROM categorias_despesa WHERE lower(trim(nome)) = 'abastecimento'").get();
-  if (!categoriaAbastecimento) throw new ApiError(400, 'Categoria "Abastecimento" nao encontrada no cadastro.');
-
   const ultimoFrete = db.prepare('SELECT id FROM fretes WHERE viagem_id = ? ORDER BY id DESC LIMIT 1').get(viagem.id);
   const freteId = ultimoFrete ? ultimoFrete.id : null;
 
-  const arlaValor = arla_valor ? Number(arla_valor) : 0;
-
-  const despesa = criarDespesaViagem({
-    empresaId: req.empresaId, viagem, freteId, centroCustoId: centroCusto.id, categoriaId: categoriaAbastecimento.id,
-    valor: Number(valor), data: data || null, pagoPor: 'Empresa', postoFornecedorId: posto_fornecedor_id || null,
-    precoLitro: preco_litro ? Number(preco_litro) : null, litragem: litragem ? Number(litragem) : null,
-    kmAbastecimento: km_abastecimento ? Number(km_abastecimento) : null, usuarioId: req.usuario.id,
-    fotoRecibo: req.file ? req.file.filename : null, idempotencyKey: idempotency_key,
-    formaPagamentoPosto: forma_pagamento_posto || null, precisaValidacao: true,
-    arla: arlaValor > 0
-      ? { valor: arlaValor, preco_litro: arla_preco_litro ? Number(arla_preco_litro) : null, litragem: arla_litragem ? Number(arla_litragem) : null }
-      : null,
-  });
+  // Arla pode ser comprada isoladamente (sem diesel junto) - nesse caso ela
+  // vira a despesa principal (propria categoria, sem despesa_arla_id), em
+  // vez de sempre depender de um lancamento de diesel companheiro.
+  const despesa = dieselValor > 0
+    ? criarDespesaViagem({
+        empresaId: req.empresaId, viagem, freteId, centroCustoId: centroCusto.id,
+        categoriaId: buscarCategoriaAbastecimentoId(), valor: dieselValor, data: data || null, pagoPor: 'Empresa',
+        postoFornecedorId: posto_fornecedor_id || null, precoLitro: preco_litro ? Number(preco_litro) : null,
+        litragem: litragem ? Number(litragem) : null, kmAbastecimento: km_abastecimento ? Number(km_abastecimento) : null,
+        usuarioId: req.usuario.id, fotoRecibo: req.file ? req.file.filename : null, idempotencyKey: idempotency_key,
+        formaPagamentoPosto: forma_pagamento_posto || null, precisaValidacao: true,
+        arla: arlaValor > 0
+          ? { valor: arlaValor, preco_litro: arla_preco_litro ? Number(arla_preco_litro) : null, litragem: arla_litragem ? Number(arla_litragem) : null }
+          : null,
+      })
+    : criarDespesaViagem({
+        empresaId: req.empresaId, viagem, freteId, centroCustoId: centroCusto.id,
+        categoriaId: buscarCategoriaArlaId(), valor: arlaValor, data: data || null, pagoPor: 'Empresa',
+        postoFornecedorId: posto_fornecedor_id || null, precoLitro: arla_preco_litro ? Number(arla_preco_litro) : null,
+        litragem: arla_litragem ? Number(arla_litragem) : null, kmAbastecimento: km_abastecimento ? Number(km_abastecimento) : null,
+        usuarioId: req.usuario.id, fotoRecibo: req.file ? req.file.filename : null, idempotencyKey: idempotency_key,
+        formaPagamentoPosto: forma_pagamento_posto || null, precisaValidacao: true, arla: null,
+      });
   res.status(201).json(despesa);
 }));
+
+function buscarPostoTipoId() {
+  const tipo = db.prepare("SELECT id FROM fornecedor_tipos WHERE lower(trim(nome)) = 'posto'").get();
+  if (!tipo) throw new ApiError(400, 'Tipo de fornecedor "Posto" nao encontrado no cadastro.');
+  return tipo.id;
+}
+
+// Busca de posto pelo app do motorista - so retorna fornecedores do tipo
+// "Posto" (mesmo filtro que a tela do escritorio ja usa em
+// viagemDetalhe.js/buscarFornecedoresFiltrado), restrito a empresa do
+// motorista logado.
+router.get('/postos', asyncHandler(async (req, res) => {
+  const { search } = req.query;
+  const tipoId = buscarPostoTipoId();
+  const condicoes = ['empresa_id = ?', 'tipo_id = ?'];
+  const params = [req.empresaId, tipoId];
+  if (search) { condicoes.push('nome LIKE ?'); params.push(`%${search}%`); }
+  const postos = db.prepare(`SELECT id, nome, localizacao FROM fornecedores WHERE ${condicoes.join(' AND ')} ORDER BY nome`).all(...params);
+  res.json(postos);
+}));
+
+// Cria um posto na hora, com so o nome que o motorista digitou (nao achou no
+// cadastro). Se ja existir um posto com esse nome (case-insensitive) nesta
+// empresa, devolve o existente em vez de duplicar - protege contra reenvio
+// (ex.: duplo toque, retry offline) e contra o motorista digitar o mesmo
+// nome de um posto que outro motorista ja cadastrou.
+router.post('/postos', asyncHandler(async (req, res) => {
+  const { nome, localizacao } = req.body;
+  if (!nome || !nome.trim()) throw new ApiError(400, 'Informe o nome do posto.');
+  const tipoId = buscarPostoTipoId();
+
+  const existente = db.prepare(`
+    SELECT id, nome, localizacao FROM fornecedores
+    WHERE empresa_id = ? AND tipo_id = ? AND lower(trim(nome)) = lower(trim(?))
+  `).get(req.empresaId, tipoId, nome);
+  if (existente) return res.status(200).json(existente);
+
+  const info = db.prepare(`
+    INSERT INTO fornecedores (empresa_id, nome, tipo_id, localizacao, ativo) VALUES (?, ?, ?, ?, 1)
+  `).run(req.empresaId, nome.trim(), tipoId, localizacao || null);
+  const criado = db.prepare('SELECT id, nome, localizacao FROM fornecedores WHERE id = ?').get(info.lastInsertRowid);
+  registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'fornecedores', registroId: criado.id, acao: 'INSERT', depois: criado });
+  res.status(201).json(criado);
+}));
+
+function buscarCategoriaAbastecimentoId() {
+  const categoria = db.prepare("SELECT id FROM categorias_despesa WHERE lower(trim(nome)) = 'abastecimento'").get();
+  if (!categoria) throw new ApiError(400, 'Categoria "Abastecimento" nao encontrada no cadastro.');
+  return categoria.id;
+}
+
+function buscarCategoriaArlaId() {
+  const categoria = db.prepare("SELECT id FROM categorias_despesa WHERE lower(trim(nome)) = 'arla'").get();
+  if (!categoria) throw new ApiError(400, 'Categoria "Arla" nao encontrada no cadastro.');
+  return categoria.id;
+}
 
 module.exports = router;

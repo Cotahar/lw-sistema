@@ -3,7 +3,7 @@ import { criarDataTable } from '../components/dataTable.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { abrirModal, fecharModal, confirmarAcao } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
-import { formatarMoeda, attachMoedaMask, getMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr } from '../masks.js';
+import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr } from '../masks.js';
 
 const STATUS_LABEL = {
   AguardandoIndicacao: 'Aguardando indicacao',
@@ -59,7 +59,7 @@ async function montarFormulario(registro, aoSalvar) {
   const motoristaSelect = criarSearchableSelect({ buscar: buscarMotoristas, placeholder: 'Pesquisar motorista...', valorInicial: registro?.motorista_id ?? null, labelInicial: registro?.motorista_nome || '' });
   form.querySelector('[data-motorista]').appendChild(motoristaSelect.el);
 
-  attachMoedaMask(form.valor_original, registro?.valor_original || 0);
+  attachMoedaMaskReais(form.valor_original, registro?.valor_original || 0);
   attachDataMask(form.data_infracao, registro?.data_infracao);
   attachDataMask(form.data_notificacao, registro?.data_notificacao);
   if (registro) {

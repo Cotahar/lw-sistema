@@ -4,7 +4,7 @@ import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { abrirModal, fecharModal, confirmarAcao } from '../../components/modal.js';
 import { mostrarToast, mostrarErro } from '../../components/toast.js';
 import { criarOcorrencias } from '../../components/ocorrencias.js';
-import { formatarMoeda, attachMoedaMask, getMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr, hojeIsoLocal } from '../../masks.js';
+import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr, hojeIsoLocal } from '../../masks.js';
 
 const STATUS_BADGE = { Pendente: 'bg-amber-100 text-amber-700', Parcial: 'bg-amber-100 text-amber-700', Pago: 'bg-emerald-100 text-emerald-700', Atrasado: 'bg-red-100 text-red-700' };
 const STATUS_OPCOES = [
@@ -54,7 +54,7 @@ async function abrirNovaConta(recarregar) {
     <p class="hidden text-sm text-red-600" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Cadastrar</button></div>
   `;
-  attachMoedaMask(form.valor, 0);
+  attachMoedaMaskReais(form.valor, 0);
   attachDataMask(form.data_vencimento);
   const fornecedorSelect = criarSearchableSelect({ buscar: buscarFornecedores, placeholder: 'Pesquisar fornecedor...' });
   form.querySelector('[data-fornecedor]').appendChild(fornecedorSelect.el);
@@ -121,8 +121,8 @@ async function abrirBaixa(conta, recarregar) {
     <p class="hidden text-sm text-red-600" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Baixar</button></div>
   `;
-  attachMoedaMask(form.valor_pago, restante);
-  attachMoedaMask(form.desconto, 0);
+  attachMoedaMaskReais(form.valor_pago, restante);
+  attachMoedaMaskReais(form.desconto, 0);
   attachDataMask(form.data_pagamento);
   const contaSelect = criarSearchableSelect({ buscar: buscarContasBancarias, placeholder: 'Pesquisar conta...' });
   form.querySelector('[data-conta]').appendChild(contaSelect.el);

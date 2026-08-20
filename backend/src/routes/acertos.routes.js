@@ -86,13 +86,20 @@ function calcularAcerto(viagemId, empresaId, overrides = {}) {
 
   const saldoFinal = valorComissao + valorReembolsos - adiantamentosTotal - valorDescontos - saldoContaCorrenteAnterior;
 
+  // Despesas lancadas pelo app do motorista nascem pendentes de validacao
+  // (despesaViagemHelper.js) - a media de consumo e os descontos acima ja
+  // refletem os valores atuais (inclusive os ainda nao validados, pra dar
+  // uma estimativa "ao vivo"), mas o fechamento so pode acontecer depois que
+  // o escritorio revisar cada uma (ver POST /viagem/:viagemId/fechar).
+  const despesasPendentes = despesas.filter((d) => !d.validado_em).length;
+
   return {
     viagem, motorista, fretes, despesas, empresa,
     freteBrutoTotal, kmTotal, litrosTotal, mediaConsumoKmL,
     percentualSugerido, percentualAplicado, valorComissao,
     percentualImposto, valorImposto, baseCalculoComissao,
     valorReembolsos, adiantamentosTotal, valorDescontosSugerido, valorDescontos,
-    saldoContaCorrenteAnterior, saldoFinal,
+    saldoContaCorrenteAnterior, saldoFinal, despesasPendentes,
   };
 }
 
@@ -131,6 +138,10 @@ router.post('/viagem/:viagemId/fechar', requerAcessoModulo('acertos', 'Gerenciar
   if (!viagemAtual) throw new ApiError(404, 'Viagem nao encontrada.');
   if (viagemAtual.status !== 'AguardandoAcerto') {
     throw new ApiError(400, `Viagem no status ${viagemAtual.status} nao pode ser fechada (finalize o km primeiro).`);
+  }
+  const despesasPendentes = db.prepare('SELECT COUNT(*) AS total FROM despesas_viagem WHERE viagem_id = ? AND validado_em IS NULL').get(req.params.viagemId).total;
+  if (despesasPendentes > 0) {
+    throw new ApiError(400, `Existem ${despesasPendentes} despesa(s) pendente(s) de validacao nesta viagem. Valide todas antes de fechar o acerto.`);
   }
 
   const { percentual_comissao_aplicado, valor_reembolsos, valor_descontos, observacoes_ajustes } = req.body;

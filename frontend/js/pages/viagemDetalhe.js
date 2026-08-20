@@ -1,10 +1,10 @@
-import { get, post, patch, del, podeGerenciar } from '../api.js';
+import { get, post, put, patch, del, podeGerenciar, getUsuario } from '../api.js';
 import { criarDataTable } from '../components/dataTable.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
-import { abrirModal, fecharModal, confirmarAcao } from '../components/modal.js';
+import { abrirModal, fecharModal, confirmarAcao, modalAberto } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
 import { criarOcorrencias } from '../components/ocorrencias.js';
-import { formatarMoeda, attachMoedaMask, getMoedaValue, setMoedaValue, attachPesoMask, getPesoValue, attachDataMask, parseDataBrParaIso, formatarDataBr, formatarDataHoraBr, hojeIsoLocal } from '../masks.js';
+import { formatarMoeda, attachMoedaMask, attachMoedaMaskReais, getMoedaValue, setMoedaValue, attachPesoMask, getPesoValue, attachDataMask, parseDataBrParaIso, formatarDataBr, formatarDataHoraBr, hojeIsoLocal } from '../masks.js';
 import { navegar } from '../router.js';
 import { criarBotaoSincronizarOnixsat } from '../components/onixsatSync.js';
 
@@ -46,6 +46,13 @@ async function buscarUsuarios(termo) {
     return filtrados.map((u) => ({ value: u.id, label: u.nome }));
   } catch { return []; }
 }
+// Deixa escolher onde a despesa entra no DRE (o veiculo da viagem ou
+// "Base/Administrativo", quando o gasto e visto como aporte pessoal do
+// proprietario em vez de custo do veiculo) - mesmo padrao ja usado em
+// Despesas Fixas.
+async function buscarCentrosCusto(termo) {
+  return (await get(`/centros-custo${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((c) => ({ value: c.id, label: c.nome }));
+}
 
 // ---- Fretes ----
 
@@ -76,7 +83,7 @@ function montarFormularioFrete(aoSalvar) {
   const transportadoraSelect = criarSearchableSelect({ buscar: buscarFornecedores, placeholder: 'Pesquisar transportadora...' });
   form.querySelector('[data-transportadora]').appendChild(transportadoraSelect.el);
   attachPesoMask(form.peso_carga_kg);
-  attachMoedaMask(form.frete_bruto, 0);
+  attachMoedaMaskReais(form.frete_bruto, 0);
   attachDataMask(form.data_carregamento);
   attachDataMask(form.data_prevista_recebimento);
   const erro = form.querySelector('[data-erro]');
@@ -191,7 +198,7 @@ async function abrirBaixasFrete(frete, recarregar, gerenciar) {
       if (!formBaixa) return;
       const contaSelect = criarSearchableSelect({ buscar: buscarContasBancarias, placeholder: 'Pesquisar conta (opcional)...' });
       formBaixa.querySelector('[data-conta-select]').appendChild(contaSelect.el);
-      attachMoedaMask(formBaixa.valor, 0);
+      attachMoedaMaskReais(formBaixa.valor, 0);
       formBaixa.tipo.addEventListener('change', () => {
         formBaixa.querySelector('[data-bloco-conta]').classList.toggle('hidden', formBaixa.tipo.value === 'Desconto');
       });
@@ -263,7 +270,17 @@ async function abrirNovaDespesa(viagemId, recarregar) {
     </div>
     <div data-bloco-usuario class="hidden"><label class="label">Quem desembolsou *</label><div data-usuario-select></div></div>
     <div data-bloco-vencimento class="hidden"><label class="label">Data de vencimento (se faturada)</label><input type="text" name="data_vencimento" class="input" placeholder="Deixe em branco se ja foi paga" /></div>
+    <div data-bloco-dinheiro class="hidden">
+      <label class="label">Valor pago em dinheiro (pelo motorista)</label>
+      <input type="text" name="valor_pago_dinheiro" class="input max-w-[12rem]" />
+      <p class="mt-1 text-xs text-slate-400">Se o motorista usou dinheiro que ja tinha em maos (adiantamento em especie) pra pagar parte ou tudo, informe aqui - reduz o valor da conta a pagar gerada.</p>
+    </div>
     <div><label class="label">Fornecedor</label><div data-fornecedor-select></div></div>
+    <div>
+      <label class="label">Centro de custo</label>
+      <div data-centro-custo-select></div>
+      <p class="mt-1 text-xs text-slate-400">Deixe em branco para usar o veiculo da viagem (padrao). Escolha "Base/Administrativo" se este gasto nao deve entrar no resultado do veiculo (ex.: aporte pessoal).</p>
+    </div>
     <div class="rounded-lg border border-slate-200 p-3" data-bloco-abastecimento>
       <p class="mb-2 text-xs font-medium uppercase text-slate-500">Campos de abastecimento (se aplicavel)</p>
       <div class="grid grid-cols-2 gap-3">
@@ -301,6 +318,7 @@ async function abrirNovaDespesa(viagemId, recarregar) {
   attachMoedaMask(form.valor, 0);
   attachDataMask(form.data);
   attachDataMask(form.data_vencimento);
+  attachMoedaMaskReais(form.valor_pago_dinheiro, 0);
   attachMoedaMask(form.preco_litro, 0);
   attachMoedaMask(form.arla_preco, 0);
   attachMoedaMask(form.arla_valor, 0);
@@ -311,6 +329,8 @@ async function abrirNovaDespesa(viagemId, recarregar) {
     placeholder: 'Pesquisar fornecedor...',
   });
   form.querySelector('[data-fornecedor-select]').appendChild(fornecedorSelect.el);
+  const centroCustoSelect = criarSearchableSelect({ buscar: buscarCentrosCusto, placeholder: 'Pesquisar centro de custo (opcional)...' });
+  form.querySelector('[data-centro-custo-select]').appendChild(centroCustoSelect.el);
 
   function categoriaEhAbastecimento() {
     return categoriaAbastecimentoId !== null && Number(form.categoria_id.value) === categoriaAbastecimentoId;
@@ -326,7 +346,11 @@ async function abrirNovaDespesa(viagemId, recarregar) {
       form.preco_litro.value = ''; form.litragem.value = ''; form.km_abastecimento.value = '';
       setMoedaValue(form.arla_preco, 0); form.arla_qtd.value = ''; setMoedaValue(form.arla_valor, 0);
     }
-    form.querySelector('[data-label-valor]').textContent = ativo ? 'Valor do diesel *' : 'Valor *';
+    // Abastecimento aceita lancar so o Arla (compra isolada, sem diesel) -
+    // o valor do diesel deixa de ser obrigatorio aqui; o submit exige pelo
+    // menos um dos dois preenchidos (ver validacao no listener de submit).
+    form.valor.required = !ativo;
+    form.querySelector('[data-label-valor]').textContent = ativo ? 'Valor do diesel' : 'Valor *';
     atualizarTotalDespesa();
   }
   form.categoria_id.addEventListener('change', () => {
@@ -340,6 +364,7 @@ async function abrirNovaDespesa(viagemId, recarregar) {
   function atualizarBlocosPagoPor() {
     form.querySelector('[data-bloco-usuario]').classList.toggle('hidden', form.pago_por.value !== 'AdminOutros');
     form.querySelector('[data-bloco-vencimento]').classList.toggle('hidden', form.pago_por.value !== 'Empresa');
+    form.querySelector('[data-bloco-dinheiro]').classList.toggle('hidden', form.pago_por.value !== 'Empresa');
   }
   form.pago_por.addEventListener('change', atualizarBlocosPagoPor);
   atualizarBlocosPagoPor();
@@ -412,6 +437,8 @@ async function abrirNovaDespesa(viagemId, recarregar) {
         km_abastecimento: categoriaEhAbastecimento() && form.km_abastecimento.value ? Number(form.km_abastecimento.value) : null,
         data_vencimento: form.pago_por.value === 'Empresa' && form.data_vencimento.value ? parseDataBrParaIso(form.data_vencimento.value) : null,
         arla: montarArlaPayload(),
+        centro_custo_id: centroCustoSelect.getValue(),
+        valor_pago_dinheiro: form.pago_por.value === 'Empresa' ? getMoedaValue(form.valor_pago_dinheiro) : 0,
       });
       if (form.observacao.value.trim()) {
         await post('/ocorrencias', { entidade_tipo: 'DespesaViagem', entidade_id: despesa.id, texto: form.observacao.value.trim() });
@@ -448,6 +475,11 @@ async function abrirNovaDespesa(viagemId, recarregar) {
       erro.classList.remove('hidden');
       return;
     }
+    if (categoriaEhAbastecimento() && getMoedaValue(form.valor) <= 0 && getMoedaValue(form.arla_valor) <= 0) {
+      erro.textContent = 'Informe o valor do diesel ou do Arla.';
+      erro.classList.remove('hidden');
+      return;
+    }
     // "Prova real": com os 3 valores de diesel preenchidos, confere se
     // valor == preco_litro x litragem antes de gravar. Se nao bater, deixa o
     // usuario escolher qual dos 3 recalcular em vez de adivinhar. (O mesmo
@@ -478,54 +510,178 @@ function abrirOcorrenciasDespesa(despesa, gerenciar) {
   abrirModal({ titulo: 'Ocorrencias da despesa', conteudo: ocorrencias.el, largura: 'max-w-lg' });
 }
 
-// Valida uma despesa lancada pelo app do motorista. So pede a data de
-// vencimento quando o motorista marcou "Assinar nota" e a conta a pagar
-// ainda nao existe (o backend so cria ela agora, com essa data - ver
-// PATCH /viagens/despesas/:id/validar) - nos demais casos e so uma
-// confirmacao, sem campo nenhum.
-function abrirValidarDespesa(despesa, recarregar) {
-  const precisaVencimento = despesa.forma_pagamento_posto === 'AssinarNota' && !despesa.contas_pagar_id;
-  if (!precisaVencimento) {
-    confirmarAcao({
-      titulo: 'Validar despesa',
-      mensagem: 'Confirma que revisou esta despesa lancada pelo motorista?',
-      textoConfirmar: 'Validar',
-      perigo: false,
-    }).then(async (ok) => {
-      if (!ok) return;
-      try {
-        await patch(`/viagens/despesas/${despesa.id}/validar`, {});
-        mostrarToast('Despesa validada.');
-        recarregar();
-      } catch (err) {
-        mostrarErro(err);
-      }
-    });
-    return;
-  }
+// Monta o formulario compartilhado por "Validar" (despesa pendente, vinda do
+// app do motorista) e "Editar" (despesa ja validada, lancada pelo escritorio
+// ou ja revisada) - mesma estrutura de campos (inclusive o bloco de Arla
+// vinculada e a foto do cupom, quando existir). incluirFormaPagamento so e
+// true no fluxo de Validar (so faz sentido perguntar "como foi pago"/
+// vencimento antes da conta a pagar existir).
+function montarFormularioDespesaExistente({ despesa, arlaDespesa, categoriaNome, fornecedorLabelInicial, centroCustoLabelInicial, incluirFormaPagamento, textoSubmit }) {
+  const ehArlaIsolada = (categoriaNome || '').trim().toLowerCase() === 'arla';
+  const mostrarVencimento = incluirFormaPagamento && despesa.forma_pagamento_posto === 'AssinarNota' && !despesa.contas_pagar_id;
 
   const form = document.createElement('form');
   form.className = 'space-y-4';
   form.innerHTML = `
-    <p class="text-sm text-slate-600">O motorista marcou este abastecimento como "Assinar nota" - informe a data de vencimento da fatura do posto para validar.</p>
-    <div><label class="label">Data de vencimento *</label><input type="text" name="data_vencimento" class="input" required /></div>
+    ${despesa.foto_recibo ? `
+      <div>
+        <label class="label">Foto da nota/cupom</label>
+        <img src="/uploads/abastecimentos/${despesa.foto_recibo}" class="h-32 w-32 cursor-pointer rounded-lg border border-slate-200 object-cover" data-ver-foto />
+      </div>
+    ` : ''}
+    <div class="grid grid-cols-2 gap-3">
+      <div><label class="label">${ehArlaIsolada ? 'Valor (Arla)' : 'Valor (diesel)'}</label><input type="text" name="valor" class="input" /></div>
+      <div><label class="label">Data</label><input type="text" name="data" class="input" /></div>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div><label class="label">${ehArlaIsolada ? 'Preco/Litro (Arla)' : 'Preco/Litro (diesel)'}</label><input type="text" name="preco_litro" class="input" /></div>
+      <div><label class="label">${ehArlaIsolada ? 'Litragem (Arla)' : 'Litragem (diesel)'}</label><input type="number" step="0.01" name="litragem" class="input" /></div>
+    </div>
+    <div class="max-w-[12rem]"><label class="label">KM no abastecimento</label><input type="number" name="km_abastecimento" class="input" /></div>
+    <div><label class="label">Posto</label><div data-posto-select></div></div>
+    <div><label class="label">Centro de custo</label><div data-centro-custo-select></div></div>
+    ${despesa.pago_por === 'Empresa' ? `
+      <div>
+        <label class="label">Valor pago em dinheiro (pelo motorista)</label>
+        <input type="text" name="valor_pago_dinheiro" class="input max-w-[12rem]" />
+        <p class="mt-1 text-xs text-slate-400">Reduz o valor da conta a pagar gerada ao posto/fornecedor.</p>
+      </div>
+    ` : ''}
+    ${incluirFormaPagamento ? `
+      <div>
+        <label class="label">Como foi pago?</label>
+        <select name="forma_pagamento_posto" class="input">
+          <option value="Imediato">Pago no ato</option>
+          <option value="AssinarNota">Assinar nota (posto fatura depois)</option>
+        </select>
+      </div>
+    ` : ''}
+    ${arlaDespesa ? `
+      <div class="rounded-lg border border-slate-200 p-3">
+        <p class="mb-2 text-xs font-medium uppercase text-slate-500">Arla</p>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="label">Preco/Litro (Arla)</label><input type="text" name="arla_preco" class="input" /></div>
+          <div><label class="label">Litragem (Arla)</label><input type="number" step="0.01" name="arla_qtd" class="input" /></div>
+        </div>
+        <div class="mt-3"><label class="label">Valor Arla</label><input type="text" name="arla_valor" class="input" /></div>
+      </div>
+    ` : ''}
+    ${incluirFormaPagamento ? `
+      <div class="${mostrarVencimento ? '' : 'hidden'}" data-bloco-vencimento>
+        <label class="label">Data de vencimento *</label>
+        <input type="text" name="data_vencimento" class="input" placeholder="Fatura do posto" />
+      </div>
+    ` : ''}
     <p class="hidden text-sm text-red-600" data-erro></p>
-    <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Validar</button></div>
+    <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">${textoSubmit}</button></div>
   `;
-  attachDataMask(form.data_vencimento);
+
+  attachMoedaMask(form.valor, despesa.valor || 0);
+  attachDataMask(form.data, despesa.data);
+  attachMoedaMask(form.preco_litro, despesa.preco_litro || 0);
+  form.litragem.value = despesa.litragem ?? '';
+  form.km_abastecimento.value = despesa.km_abastecimento ?? '';
+  if (despesa.pago_por === 'Empresa') {
+    attachMoedaMaskReais(form.valor_pago_dinheiro, despesa.valor_pago_dinheiro || 0);
+  }
+  if (incluirFormaPagamento) {
+    form.forma_pagamento_posto.value = despesa.forma_pagamento_posto || 'Imediato';
+    attachDataMask(form.data_vencimento);
+    form.forma_pagamento_posto.addEventListener('change', () => {
+      if (!despesa.contas_pagar_id) {
+        form.querySelector('[data-bloco-vencimento]').classList.toggle('hidden', form.forma_pagamento_posto.value !== 'AssinarNota');
+      }
+    });
+  }
+
+  const postoSelect = criarSearchableSelect({
+    buscar: (termo) => buscarFornecedoresFiltrado(termo, true),
+    valorInicial: despesa.posto_fornecedor_id,
+    labelInicial: fornecedorLabelInicial || '',
+    placeholder: 'Pesquisar posto...',
+  });
+  form.querySelector('[data-posto-select]').appendChild(postoSelect.el);
+
+  const centroCustoSelect = criarSearchableSelect({
+    buscar: buscarCentrosCusto,
+    valorInicial: despesa.centro_custo_id,
+    labelInicial: centroCustoLabelInicial || '',
+    placeholder: 'Pesquisar centro de custo...',
+  });
+  form.querySelector('[data-centro-custo-select]').appendChild(centroCustoSelect.el);
+
+  form.valor.addEventListener('input', () => recalcularTrio(form.preco_litro, form.litragem, form.valor, form.valor));
+  form.preco_litro.addEventListener('input', () => recalcularTrio(form.preco_litro, form.litragem, form.valor, form.preco_litro));
+  form.litragem.addEventListener('input', () => recalcularTrio(form.preco_litro, form.litragem, form.valor, form.litragem));
+
+  if (arlaDespesa) {
+    attachMoedaMask(form.arla_preco, arlaDespesa.preco_litro || 0);
+    form.arla_qtd.value = arlaDespesa.litragem ?? '';
+    attachMoedaMask(form.arla_valor, arlaDespesa.valor || 0);
+    form.arla_valor.addEventListener('input', () => recalcularTrio(form.arla_preco, form.arla_qtd, form.arla_valor, form.arla_valor));
+    form.arla_preco.addEventListener('input', () => recalcularTrio(form.arla_preco, form.arla_qtd, form.arla_valor, form.arla_preco));
+    form.arla_qtd.addEventListener('input', () => recalcularTrio(form.arla_preco, form.arla_qtd, form.arla_valor, form.arla_qtd));
+  }
+
+  if (despesa.foto_recibo) {
+    form.querySelector('[data-ver-foto]').addEventListener('click', () => {
+      const img = document.createElement('img');
+      img.src = `/uploads/abastecimentos/${despesa.foto_recibo}`;
+      img.className = 'w-full rounded-lg';
+      abrirModal({ titulo: 'Foto da nota/cupom', conteudo: img, largura: 'max-w-2xl' });
+    });
+  }
+
+  return { form, postoSelect, centroCustoSelect };
+}
+
+// Valida uma despesa lancada pelo app do motorista - abre com os campos ja
+// preenchidos (e a despesa de Arla vinculada, se houver) e a foto da nota/
+// cupom, pra o escritorio poder corrigir um valor digitado errado pelo
+// motorista antes de confirmar (em vez de so aceitar como esta). So pede
+// vencimento quando "Assinar nota" e a conta a pagar ainda nao existe (o
+// backend so cria ela agora, com essa data - ver PATCH .../validar).
+function abrirValidarDespesa(despesa, arlaDespesa, categoriaNome, fornecedorLabelInicial, centroCustoLabelInicial, recarregar) {
+  const { form, postoSelect, centroCustoSelect } = montarFormularioDespesaExistente({
+    despesa, arlaDespesa, categoriaNome, fornecedorLabelInicial, centroCustoLabelInicial,
+    incluirFormaPagamento: true, textoSubmit: 'Validar',
+  });
+
+  const erro = form.querySelector('[data-erro]');
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
-    const erro = form.querySelector('[data-erro]');
     erro.classList.add('hidden');
-    const dataVencimento = parseDataBrParaIso(form.data_vencimento.value);
-    if (!dataVencimento) {
-      erro.textContent = 'Informe uma data de vencimento valida.';
-      erro.classList.remove('hidden');
-      return;
+
+    const payload = {
+      valor: getMoedaValue(form.valor) || undefined,
+      data: form.data.value ? parseDataBrParaIso(form.data.value) : undefined,
+      preco_litro: form.preco_litro.value ? getMoedaValue(form.preco_litro) : undefined,
+      litragem: form.litragem.value ? Number(form.litragem.value) : undefined,
+      km_abastecimento: form.km_abastecimento.value ? Number(form.km_abastecimento.value) : undefined,
+      posto_fornecedor_id: postoSelect.getValue(),
+      centro_custo_id: centroCustoSelect.getValue(),
+      forma_pagamento_posto: form.forma_pagamento_posto.value || undefined,
+      valor_pago_dinheiro: form.valor_pago_dinheiro ? getMoedaValue(form.valor_pago_dinheiro) : undefined,
+    };
+    if (arlaDespesa) {
+      payload.arla_valor = getMoedaValue(form.arla_valor) || undefined;
+      payload.arla_preco_litro = form.arla_preco.value ? getMoedaValue(form.arla_preco) : undefined;
+      payload.arla_litragem = form.arla_qtd.value ? Number(form.arla_qtd.value) : undefined;
     }
+    const vencimentoVisivel = !form.querySelector('[data-bloco-vencimento]').classList.contains('hidden');
+    if (vencimentoVisivel) {
+      const dataVencimento = parseDataBrParaIso(form.data_vencimento.value);
+      if (!dataVencimento) {
+        erro.textContent = 'Informe uma data de vencimento valida.';
+        erro.classList.remove('hidden');
+        return;
+      }
+      payload.data_vencimento = dataVencimento;
+    }
+
     try {
-      await patch(`/viagens/despesas/${despesa.id}/validar`, { data_vencimento: dataVencimento });
-      mostrarToast('Despesa validada e conta a pagar criada.');
+      await patch(`/viagens/despesas/${despesa.id}/validar`, payload);
+      mostrarToast('Despesa validada.');
       fecharModal();
       recarregar();
     } catch (err) {
@@ -533,7 +689,50 @@ function abrirValidarDespesa(despesa, recarregar) {
       erro.classList.remove('hidden');
     }
   });
-  abrirModal({ titulo: 'Validar despesa - Assinar nota', conteudo: form });
+  abrirModal({ titulo: 'Validar despesa', conteudo: form, largura: 'max-w-lg' });
+}
+
+// Edita uma despesa ja validada (lancada pelo escritorio ou ja revisada) -
+// mesmos campos do Validar, sem forma de pagamento/vencimento (a conta a
+// pagar, se existir, ja foi criada e nao muda de tipo depois). Se o valor
+// mudar e ja existir uma conta a pagar vinculada, o backend resincroniza o
+// valor dela automaticamente (mesma logica de PATCH .../validar).
+function abrirEditarDespesa(despesa, arlaDespesa, categoriaNome, fornecedorLabelInicial, centroCustoLabelInicial, recarregar) {
+  const { form, postoSelect, centroCustoSelect } = montarFormularioDespesaExistente({
+    despesa, arlaDespesa, categoriaNome, fornecedorLabelInicial, centroCustoLabelInicial,
+    incluirFormaPagamento: false, textoSubmit: 'Salvar alteracoes',
+  });
+
+  const erro = form.querySelector('[data-erro]');
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    erro.classList.add('hidden');
+    const payload = {
+      valor: getMoedaValue(form.valor) || undefined,
+      data: form.data.value ? parseDataBrParaIso(form.data.value) : undefined,
+      preco_litro: form.preco_litro.value ? getMoedaValue(form.preco_litro) : undefined,
+      litragem: form.litragem.value ? Number(form.litragem.value) : undefined,
+      km_abastecimento: form.km_abastecimento.value ? Number(form.km_abastecimento.value) : undefined,
+      posto_fornecedor_id: postoSelect.getValue(),
+      centro_custo_id: centroCustoSelect.getValue(),
+      valor_pago_dinheiro: form.valor_pago_dinheiro ? getMoedaValue(form.valor_pago_dinheiro) : undefined,
+    };
+    if (arlaDespesa) {
+      payload.arla_valor = getMoedaValue(form.arla_valor) || undefined;
+      payload.arla_preco_litro = form.arla_preco.value ? getMoedaValue(form.arla_preco) : undefined;
+      payload.arla_litragem = form.arla_qtd.value ? Number(form.arla_qtd.value) : undefined;
+    }
+    try {
+      await put(`/viagens/despesas/${despesa.id}`, payload);
+      mostrarToast('Despesa atualizada.');
+      fecharModal();
+      recarregar();
+    } catch (err) {
+      erro.textContent = err.message;
+      erro.classList.remove('hidden');
+    }
+  });
+  abrirModal({ titulo: 'Editar despesa', conteudo: form, largura: 'max-w-lg' });
 }
 
 // ---- Adiantamentos ao motorista ----
@@ -549,7 +748,7 @@ async function abrirNovoAdiantamento(viagemId, recarregar) {
     <p class="hidden text-sm text-red-600" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Lancar adiantamento</button></div>
   `;
-  attachMoedaMask(form.valor, 0);
+  attachMoedaMaskReais(form.valor, 0);
   attachDataMask(form.data);
   const contaSelect = criarSearchableSelect({ buscar: buscarContasBancarias, placeholder: 'Pesquisar conta (opcional)...' });
   form.querySelector('[data-conta-select]').appendChild(contaSelect.el);
@@ -620,6 +819,28 @@ async function abrirFinalizar(viagem, recarregarPagina) {
   abrirModal({ titulo: 'Finalizar viagem', conteudo: form });
 }
 
+// Desfaz o Acerto fechado desta viagem e volta ela para EmAndamento (ver
+// POST /viagens/:id/reabrir) - restrito a Admin, so aparece quando a viagem
+// esta Finalizada. Acao com efeito financeiro (some a conta a pagar do
+// acerto e o saldo de conta corrente do motorista volta ao anterior), por
+// isso a confirmacao e explicita sobre o que vai acontecer.
+async function reabrirViagem(viagem, recarregarPagina) {
+  const ok = await confirmarAcao({
+    titulo: 'Reabrir viagem',
+    mensagem: 'Isso desfaz o acerto fechado desta viagem (a conta a pagar gerada e removida e o saldo de conta corrente do motorista volta ao valor anterior) e volta a viagem para Em Andamento, liberando km final e despesas/fretes para edicao de novo. So e possivel se a conta a pagar do acerto ainda nao tiver sido paga. Confirma?',
+    textoConfirmar: 'Reabrir viagem',
+    perigo: true,
+  });
+  if (!ok) return;
+  try {
+    await post(`/viagens/${viagem.id}/reabrir`, {});
+    mostrarToast('Viagem reaberta.');
+    recarregarPagina();
+  } catch (err) {
+    mostrarErro(err);
+  }
+}
+
 // Cabecalho de secao expansivel (Fretes/Despesas/Adiantamentos) - sem isso,
 // list-none (que tira a seta nativa do <summary> pra controlar o layout)
 // deixa a secao sem NENHUMA pista visual de que e clicavel/expande-e-recolhe.
@@ -656,16 +877,18 @@ export async function render(container, params) {
 
   async function recarregarPagina() {
     const viagem = await get(`/viagens/${viagemId}`);
-    const [conjunto, motorista, despesas, categorias, adiantamentos, fornecedores] = await Promise.all([
+    const [conjunto, motorista, despesas, categorias, adiantamentos, fornecedores, centrosCusto] = await Promise.all([
       get(`/conjuntos/${viagem.conjunto_id}`),
       get(`/motoristas/${viagem.motorista_id}`),
       get(`/viagens/${viagemId}/despesas`),
       get('/categorias-despesa'),
       get(`/viagens/${viagemId}/adiantamentos`),
       get('/fornecedores'),
+      get('/centros-custo'),
     ]);
     const nomeCategoriasPorId = Object.fromEntries(categorias.map((c) => [c.id, c.nome]));
     const nomeFornecedoresPorId = Object.fromEntries(fornecedores.map((f) => [f.id, f.nome]));
+    const nomeCentrosCustoPorId = Object.fromEntries(centrosCusto.map((c) => [c.id, c.nome]));
 
     const tratora = conjunto.itens.find((i) => TIPOS_TRATORA.includes(i.tipo));
     // hodometro_atual do veiculo so e uma leitura confiavel da posicao atual
@@ -681,6 +904,16 @@ export async function render(container, params) {
     const totalFaturado = (viagem.fretes || []).reduce((t, f) => t + f.frete_bruto, 0);
     const totalDespesas = despesas.reduce((t, d) => t + d.valor, 0);
     const lucroAteAgora = totalFaturado - totalDespesas;
+
+    // Controle de caixa em dinheiro do motorista (escopo desta viagem):
+    // adiantamento sem conta bancaria = dinheiro entregue em especie (nao
+    // saiu de nenhum caixa rastreado); valor_pago_dinheiro das despesas =
+    // quanto desse dinheiro ja foi usado pra pagar despesas (abastecimento,
+    // pedagio etc.) em vez de virar conta a pagar. Mesmo tratamento contabil
+    // do Adiantamento normal - ambos abatem da comissao no Acerto.
+    const dinheiroAdiantado = adiantamentos.filter((a) => !a.conta_bancaria_id).reduce((t, a) => t + a.valor, 0);
+    const dinheiroGasto = despesas.reduce((t, d) => t + (d.valor_pago_dinheiro || 0), 0);
+    const saldoDinheiro = dinheiroAdiantado - dinheiroGasto;
 
     // Media de consumo ate agora (so litragem de Abastecimento - Arla nao e
     // diesel, mesmo lancado junto no formulario unificado - ver acertos.routes.js).
@@ -701,6 +934,7 @@ export async function render(container, params) {
           <span class="badge ${viagem.status === 'EmAndamento' ? 'bg-emerald-100 text-emerald-700' : viagem.status === 'AguardandoAcerto' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}">${STATUS_LABEL[viagem.status]}</span>
           ${gerenciar && viagem.status === 'EmAndamento' ? '<button type="button" class="btn-primary" data-finalizar>Finalizar viagem</button>' : ''}
           ${viagem.status !== 'EmAndamento' ? `<button type="button" class="btn-secondary" data-ir-acerto>Ir para Acerto</button>` : ''}
+          ${getUsuario()?.perfil === 'Admin' && viagem.status === 'Finalizada' ? '<button type="button" class="btn-danger" data-reabrir>Reabrir viagem</button>' : ''}
         </div>
       </div>
 
@@ -758,6 +992,13 @@ export async function render(container, params) {
 
       <details data-secao-adiantamentos>
         ${resumoSecao('Adiantamentos ao Motorista', adiantamentos.length, false)}
+        ${dinheiroAdiantado > 0 || dinheiroGasto > 0 ? `
+          <div class="mb-3 grid grid-cols-3 gap-2 rounded-lg bg-slate-50 p-3 text-sm">
+            <div><p class="text-xs uppercase text-slate-500">Adiantado em dinheiro</p><p class="font-medium text-slate-900">${formatarMoeda(dinheiroAdiantado)}</p></div>
+            <div><p class="text-xs uppercase text-slate-500">Gasto em dinheiro</p><p class="font-medium text-slate-900">${formatarMoeda(dinheiroGasto)}</p></div>
+            <div><p class="text-xs uppercase text-slate-500">Saldo em dinheiro</p><p class="font-medium ${saldoDinheiro >= 0 ? 'text-emerald-600' : 'text-red-600'}">${formatarMoeda(saldoDinheiro)}</p></div>
+          </div>
+        ` : ''}
         ${gerenciar && viagem.status !== 'Finalizada' ? '<div class="mb-3 flex justify-end"><button type="button" class="btn-primary btn-sm" data-novo-adiantamento>+ Adiantamento</button></div>' : ''}
         <div class="card overflow-x-auto border-gray-300 p-0">
           <table class="w-full min-w-max border-collapse">
@@ -781,8 +1022,10 @@ export async function render(container, params) {
     }
     const btnFinalizar = container.querySelector('[data-finalizar]');
     if (btnFinalizar) btnFinalizar.addEventListener('click', () => abrirFinalizar(viagem, recarregarPagina));
+    const btnReabrir = container.querySelector('[data-reabrir]');
+    if (btnReabrir) btnReabrir.addEventListener('click', () => reabrirViagem(viagem, recarregarPagina));
     if (gerenciar) {
-      container.querySelector('[data-onixsat-botao]').appendChild(criarBotaoSincronizarOnixsat({ onAtualizar: recarregarPagina }));
+      container.querySelector('[data-onixsat-botao]').appendChild(criarBotaoSincronizarOnixsat({ onAtualizar: recarregarSeSeguro }));
     }
     const btnNovoAdiantamento = container.querySelector('[data-novo-adiantamento]');
     if (btnNovoAdiantamento) btnNovoAdiantamento.addEventListener('click', () => abrirNovoAdiantamento(viagemId, recarregarPagina));
@@ -856,13 +1099,48 @@ export async function render(container, params) {
       tituloNovo: 'Despesa',
       acoesExtras: (d) => [
         ...(gerenciar && !d.validado_em && !idsArlaFilhas.has(d.id)
-          ? [{ label: 'Validar', onClick: () => abrirValidarDespesa(d, recarregarPagina) }]
+          ? [{
+              label: 'Validar',
+              onClick: () => abrirValidarDespesa(
+                d,
+                d.despesa_arla_id ? despesas.find((x) => x.id === d.despesa_arla_id) : null,
+                nomeCategoriasPorId[d.categoria_id],
+                d.posto_fornecedor_id ? nomeFornecedoresPorId[d.posto_fornecedor_id] : '',
+                d.centro_custo_id ? nomeCentrosCustoPorId[d.centro_custo_id] : '',
+                recarregarPagina,
+              ),
+            }]
+          : []),
+        ...(podeEditar && d.validado_em && !idsArlaFilhas.has(d.id)
+          ? [{
+              label: 'Editar',
+              onClick: () => abrirEditarDespesa(
+                d,
+                d.despesa_arla_id ? despesas.find((x) => x.id === d.despesa_arla_id) : null,
+                nomeCategoriasPorId[d.categoria_id],
+                d.posto_fornecedor_id ? nomeFornecedoresPorId[d.posto_fornecedor_id] : '',
+                d.centro_custo_id ? nomeCentrosCustoPorId[d.centro_custo_id] : '',
+                recarregarPagina,
+              ),
+            }]
           : []),
         { label: 'Ocorrencias', onClick: () => abrirOcorrenciasDespesa(d, gerenciar) },
       ],
       vazio: 'Nenhuma despesa lancada.',
     });
     container.querySelector('[data-tabela-despesas]').appendChild(tabelaDespesas.el);
+  }
+
+  // Nunca atualiza com um modal aberto (perderia o formulario preenchido,
+  // ex.: Nova Despesa) nem com o usuario digitando em algum campo desta
+  // pagina (ex.: registrar ocorrencia) - usado tanto pela atualizacao
+  // automatica quanto pelo botao manual de sincronizar Onixsat, pra nenhum
+  // dos dois caminhos arriscar apagar o que o usuario esta preenchendo.
+  function recarregarSeSeguro() {
+    const campoAtivo = document.activeElement;
+    const digitando = campoAtivo && container.contains(campoAtivo) && ['INPUT', 'TEXTAREA'].includes(campoAtivo.tagName) && campoAtivo.value;
+    if (modalAberto() || digitando) return;
+    recarregarPagina();
   }
 
   await recarregarPagina();
@@ -873,6 +1151,6 @@ export async function render(container, params) {
   const hashInicio = window.location.hash;
   intervaloAtualizacao = setInterval(() => {
     if (window.location.hash !== hashInicio) { clearInterval(intervaloAtualizacao); return; }
-    recarregarPagina();
+    recarregarSeSeguro();
   }, 5 * 60 * 1000);
 }

@@ -2,6 +2,7 @@ import { get } from '../api.js';
 import { formatarMoeda, formatarDataBr, formatarDataHoraBr, hojeIsoLocal } from '../masks.js';
 import { mostrarErro } from '../components/toast.js';
 import { criarBotaoSincronizarOnixsat } from '../components/onixsatSync.js';
+import { modalAberto } from '../components/modal.js';
 
 function cartaoVeiculoViagem(v) {
   const consumo = v.media_consumo_atual ? `${v.media_consumo_atual.toFixed(2)} km/l` : '-';
@@ -48,6 +49,10 @@ export async function render(container) {
   const hashInicio = window.location.hash;
   intervaloAtualizacao = setInterval(() => {
     if (window.location.hash !== hashInicio) { clearInterval(intervaloAtualizacao); return; }
+    // Nunca atualiza com um modal aberto em cima (o Painel nao tem formulario
+    // proprio, mas os cards linkam pra outras telas que podem ter aberto um) -
+    // so tenta de novo no proximo ciclo.
+    if (modalAberto()) return;
     render(container);
   }, 5 * 60 * 1000);
 
@@ -86,7 +91,9 @@ export async function render(container) {
       </div>
     `;
 
-    container.querySelector('[data-onixsat-botao]').appendChild(criarBotaoSincronizarOnixsat({ onAtualizar: () => render(container) }));
+    container.querySelector('[data-onixsat-botao]').appendChild(criarBotaoSincronizarOnixsat({
+      onAtualizar: () => { if (!modalAberto()) render(container); },
+    }));
 
     const listaVeiculosViagem = container.querySelector('[data-veiculos-viagem]');
     listaVeiculosViagem.innerHTML = resumo.viagensAtivas.length

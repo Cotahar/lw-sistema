@@ -3,7 +3,7 @@ import { criarDataTable } from '../components/dataTable.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { abrirModal, fecharModal } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
-import { formatarMoeda, attachMoedaMask, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr } from '../masks.js';
+import { formatarMoeda, attachMoedaMask, attachMoedaMaskReais, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr } from '../masks.js';
 import { navegar } from '../router.js';
 
 async function buscarVeiculos(termo) {
@@ -54,9 +54,9 @@ function montarFormulario(aoSalvar) {
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Cadastrar OS</button></div>
   `;
   attachDataMask(form.data);
-  attachMoedaMask(form.valor_pecas, 0);
-  attachMoedaMask(form.valor_mao_obra, 0);
-  attachMoedaMask(form.valor_parcela, 0);
+  attachMoedaMaskReais(form.valor_pecas, 0);
+  attachMoedaMaskReais(form.valor_mao_obra, 0);
+  attachMoedaMaskReais(form.valor_parcela, 0);
   attachDataMask(form.primeira_parcela_vencimento);
 
   // O total a parcelar e sempre pecas + mao de obra (nao e um campo proprio) -
