@@ -11,6 +11,7 @@ const { verificarAlertasDoVeiculo } = require('../utils/alertaEngine');
 const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 const { hojeIsoBrasilia, agoraDataHoraIsoBrasilia } = require('../utils/dataHora');
 const { criarDespesaViagem, criarContaPagarCombinada, resolverContaPagarAposEdicao } = require('../utils/despesaViagemHelper');
+const { calcularMediasConsumo, buscarCategoriaAbastecimentoId } = require('../utils/mediaConsumoHelper');
 
 const router = express.Router();
 
@@ -50,7 +51,9 @@ router.get('/:id', requerAcessoModulo('viagens', 'Visualizar'), exigirEmpresaEsp
   const viagem = db.prepare('SELECT * FROM viagens WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
   if (!viagem) throw new ApiError(404, 'Viagem nao encontrada.');
   const fretes = db.prepare('SELECT * FROM fretes WHERE viagem_id = ?').all(req.params.id);
-  res.json({ ...viagem, fretes });
+  const despesas = db.prepare('SELECT categoria_id, km_abastecimento, litragem, tanque_completo FROM despesas_viagem WHERE viagem_id = ?').all(req.params.id);
+  const { mediaViagemKmL, mediaUltimaAbastecidaKmL } = calcularMediasConsumo(despesas, buscarCategoriaAbastecimentoId());
+  res.json({ ...viagem, fretes, media_consumo_km_l: mediaViagemKmL, media_ultima_abastecida_km_l: mediaUltimaAbastecidaKmL });
 }));
 
 // Sugere o km_inicial a partir da ultima viagem finalizada da mesma unidade
@@ -495,7 +498,7 @@ router.post('/:id/despesas', requerAcessoModulo('viagens', 'Gerenciar'), exigirE
   const {
     categoria_id, valor, data, pago_por, pago_por_usuario_id,
     posto_fornecedor_id, preco_litro, litragem, km_abastecimento, descricao,
-    data_vencimento, arla, centro_custo_id, valor_pago_dinheiro,
+    data_vencimento, arla, centro_custo_id, valor_pago_dinheiro, tanque_completo,
   } = req.body;
   if (!categoria_id || !pago_por) throw new ApiError(400, 'Preencha categoria_id e pago_por.');
   if (!PAGO_POR.includes(pago_por)) throw new ApiError(400, `pago_por invalido. Use um de: ${PAGO_POR.join(', ')}`);
@@ -560,7 +563,7 @@ router.post('/:id/despesas', requerAcessoModulo('viagens', 'Gerenciar'), exigirE
       empresaId: req.empresaId, viagem, freteId, centroCustoId, categoriaId: categoria_id, valor: Number(valor), data,
       pagoPor: pago_por, pagoPorUsuarioId: pago_por_usuario_id, postoFornecedorId: posto_fornecedor_id,
       precoLitro: preco_litro, litragem, kmAbastecimento: km_abastecimento, dataVencimento: data_vencimento,
-      descricao, arla, usuarioId: req.usuario.id, valorPagoDinheiro,
+      descricao, arla, usuarioId: req.usuario.id, valorPagoDinheiro, tanqueCompleto: ehAbastecimento && Boolean(tanque_completo),
     });
   }
 
@@ -584,7 +587,7 @@ router.put('/despesas/:despesaId', requerAcessoModulo('viagens', 'Gerenciar'), e
     ? db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(antes.despesa_arla_id)
     : null;
 
-  const campos = ['categoria_id', 'valor', 'data', 'posto_fornecedor_id', 'preco_litro', 'litragem', 'km_abastecimento', 'descricao', 'centro_custo_id', 'valor_pago_dinheiro'];
+  const campos = ['categoria_id', 'valor', 'data', 'posto_fornecedor_id', 'preco_litro', 'litragem', 'km_abastecimento', 'descricao', 'centro_custo_id', 'valor_pago_dinheiro', 'tanque_completo'];
   const sets = [];
   const valores = [];
   for (const campo of campos) {
@@ -685,7 +688,7 @@ router.patch('/despesas/:despesaId/validar', requerAcessoModulo('viagens', 'Gere
 
   const {
     data_vencimento, valor, data, preco_litro, litragem, km_abastecimento, posto_fornecedor_id, forma_pagamento_posto,
-    arla_valor, arla_preco_litro, arla_litragem, centro_custo_id, valor_pago_dinheiro,
+    arla_valor, arla_preco_litro, arla_litragem, centro_custo_id, valor_pago_dinheiro, tanque_completo,
   } = req.body;
   if (forma_pagamento_posto !== undefined && forma_pagamento_posto !== null && !['Imediato', 'AssinarNota'].includes(forma_pagamento_posto)) {
     throw new ApiError(400, 'forma_pagamento_posto invalida.');
@@ -702,7 +705,7 @@ router.patch('/despesas/:despesaId/validar', requerAcessoModulo('viagens', 'Gere
   // A validacao agora tambem serve pra corrigir o lancamento do motorista
   // (ver frontend/js/pages/viagemDetalhe.js abrirValidarDespesa) - so aplica
   // os campos que vieram no body, deixando o resto como estava.
-  const camposDespesa = { valor, data, preco_litro, litragem, km_abastecimento, posto_fornecedor_id, forma_pagamento_posto, data_vencimento, centro_custo_id, valor_pago_dinheiro };
+  const camposDespesa = { valor, data, preco_litro, litragem, km_abastecimento, posto_fornecedor_id, forma_pagamento_posto, data_vencimento, centro_custo_id, valor_pago_dinheiro, tanque_completo };
   const setsDespesa = [];
   const valoresDespesa = [];
   for (const [campo, valorCampo] of Object.entries(camposDespesa)) {

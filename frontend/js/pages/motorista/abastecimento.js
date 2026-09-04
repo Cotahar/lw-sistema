@@ -58,6 +58,11 @@ export async function render(appEl) {
             <div><label class="label">Preco/Litro</label><input type="text" name="preco_litro" class="input" inputmode="decimal" /></div>
             <div><label class="label">Litragem</label><input type="number" step="0.01" name="litragem" class="input" /></div>
           </div>
+          <label class="flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" name="tanque_completo" class="h-4 w-4" />
+            Encheu o tanque completamente?
+          </label>
+          <p class="-mt-2 text-xs text-slate-400">Importante pra media de consumo - so marque se nao ficou faltando nada pra completar.</p>
           <div><label class="label">KM no abastecimento</label><input type="number" name="km_abastecimento" class="input" /></div>
           <div>
             <label class="label">Posto</label>
@@ -233,6 +238,7 @@ export async function render(appEl) {
       preco_litro: form.preco_litro.value ? getMoedaValue(form.preco_litro) : null,
       litragem: form.litragem.value ? Number(form.litragem.value) : null,
       km_abastecimento: form.km_abastecimento.value ? Number(form.km_abastecimento.value) : null,
+      tanque_completo: form.tanque_completo.checked ? 1 : 0,
       posto_fornecedor_id: postoSelect.getValue(),
       forma_pagamento_posto: form.forma_pagamento_posto.value,
       arla_valor: arla ? arla.valor : null,

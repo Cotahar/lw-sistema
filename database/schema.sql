@@ -661,6 +661,12 @@ CREATE TABLE despesas_viagem (
     preco_litro         INTEGER,   -- centavos
     litragem             REAL,
     km_abastecimento    INTEGER,
+    -- Marca se este abastecimento (diesel) encheu o tanque por completo, ou
+    -- foi so uma quantidade parcial (ex.: rodar ate um posto mais em conta).
+    -- A media de consumo "tanque cheio a tanque cheio" (ver
+    -- backend/src/utils/mediaConsumoHelper.js) so pode calcular litros/km
+    -- com certeza entre dois eventos marcados aqui.
+    tanque_completo     INTEGER NOT NULL DEFAULT 0 CHECK (tanque_completo IN (0, 1)),
     -- Despesa faturada com vencimento futuro: gera um lancamento em
     -- contas_pagar (contas_pagar_id aponta pra ele) em vez de ja considerar
     -- paga na hora do lancamento.

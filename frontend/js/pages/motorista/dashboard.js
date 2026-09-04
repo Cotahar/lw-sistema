@@ -61,10 +61,14 @@ async function renderizarViagem(conteudo) {
 
           <dl class="mt-3 grid grid-cols-2 gap-x-3 gap-y-3 text-sm">
             <div>
-              <dt class="text-slate-500">Media de consumo</dt>
+              <dt class="text-slate-500">Media da viagem</dt>
               <dd class="font-medium text-slate-900">
                 ${formatarKmL(viagem.media_abastecimentos_km_l)}${viagem.percentual_comissao != null ? ` &rarr; ${viagem.percentual_comissao}%` : ''}
               </dd>
+            </div>
+            <div>
+              <dt class="text-slate-500">Media do ultimo tanque</dt>
+              <dd class="font-medium text-slate-900">${formatarKmL(viagem.media_ultima_abastecida_km_l)}</dd>
             </div>
             <div>
               <dt class="text-slate-500">Adiantamentos</dt>

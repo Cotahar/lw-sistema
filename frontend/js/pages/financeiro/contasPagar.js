@@ -147,6 +147,115 @@ function abrirOcorrencias(conta, gerenciar) {
   abrirModal({ titulo: `Ocorrencias - ${conta.descricao}`, conteudo: ocorrencias.el, largura: 'max-w-lg' });
 }
 
+// Junta varias contas a pagar Pendentes do mesmo fornecedor (ex.: varios
+// abastecimentos "assinar nota" de veiculos diferentes) numa unica - usado
+// quando o posto fatura tudo junto num boleto so. Cada despesa ligada as
+// contas originais passa a apontar pra conta nova; o rateio por veiculo ja
+// existe sozinho (cada despesa mantem seu proprio valor/centro de custo).
+async function abrirConsolidarFatura(recarregar) {
+  const form = document.createElement('form');
+  form.className = 'space-y-4';
+  form.innerHTML = `
+    <div><label class="label">Fornecedor (posto) *</label><div data-fornecedor-select></div></div>
+    <div class="hidden" data-bloco-contas>
+      <label class="label">Contas pendentes deste fornecedor</label>
+      <div class="max-h-60 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2" data-lista-contas></div>
+      <p class="mt-1 text-sm text-slate-600">Soma selecionada: <span class="font-medium" data-soma-selecionada>R$ 0,00</span></p>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div><label class="label">Valor real do boleto *</label><input type="text" name="valor_boleto" class="input" required /></div>
+      <div><label class="label">Vencimento *</label><input type="text" name="data_vencimento" class="input" required /></div>
+    </div>
+    <div><label class="label">Descricao (opcional)</label><input type="text" name="descricao" class="input" placeholder="Ex.: Fatura Posto Aldo - 07/2026" /></div>
+    <p class="hidden text-sm text-red-600" data-erro></p>
+    <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary" data-btn-submit disabled>Consolidar</button></div>
+  `;
+  attachMoedaMaskReais(form.valor_boleto, 0);
+  attachDataMask(form.data_vencimento);
+
+  const listaContas = form.querySelector('[data-lista-contas]');
+  const somaEl = form.querySelector('[data-soma-selecionada]');
+  const btnSubmit = form.querySelector('[data-btn-submit]');
+  let contasCarregadas = [];
+
+  function atualizarSoma() {
+    const marcados = [...listaContas.querySelectorAll('input[type=checkbox]:checked')];
+    const soma = marcados.reduce((t, chk) => t + Number(chk.dataset.valor), 0);
+    somaEl.textContent = formatarMoeda(soma);
+    btnSubmit.disabled = marcados.length < 2;
+  }
+
+  const fornecedorSelect = criarSearchableSelect({
+    buscar: buscarFornecedores,
+    placeholder: 'Pesquisar fornecedor...',
+    onChange: async (fornecedorId) => {
+      form.querySelector('[data-bloco-contas]').classList.toggle('hidden', !fornecedorId);
+      if (!fornecedorId) return;
+      const contas = await get(`/contas-pagar/consolidaveis?fornecedor_id=${fornecedorId}`);
+      contasCarregadas = contas;
+      listaContas.innerHTML = contas.length
+        ? contas.map((c) => `
+          <label class="flex items-center gap-2 rounded p-1 text-sm hover:bg-slate-50">
+            <input type="checkbox" checked data-valor="${c.valor}" value="${c.id}" />
+            <span class="flex-1">${formatarDataBr(c.data_vencimento)} - ${c.descricao}${c.veiculo_placa ? ` (${c.veiculo_placa})` : ''}</span>
+            <span class="font-medium">${formatarMoeda(c.valor)}</span>
+          </label>
+        `).join('')
+        : '<p class="p-1 text-sm text-slate-400">Nenhuma conta pendente deste fornecedor.</p>';
+      listaContas.querySelectorAll('input[type=checkbox]').forEach((chk) => chk.addEventListener('change', atualizarSoma));
+      atualizarSoma();
+    },
+  });
+  form.querySelector('[data-fornecedor-select]').appendChild(fornecedorSelect.el);
+
+  const erro = form.querySelector('[data-erro]');
+  async function enviarConsolidacao(confirmarDivergencia) {
+    const idsSelecionados = [...listaContas.querySelectorAll('input[type=checkbox]:checked')].map((c) => Number(c.value));
+    try {
+      await post('/contas-pagar/consolidar', {
+        conta_pagar_ids: idsSelecionados,
+        valor_boleto: getMoedaValue(form.valor_boleto),
+        data_vencimento: parseDataBrParaIso(form.data_vencimento.value),
+        descricao: form.descricao.value.trim() || undefined,
+        confirmarDivergencia,
+      });
+      fecharModal();
+      mostrarToast('Fatura consolidada.');
+      recarregar();
+    } catch (err) {
+      if (err.status === 409) {
+        const ok = await confirmarAcao({
+          titulo: 'Valores nao batem',
+          mensagem: `${err.message}`,
+          textoConfirmar: 'Consolidar mesmo assim',
+        });
+        if (ok) return enviarConsolidacao(true);
+        return;
+      }
+      erro.textContent = err.message;
+      erro.classList.remove('hidden');
+    }
+  }
+
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    erro.classList.add('hidden');
+    if (!parseDataBrParaIso(form.data_vencimento.value)) {
+      erro.textContent = 'Informe uma data de vencimento valida.';
+      erro.classList.remove('hidden');
+      return;
+    }
+    if (getMoedaValue(form.valor_boleto) <= 0) {
+      erro.textContent = 'Informe o valor real do boleto.';
+      erro.classList.remove('hidden');
+      return;
+    }
+    await enviarConsolidacao(false);
+  });
+
+  abrirModal({ titulo: 'Consolidar em fatura', conteudo: form, largura: 'max-w-lg' });
+}
+
 export async function render(container, params, query) {
   const financiamentoId = query && query.financiamento_id ? Number(query.financiamento_id) : null;
   const despesaFixaId = query && query.despesa_fixa_id ? Number(query.despesa_fixa_id) : null;
@@ -159,7 +268,10 @@ export async function render(container, params, query) {
     ? { label: `OS #${osId}` }
     : null;
   container.innerHTML = `
-    <h1 class="mb-4 text-xl font-bold text-slate-900">Contas a Pagar</h1>
+    <div class="mb-4 flex items-center justify-between">
+      <h1 class="text-xl font-bold text-slate-900">Contas a Pagar</h1>
+      ${podeGerenciar('contas_pagar') ? '<button type="button" class="btn-secondary btn-sm" data-consolidar-fatura>Consolidar em fatura</button>' : ''}
+    </div>
     ${origemFiltrada ? `
       <div class="card mb-4 flex items-center justify-between border-yellow-300 bg-yellow-50 p-3 text-sm">
         <span>Filtrado pelas parcelas do ${origemFiltrada.label}.</span>
@@ -183,6 +295,8 @@ export async function render(container, params, query) {
     <div data-tabela></div>
   `;
   const gerenciar = podeGerenciar('contas_pagar');
+  const btnConsolidar = container.querySelector('[data-consolidar-fatura]');
+  if (btnConsolidar) btnConsolidar.addEventListener('click', () => abrirConsolidarFatura(() => tabela.recarregar()));
 
   const selectStatus = container.querySelector('[data-filtro-status]');
   const selectCategoria = container.querySelector('[data-filtro-categoria]');

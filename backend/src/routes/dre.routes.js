@@ -6,6 +6,7 @@ const { requerAcessoModulo } = require('../middleware/auth');
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 const { hojeIsoBrasilia } = require('../utils/dataHora');
+const { calcularMediasConsumo, buscarCategoriaAbastecimentoId } = require('../utils/mediaConsumoHelper');
 
 const router = express.Router();
 
@@ -89,15 +90,22 @@ router.get('/viagem/:viagemId', requerAcessoModulo('dre', 'Visualizar'), exigirE
   const dias = Math.max(1, Math.round((new Date(dataFimOuHoje) - new Date(viagem.data_inicio)) / 86400000) + 1);
   const faturamentoPorDia = Math.round(receita / dias);
 
-  const abastecimentos = despesas.filter((d) => d.litragem);
+  // So diesel (categoria Abastecimento) entra no preco medio/media de
+  // consumo - Arla tem seu proprio litragem/preco_litro mas nao e
+  // combustivel do motor, contaria litros errados se entrasse aqui.
+  const categoriaAbastecimentoId = buscarCategoriaAbastecimentoId();
+  const abastecimentos = despesas.filter((d) => d.categoria_id === categoriaAbastecimentoId && d.litragem);
   const litrosTotal = somar(abastecimentos.map((d) => d.litragem));
   const gastoCombustivelTotal = somar(abastecimentos.map((d) => Math.round((d.preco_litro || 0) * (d.litragem || 0) / 100)));
   const precoMedioDiesel = litrosTotal > 0 ? Math.round(somar(abastecimentos.map((d) => (d.preco_litro || 0) * (d.litragem || 0))) / litrosTotal) : null;
-  const mediaConsumoKmL = viagem.km_final && litrosTotal > 0 ? (viagem.km_final - viagem.km_inicial) / litrosTotal : null;
+  const { mediaViagemKmL, mediaUltimaAbastecidaKmL } = calcularMediasConsumo(despesas, categoriaAbastecimentoId);
 
   res.json({
     viagem, receita, custosVariaveis, resultadoOperacional,
-    metricas: { faturamentoPorDia, precoMedioDieselCentavos: precoMedioDiesel, mediaConsumoKmL, litrosTotal, gastoCombustivelTotal },
+    metricas: {
+      faturamentoPorDia, precoMedioDieselCentavos: precoMedioDiesel,
+      mediaConsumoKmL: mediaViagemKmL, mediaUltimaAbastecidaKmL, litrosTotal, gastoCombustivelTotal,
+    },
   });
 }));
 
