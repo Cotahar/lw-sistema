@@ -5,7 +5,7 @@ import { mostrarErro } from '../../components/toast.js';
 import { formatarMoeda, formatarDataBr, hojeIsoLocal, attachDataMask, parseDataBrParaIso } from '../../masks.js';
 import { criarOcorrencias } from '../../components/ocorrencias.js';
 
-const STATUS_BADGE = { Pendente: 'bg-amber-100 text-amber-700', Parcial: 'bg-amber-100 text-amber-700', Recebido: 'bg-emerald-100 text-emerald-700', Atrasado: 'bg-red-100 text-red-700' };
+const STATUS_BADGE = { Pendente: 'badge-atencao', Parcial: 'badge-atencao', Recebido: 'badge-sucesso', Atrasado: 'badge-critico' };
 const STATUS_OPCOES = [
   { value: '', label: 'Todos' },
   { value: 'Pendente', label: 'Pendente' },
@@ -27,9 +27,9 @@ function badgePrazo(r) {
   const hoje = new Date(`${hojeIsoLocal()}T00:00:00Z`);
   const previsto = new Date(`${r.data_prevista}T00:00:00Z`);
   const dias = Math.round((previsto - hoje) / 86400000);
-  const cor = dias < 0 ? 'bg-red-100 text-red-700' : dias <= 5 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500';
+  const cor = dias < 0 ? 'badge-critico' : dias <= 5 ? 'badge-atencao' : 'badge-neutro';
   const texto = dias < 0 ? `${Math.abs(dias)} dia(s) vencido` : dias === 0 ? 'vence hoje' : `${dias} dia(s)`;
-  return `<span class="badge ${cor} ml-1">${texto}</span>`;
+  return `<span class="${cor} ml-1">${texto}</span>`;
 }
 
 async function verBaixas(conta) {
@@ -93,15 +93,17 @@ export async function render(container) {
 
   const tabela = criarDataTable({
     colunas: [
-      { chave: 'frete_id', titulo: 'Frete', render: (r) => `<a href="#/viagens/${r.viagem_id}" class="text-brand-black hover:underline">#${r.frete_id} (viagem #${r.viagem_id})</a>` },
-      { chave: 'rota', titulo: 'Rota', render: (r) => `${r.origem_cidade}/${r.origem_uf} &rarr; ${r.destino_cidade}/${r.destino_uf}` },
+      { chave: 'frete_id', titulo: 'Frete', render: (r) => `<a href="#/viagens/${r.viagem_id}" class="text-gray-900 hover:underline">#${r.frete_id} (viagem #${r.viagem_id})</a>`, exportar: (r) => `#${r.frete_id} (viagem #${r.viagem_id})` },
+      { chave: 'rota', titulo: 'Rota', render: (r) => `${r.origem_cidade}/${r.origem_uf} &rarr; ${r.destino_cidade}/${r.destino_uf}`, exportar: (r) => `${r.origem_cidade}/${r.origem_uf} -> ${r.destino_cidade}/${r.destino_uf}` },
       { chave: 'transportadora_nome', titulo: 'Transportadora', render: (r) => r.transportadora_nome || '-' },
-      { chave: 'valor', titulo: 'Valor', render: (r) => formatarMoeda(r.valor) },
-      { chave: 'saldo', titulo: 'Saldo em Aberto', render: (r) => `<span class="${saldoEmAberto(r) > 0 ? 'font-semibold text-amber-700' : ''}">${formatarMoeda(saldoEmAberto(r))}</span>` },
-      { chave: 'data_prevista', titulo: 'Previsto', render: (r) => `${formatarDataBr(r.data_prevista)}${badgePrazo(r)}` },
-      { chave: 'status', titulo: 'Status', render: (r) => `<span class="badge ${STATUS_BADGE[r.status]}">${r.status}</span>` },
+      { chave: 'valor', titulo: 'Valor', render: (r) => formatarMoeda(r.valor), exportar: (r) => r.valor / 100 },
+      { chave: 'saldo', titulo: 'Saldo em Aberto', render: (r) => `<span class="${saldoEmAberto(r) > 0 ? 'font-semibold text-amber-400' : ''}">${formatarMoeda(saldoEmAberto(r))}</span>`, exportar: (r) => saldoEmAberto(r) / 100 },
+      { chave: 'data_prevista', titulo: 'Previsto', render: (r) => `${formatarDataBr(r.data_prevista)}${badgePrazo(r)}`, exportar: (r) => formatarDataBr(r.data_prevista) },
+      { chave: 'status', titulo: 'Status', render: (r) => `<span class="${STATUS_BADGE[r.status]}">${r.status}</span>`, exportar: (r) => r.status },
     ],
     ordenacaoInicial: { chave: 'data_prevista', direcao: 'asc' },
+    corLinha: (r) => (r.status === 'Atrasado' ? 'bg-red-950/40' : ''),
+    exportar: { nomeArquivo: 'contas-a-receber' },
     buscarDados: async () => {
       const params = new URLSearchParams();
       if (selectStatus.value) params.set('status', selectStatus.value);
@@ -115,7 +117,7 @@ export async function render(container) {
       const saldoTotal = pendentes.reduce((t, r) => t + saldoEmAberto(r), 0);
       const vencidos = pendentes.filter((r) => new Date(`${r.data_prevista}T00:00:00Z`) < new Date(`${hojeIsoLocal()}T00:00:00Z`)).length;
       resumoEl.innerHTML = `
-        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Saldo pendente total</p><p class="mt-1 text-2xl font-bold text-amber-700">${formatarMoeda(saldoTotal)}</p></div>
+        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Saldo pendente total</p><p class="mt-1 text-2xl font-bold text-amber-400">${formatarMoeda(saldoTotal)}</p></div>
         <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Fretes com saldo pendente</p><p class="mt-1 text-2xl font-bold text-slate-900">${pendentes.length}</p></div>
         <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Fretes vencidos</p><p class="mt-1 text-2xl font-bold ${vencidos ? 'text-red-600' : 'text-slate-900'}">${vencidos}</p></div>
       `;

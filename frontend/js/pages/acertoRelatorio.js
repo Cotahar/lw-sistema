@@ -1,6 +1,7 @@
 import { get, getUsuario } from '../api.js';
 import { formatarMoeda, formatarDataBr, formatarPeso, hojeIsoLocal } from '../masks.js';
 import { navegar } from '../router.js';
+import { esqueletoPagina } from '../components/skeleton.js';
 
 const STATUS_LABEL = { EmAndamento: 'Em Andamento', AguardandoAcerto: 'Aguardando Acerto', Finalizada: 'Finalizada' };
 
@@ -15,7 +16,7 @@ export async function renderRelatorio(root, params, query) {
   }
   const viagemId = params.viagemId;
   const tipo = query.tipo === 'detalhado' ? 'detalhado' : 'resumido';
-  root.innerHTML = '<p class="p-8 text-slate-400">Carregando...</p>';
+  root.innerHTML = `<div class="p-8">${esqueletoPagina()}</div>`;
 
   const [viagem, motoristas, categorias, fornecedores, todosAcertos] = await Promise.all([
     get(`/viagens/${viagemId}`),

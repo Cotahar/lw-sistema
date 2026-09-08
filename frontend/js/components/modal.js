@@ -1,10 +1,17 @@
 let overlayAtual = null;
 
+// Duracao da saida (ms) - precisa bater com a animacao ".fechando" no CSS
+// (input.css) pra nao cortar a transicao no meio nem deixar vao antes de
+// remover o elemento.
+const DURACAO_SAIDA = 120;
+
 export function fecharModal() {
-  if (overlayAtual) {
-    overlayAtual.remove();
-    overlayAtual = null;
-  }
+  if (!overlayAtual) return;
+  const overlay = overlayAtual;
+  overlayAtual = null;
+  overlay.classList.add('fechando');
+  overlay.querySelector(':scope > div')?.classList.add('fechando');
+  setTimeout(() => overlay.remove(), DURACAO_SAIDA);
 }
 
 // Usado pelas paginas com atualizacao automatica em segundo plano (Viagem,
@@ -19,12 +26,12 @@ export function modalAberto() {
 export function abrirModal({ titulo, conteudo, largura = 'max-w-lg' }) {
   fecharModal();
   const overlay = document.createElement('div');
-  overlay.className = 'fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 px-4 py-8';
+  overlay.className = 'fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-8 fade-in';
   overlay.innerHTML = `
-    <div class="w-full ${largura} rounded-2xl bg-white shadow-xl">
+    <div class="scale-in w-full ${largura} rounded-2xl bg-brand-surface shadow-xl">
       <div class="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-        <h3 class="text-base font-semibold text-brand-black">${titulo}</h3>
-        <button type="button" data-fechar-modal class="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-brand-black">
+        <h3 class="text-base font-semibold text-gray-900">${titulo}</h3>
+        <button type="button" data-fechar-modal class="rounded-lg p-1 text-gray-400 hover:bg-white/10 hover:text-gray-900">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
         </button>
       </div>

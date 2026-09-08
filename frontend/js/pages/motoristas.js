@@ -1,6 +1,7 @@
 import { get } from '../api.js';
 import { criarPaginaCrud } from './crudGenerico.js';
 import { formatarCpfCnpj, formatarDataBr, formatarMoeda } from '../masks.js';
+import { comCopiar } from '../components/copiar.js';
 import { abrirModal } from '../components/modal.js';
 import { mostrarErro } from '../components/toast.js';
 
@@ -52,11 +53,11 @@ export const render = criarPaginaCrud({
   ],
   colunas: [
     { chave: 'nome', titulo: 'Nome' },
-    { chave: 'cpf', titulo: 'CPF', render: (r) => formatarCpfCnpj(r.cpf) },
+    { chave: 'cpf', titulo: 'CPF', render: (r) => comCopiar(formatarCpfCnpj(r.cpf)) },
     { chave: 'cnh', titulo: 'CNH' },
     { chave: 'cnh_validade', titulo: 'Validade CNH', render: (r) => formatarDataBr(r.cnh_validade) },
     { chave: 'saldo_conta_corrente', titulo: 'Conta Corrente', render: (r) => formatarMoeda(r.saldo_conta_corrente) },
-    { chave: 'ativo', titulo: 'Status', render: (r) => (r.ativo ? '<span class="badge bg-emerald-100 text-emerald-700">Ativo</span>' : '<span class="badge bg-slate-100 text-slate-500">Inativo</span>') },
+    { chave: 'ativo', titulo: 'Status', render: (r) => (r.ativo ? '<span class="badge-sucesso">Ativo</span>' : '<span class="badge-neutro">Inativo</span>') },
   ],
   acoesExtras: (r) => [{ label: 'Conta corrente', onClick: verContaCorrente }],
 });

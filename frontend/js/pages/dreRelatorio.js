@@ -1,6 +1,7 @@
 import { get, getUsuario } from '../api.js';
 import { formatarMoeda, formatarDataBr, hojeIsoLocal } from '../masks.js';
 import { navegar } from '../router.js';
+import { esqueletoPagina } from '../components/skeleton.js';
 
 function linha(label, valor, destaque = false) {
   return `<div class="flex items-center justify-between py-1.5 ${destaque ? 'text-base font-semibold text-slate-900' : 'text-sm text-slate-600'}"><span>${label}</span><span>${valor}</span></div>`;
@@ -19,7 +20,7 @@ export async function renderDreRelatorio(root, params, query) {
     return;
   }
   const { data_inicio, data_fim, veiculo_id } = query;
-  root.innerHTML = '<p class="p-8 text-slate-400">Carregando...</p>';
+  root.innerHTML = `<div class="p-8">${esqueletoPagina()}</div>`;
   const usuario = getUsuario();
 
   const qs = new URLSearchParams();

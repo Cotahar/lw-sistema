@@ -152,6 +152,7 @@ export async function render(container) {
     onNovo: gerenciar ? () => abrirFormulario(null, tabela.recarregar) : undefined,
     onEditar: gerenciar ? (r) => abrirFormulario(r, tabela.recarregar) : undefined,
     onExcluir: gerenciar ? (r) => del(`/despesas-fixas/${r.id}`) : undefined,
+    onExcluirLote: gerenciar ? (ids) => post('/despesas-fixas/batch-delete', { ids }) : undefined,
     acoesExtras: (r) => (r.qtd_parcelas ? [{ label: 'Ver parcelas', onClick: (d) => navegar(`/contas-pagar?despesa_fixa_id=${d.id}`) }] : []),
     tituloNovo: 'Despesa Fixa',
     vazio: 'Nenhuma despesa fixa cadastrada.',

@@ -1,6 +1,7 @@
 import { get } from '../api.js';
 import { criarPaginaCrud } from './crudGenerico.js';
 import { formatarCpfCnpj } from '../masks.js';
+import { comCopiar } from '../components/copiar.js';
 
 async function camposFormulario() {
   const tipos = await get('/fornecedor-tipos');
@@ -21,11 +22,11 @@ export const render = criarPaginaCrud({
   campos: camposFormulario,
   colunas: [
     { chave: 'nome', titulo: 'Nome' },
-    { chave: 'cnpj', titulo: 'CPF/CNPJ', render: (r) => (r.cnpj ? formatarCpfCnpj(r.cnpj) : '-') },
+    { chave: 'cnpj', titulo: 'CPF/CNPJ', render: (r) => (r.cnpj ? comCopiar(formatarCpfCnpj(r.cnpj)) : '-') },
     { chave: 'tipo_nome', titulo: 'Tipo' },
     { chave: 'telefone', titulo: 'Telefone', render: (r) => r.telefone || '-' },
     { chave: 'localizacao', titulo: 'Localizacao', render: (r) => r.localizacao || '-' },
-    { chave: 'ativo', titulo: 'Status', render: (r) => (r.ativo ? '<span class="badge bg-emerald-100 text-emerald-700">Ativo</span>' : '<span class="badge bg-slate-100 text-slate-500">Inativo</span>') },
+    { chave: 'ativo', titulo: 'Status', render: (r) => (r.ativo ? '<span class="badge-sucesso">Ativo</span>' : '<span class="badge-neutro">Inativo</span>') },
   ],
   transformarListagem: async (linhas) => {
     const tipos = await get('/fornecedor-tipos');

@@ -1,12 +1,15 @@
 import { get, post, put, patch, del, podeGerenciar, getUsuario } from '../api.js';
 import { criarDataTable } from '../components/dataTable.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
+import { criarNovoFornecedor } from '../components/fornecedorQuickCreate.js';
 import { abrirModal, fecharModal, confirmarAcao, modalAberto } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
 import { criarOcorrencias } from '../components/ocorrencias.js';
 import { formatarMoeda, attachMoedaMask, attachMoedaMaskReais, getMoedaValue, setMoedaValue, attachPesoMask, getPesoValue, attachDataMask, parseDataBrParaIso, formatarDataBr, formatarDataHoraBr, hojeIsoLocal } from '../masks.js';
 import { navegar } from '../router.js';
 import { criarBotaoSincronizarOnixsat } from '../components/onixsatSync.js';
+import { esqueletoPagina } from '../components/skeleton.js';
+import { criarTimelineAuditoria } from '../components/auditoriaTimeline.js';
 
 const TIPOS_TRATORA = ['Cavalo', 'Truck', 'Toco'];
 
@@ -80,7 +83,7 @@ function montarFormularioFrete(aoSalvar) {
     <p class="hidden text-sm text-red-600" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Cadastrar frete</button></div>
   `;
-  const transportadoraSelect = criarSearchableSelect({ buscar: buscarFornecedores, placeholder: 'Pesquisar transportadora...' });
+  const transportadoraSelect = criarSearchableSelect({ buscar: buscarFornecedores, placeholder: 'Pesquisar transportadora...', criarNovo: { label: 'Cadastrar novo fornecedor', abrir: criarNovoFornecedor } });
   form.querySelector('[data-transportadora]').appendChild(transportadoraSelect.el);
   attachPesoMask(form.peso_carga_kg);
   attachMoedaMaskReais(form.frete_bruto, 0);
@@ -833,8 +836,8 @@ async function reabrirViagem(viagem, recarregarPagina) {
 // nao atualizava de forma confiavel dentro do <summary>.
 function resumoSecao(titulo, contagem, aberto) {
   return `
-    <summary class="mb-3 flex cursor-pointer list-none items-center justify-between rounded-lg bg-brand-black px-4 py-2.5 hover:bg-gray-800">
-      <h2 class="font-semibold text-white">${titulo} <span class="text-sm font-normal text-gray-400">(${contagem})</span></h2>
+    <summary class="mb-3 flex cursor-pointer list-none items-center justify-between rounded-lg bg-brand-black px-4 py-2.5 hover:bg-white/10">
+      <h2 class="font-semibold text-white">${titulo}${contagem !== null ? ` <span class="text-sm font-normal text-gray-400">(${contagem})</span>` : ''}</h2>
       <svg data-chevron-fechado class="h-4 w-4 shrink-0 text-brand-yellow ${aberto ? 'hidden' : ''}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
       </svg>
@@ -856,7 +859,7 @@ let intervaloAtualizacao = null;
 
 export async function render(container, params) {
   const viagemId = params.id;
-  container.innerHTML = '<p class="text-slate-400">Carregando...</p>';
+  container.innerHTML = esqueletoPagina({ cards: 4 });
   const gerenciar = podeGerenciar('viagens');
 
   async function recarregarPagina() {
@@ -888,6 +891,13 @@ export async function render(container, params) {
     const totalFaturado = (viagem.fretes || []).reduce((t, f) => t + f.frete_bruto, 0);
     const totalDespesas = despesas.reduce((t, d) => t + d.valor, 0);
     const lucroAteAgora = totalFaturado - totalDespesas;
+    // HUD de viabilidade economica: metricas derivadas, so calculadas quando o
+    // denominador faz sentido (km rodado > 0, faturado > 0) - senao ficam "-"
+    // em vez de Infinity/NaN na tela.
+    const faturamentoPorDia = totalFaturado / diasDecorridos;
+    const custoPorDia = totalDespesas / diasDecorridos;
+    const despesaPorKm = kmPercorrido > 0 ? totalDespesas / kmPercorrido : null;
+    const margemPercentual = totalFaturado > 0 ? (lucroAteAgora / totalFaturado) * 100 : null;
 
     // Controle de caixa em dinheiro do motorista (escopo desta viagem):
     // adiantamento sem conta bancaria = dinheiro entregue em especie (nao
@@ -909,12 +919,12 @@ export async function render(container, params) {
     container.innerHTML = `
       <div class="mb-4 flex items-center justify-between">
         <div>
-          <button type="button" class="mb-2 text-sm text-brand-black hover:underline" data-voltar>&larr; Voltar para Viagens</button>
+          <button type="button" class="mb-2 text-sm text-gray-900 hover:underline" data-voltar>&larr; Voltar para Viagens</button>
           <h1 class="text-xl font-bold text-slate-900">Viagem #${viagem.id} - ${motorista.nome}</h1>
           <p class="text-sm text-slate-500">${conjunto.itens.map((i) => i.placa).join(' + ')} · ${formatarDataBr(viagem.data_inicio)}${viagem.data_fim ? ` a ${formatarDataBr(viagem.data_fim)}` : ''}</p>
         </div>
         <div class="flex items-center gap-2">
-          <span class="badge ${viagem.status === 'EmAndamento' ? 'bg-emerald-100 text-emerald-700' : viagem.status === 'AguardandoAcerto' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}">${STATUS_LABEL[viagem.status]}</span>
+          <span class="${viagem.status === 'EmAndamento' ? 'badge-sucesso' : viagem.status === 'AguardandoAcerto' ? 'badge-atencao' : 'badge-neutro'}">${STATUS_LABEL[viagem.status]}</span>
           ${gerenciar && viagem.status === 'EmAndamento' ? '<button type="button" class="btn-primary" data-finalizar>Finalizar viagem</button>' : ''}
           ${viagem.status !== 'EmAndamento' ? `<button type="button" class="btn-secondary" data-ir-acerto>Ir para Acerto</button>` : ''}
           ${getUsuario()?.perfil === 'Admin' && viagem.status === 'Finalizada' ? '<button type="button" class="btn-danger" data-reabrir>Reabrir viagem</button>' : ''}
@@ -922,7 +932,7 @@ export async function render(container, params) {
       </div>
 
       <div class="mb-2 flex justify-end" data-onixsat-botao></div>
-      <div class="card mb-6 grid grid-cols-2 gap-4 p-4 sm:grid-cols-4 lg:grid-cols-8">
+      <div class="card mb-4 grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 lg:grid-cols-5">
         <div>
           <p class="text-xs font-medium uppercase text-slate-500">Localizacao atual</p>
           ${tratora && tratora.localizacao_cidade ? `
@@ -930,7 +940,7 @@ export async function render(container, params) {
               <summary class="inline cursor-pointer text-sm font-semibold text-slate-900">${tratora.localizacao_cidade}/${tratora.localizacao_uf}</summary>
               <div class="mt-1 text-xs text-slate-500">
                 Atualizado em ${formatarDataHoraBr(tratora.localizacao_atualizado_em)}<br />
-                <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${tratora.localizacao_cidade}, ${tratora.localizacao_uf}`)}" target="_blank" rel="noopener" class="text-brand-black hover:underline">Google Maps</a>
+                <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${tratora.localizacao_cidade}, ${tratora.localizacao_uf}`)}" target="_blank" rel="noopener" class="text-gray-900 hover:underline">Google Maps</a>
               </div>
             </details>
           ` : '<p class="text-sm text-slate-400">Nao informada</p>'}
@@ -951,17 +961,39 @@ export async function render(container, params) {
           <p class="text-xs font-medium uppercase text-slate-500">Media do ultimo tanque</p>
           <p class="text-sm font-semibold text-slate-900">${mediaUltimoTanque !== null ? `${mediaUltimoTanque.toFixed(2)} km/l` : '-'}</p>
         </div>
-        <div>
-          <p class="text-xs font-medium uppercase text-slate-500">Faturado ate agora</p>
-          <p class="text-sm font-semibold text-slate-900">${formatarMoeda(totalFaturado)}</p>
-        </div>
-        <div>
-          <p class="text-xs font-medium uppercase text-slate-500">Despesas ate agora</p>
-          <p class="text-sm font-semibold text-slate-900">${formatarMoeda(totalDespesas)}</p>
-        </div>
-        <div>
-          <p class="text-xs font-medium uppercase text-slate-500">Lucro ate agora</p>
-          <p class="text-sm font-semibold ${lucroAteAgora >= 0 ? 'text-emerald-600' : 'text-red-600'}">${formatarMoeda(lucroAteAgora)}</p>
+      </div>
+
+      <div class="card mb-6 p-4">
+        <p class="mb-3 text-xs font-medium uppercase text-slate-500">Viabilidade economica ate agora</p>
+        <div class="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-7">
+          <div>
+            <p class="text-xs font-medium uppercase text-slate-500">Faturado</p>
+            <p class="text-sm font-semibold text-slate-900">${formatarMoeda(totalFaturado)}</p>
+          </div>
+          <div>
+            <p class="text-xs font-medium uppercase text-slate-500">Despesas</p>
+            <p class="text-sm font-semibold text-slate-900">${formatarMoeda(totalDespesas)}</p>
+          </div>
+          <div>
+            <p class="text-xs font-medium uppercase text-slate-500">Lucro</p>
+            <p class="text-sm font-semibold ${lucroAteAgora >= 0 ? 'text-emerald-600' : 'text-red-600'}">${formatarMoeda(lucroAteAgora)}</p>
+          </div>
+          <div>
+            <p class="text-xs font-medium uppercase text-slate-500">Margem</p>
+            <p class="text-sm font-semibold ${margemPercentual !== null && margemPercentual >= 0 ? 'text-emerald-600' : 'text-red-600'}">${margemPercentual !== null ? `${margemPercentual.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%` : '-'}</p>
+          </div>
+          <div>
+            <p class="text-xs font-medium uppercase text-slate-500">Faturamento/dia</p>
+            <p class="text-sm font-semibold text-slate-900">${formatarMoeda(Math.round(faturamentoPorDia))}</p>
+          </div>
+          <div>
+            <p class="text-xs font-medium uppercase text-slate-500">Custo/dia</p>
+            <p class="text-sm font-semibold text-slate-900">${formatarMoeda(Math.round(custoPorDia))}</p>
+          </div>
+          <div>
+            <p class="text-xs font-medium uppercase text-slate-500">Despesas/km</p>
+            <p class="text-sm font-semibold text-slate-900">${despesaPorKm !== null ? formatarMoeda(Math.round(despesaPorKm)) : '-'}</p>
+          </div>
         </div>
       </div>
 
@@ -998,9 +1030,23 @@ export async function render(container, params) {
           </table>
         </div>
       </details>
+
+      ${getUsuario()?.perfil === 'Admin' ? `
+        <details class="mt-6" data-secao-auditoria>
+          ${resumoSecao('Historico (auditoria)', null, false)}
+          <div data-timeline-auditoria></div>
+        </details>
+      ` : ''}
     `;
 
-    ['[data-secao-fretes]', '[data-secao-despesas]', '[data-secao-adiantamentos]'].forEach((seletor) => {
+    const secoesColapsaveis = ['[data-secao-fretes]', '[data-secao-despesas]', '[data-secao-adiantamentos]'];
+    if (getUsuario()?.perfil === 'Admin') {
+      secoesColapsaveis.push('[data-secao-auditoria]');
+      container.querySelector('[data-timeline-auditoria]').appendChild(
+        criarTimelineAuditoria({ tabela: 'viagens', registroId: viagem.id }).el,
+      );
+    }
+    secoesColapsaveis.forEach((seletor) => {
       ligarChevronSecao(container.querySelector(seletor));
     });
     container.querySelector('[data-voltar]').addEventListener('click', () => navegar('/viagens'));
@@ -1070,9 +1116,9 @@ export async function render(container, params) {
           titulo: 'Status',
           render: (d) => (d.validado_em
             ? '<span class="text-xs text-slate-400">Validada</span>'
-            : `<span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">Pendente de validacao${d.forma_pagamento_posto === 'AssinarNota' ? ' (assinar nota)' : ''}</span>`),
+            : `<span class="badge-atencao">Pendente de validacao${d.forma_pagamento_posto === 'AssinarNota' ? ' (assinar nota)' : ''}</span>`),
         },
-        { chave: 'vencimento', titulo: 'Vencimento', render: (d) => (d.data_vencimento ? formatarDataBr(d.data_vencimento) : '-') + (d.contas_pagar_id ? ' <a href="#/contas-pagar" class="text-xs text-brand-black hover:underline">(ver conta)</a>' : '') },
+        { chave: 'vencimento', titulo: 'Vencimento', render: (d) => (d.data_vencimento ? formatarDataBr(d.data_vencimento) : '-') + (d.contas_pagar_id ? ' <a href="#/contas-pagar" class="text-xs text-gray-900 hover:underline">(ver conta)</a>' : '') },
       ],
       buscarDados: (termo) => {
         if (!termo) return Promise.resolve(despesas);

@@ -114,7 +114,11 @@ CREATE TABLE usuario_empresas (
 -- banco sem precisar de uma tabela de log por entidade.
 CREATE TABLE logs_auditoria (
     id              INTEGER PRIMARY KEY,
-    empresa_id      INTEGER NOT NULL REFERENCES empresas(id),
+    -- Nullable de proposito: tabelas globais (nao ligadas a uma empresa,
+    -- como fornecedor_tipos/categorias_despesa/comissao_faixas) tambem
+    -- registram auditoria, e uma acao pode ocorrer com "Todas as empresas"
+    -- selecionado (req.empresaId = null) - ver utils/audit.js.
+    empresa_id      INTEGER REFERENCES empresas(id),
     usuario_id      INTEGER REFERENCES usuarios(id),
     tabela_afetada  TEXT NOT NULL,
     registro_id     INTEGER NOT NULL,
@@ -183,6 +187,10 @@ CREATE TABLE veiculos (
     placa               TEXT NOT NULL UNIQUE,
     tipo                TEXT NOT NULL CHECK (tipo IN ('Cavalo', 'Carreta', 'Dolly', 'Truck', 'Toco')),
     qtd_eixos           INTEGER NOT NULL,
+    -- Só relevante pra tipo = 'Cavalo': define qual eixo é de tração pro
+    -- diagrama de pneus (eixo 1 = dianteiro/direcional, nunca tração;
+    -- 6x2 = só o 2º eixo traciona; 6x4 = 2º e 3º; 4x2 = só o 2º).
+    tipo_tracao         TEXT CHECK (tipo_tracao IN ('4x2', '6x2', '6x4')),
     marca               TEXT,
     modelo              TEXT,
     ano_fabricacao      INTEGER,
@@ -1025,6 +1033,7 @@ CREATE TABLE empresas (
     onixsat_usuario         TEXT,
     onixsat_senha           TEXT,
     onixsat_ultimo_mid      INTEGER, -- cursor de paginacao do RequestMensagemCB (ver onixsatClient.js)
+    onixsat_ultima_sincronizacao TEXT, -- ultima vez que a API da Onixsat respondeu com sucesso (manual ou automatica) - mostrado no cabecalho do app
     -- Intervalo (minutos) da sincronizacao automatica de posicao/hodometro
     -- desta empresa (ver onixsatScheduler.js) - NULL usa o padrao do sistema.
     onixsat_poll_minutos    INTEGER,

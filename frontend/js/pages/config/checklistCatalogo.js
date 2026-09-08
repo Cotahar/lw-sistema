@@ -7,7 +7,7 @@ export const render = criarPaginaCrud({
   somenteAdmin: true,
   campos: [{ nome: 'nome', label: 'Nome do item', tipo: 'texto', obrigatorio: true }],
   colunas: [
-    { chave: 'nome', titulo: 'Nome' },
-    { chave: 'ativo', titulo: 'Status', render: (r) => (r.ativo ? '<span class="badge bg-emerald-100 text-emerald-700">Ativo</span>' : '<span class="badge bg-slate-100 text-slate-500">Inativo</span>') },
+    { chave: 'nome', titulo: 'Nome', editavel: true },
+    { chave: 'ativo', titulo: 'Status', render: (r) => (r.ativo ? '<span class="badge-sucesso">Ativo</span>' : '<span class="badge-neutro">Inativo</span>') },
   ],
 });

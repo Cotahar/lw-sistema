@@ -1,9 +1,11 @@
 import { get } from '../../api.js';
 import { navegar } from '../../router.js';
 import { formatarDataBr, formatarMoeda } from '../../masks.js';
+import { esqueletoLinhas } from '../../components/skeleton.js';
+import { iconeFilaHtml, atualizarIndicadorFila } from './offlineQueue.js';
 
 function linha(rotulo, valor, destaque = false) {
-  return `<div class="flex items-center justify-between border-b border-slate-100 py-2 last:border-0 ${destaque ? 'font-semibold text-brand-black' : 'text-slate-700'}">
+  return `<div class="flex items-center justify-between border-b border-slate-100 py-2 last:border-0 ${destaque ? 'font-semibold text-gray-900' : 'text-slate-700'}">
     <span class="text-sm">${rotulo}</span><span class="text-sm">${valor}</span>
   </div>`;
 }
@@ -17,17 +19,19 @@ async function renderLista(appEl) {
   appEl.innerHTML = `
     <div class="min-h-screen bg-brand-light pb-6">
       <header class="flex items-center gap-3 bg-brand-black px-4 py-3 text-white">
-        <button type="button" class="rounded-lg p-1 hover:bg-gray-800" data-voltar>
+        <button type="button" class="rounded-lg p-1 hover:bg-white/10" data-voltar>
           <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
         </button>
-        <p class="text-lg font-bold">Meus acertos</p>
+        <p class="flex-1 text-lg font-bold">Meus acertos</p>
+        ${iconeFilaHtml()}
       </header>
       <main class="space-y-3 p-4" data-conteudo>
-        <p class="text-slate-400">Carregando...</p>
+        ${esqueletoLinhas(3)}
       </main>
     </div>
   `;
   appEl.querySelector('[data-voltar]').addEventListener('click', () => navegar('/motorista'));
+  atualizarIndicadorFila(appEl);
 
   const conteudo = appEl.querySelector('[data-conteudo]');
   try {
@@ -39,7 +43,7 @@ async function renderLista(appEl) {
     conteudo.innerHTML = acertos.map((a) => `
       <button type="button" class="card block w-full p-4 text-left" data-acerto="${a.id}">
         <div class="flex items-center justify-between">
-          <p class="font-semibold text-brand-black">Viagem #${a.viagem_id}</p>
+          <p class="font-semibold text-gray-900">Viagem #${a.viagem_id}</p>
           <p class="text-sm text-slate-500">${formatarDataBr(a.data_acerto)}</p>
         </div>
         <p class="mt-1 text-sm text-slate-500">Saldo: <span class="font-medium text-slate-900">${formatarMoeda(Math.abs(a.saldo_final))} ${a.saldo_final >= 0 ? '(a pagar)' : '(conta corrente)'}</span></p>
@@ -57,17 +61,19 @@ async function renderDetalhe(appEl, id) {
   appEl.innerHTML = `
     <div class="min-h-screen bg-brand-light pb-6">
       <header class="flex items-center gap-3 bg-brand-black px-4 py-3 text-white">
-        <button type="button" class="rounded-lg p-1 hover:bg-gray-800" data-voltar>
+        <button type="button" class="rounded-lg p-1 hover:bg-white/10" data-voltar>
           <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
         </button>
-        <p class="text-lg font-bold">Detalhe do acerto</p>
+        <p class="flex-1 text-lg font-bold">Detalhe do acerto</p>
+        ${iconeFilaHtml()}
       </header>
       <main class="p-4" data-conteudo>
-        <p class="text-slate-400">Carregando...</p>
+        ${esqueletoLinhas(3)}
       </main>
     </div>
   `;
   appEl.querySelector('[data-voltar]').addEventListener('click', () => navegar('/motorista/acertos'));
+  atualizarIndicadorFila(appEl);
 
   const conteudo = appEl.querySelector('[data-conteudo]');
   try {

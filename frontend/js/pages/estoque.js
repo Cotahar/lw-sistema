@@ -1,6 +1,7 @@
 import { get, post, put, del, podeGerenciar } from '../api.js';
 import { criarDataTable } from '../components/dataTable.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
+import { criarNovoFornecedor } from '../components/fornecedorQuickCreate.js';
 import { abrirModal, fecharModal } from '../components/modal.js';
 import { mostrarToast } from '../components/toast.js';
 import { formatarMoeda, attachMoedaMask, getMoedaValue, formatarDataBr } from '../masks.js';
@@ -82,7 +83,7 @@ function abrirFormularioMovimentacao(recarregarTudo) {
   `;
   const itemSelect = criarSearchableSelect({ buscar: buscarItensEstoque, placeholder: 'Pesquisar item...' });
   form.querySelector('[data-item-select]').appendChild(itemSelect.el);
-  const fornecedorSelect = criarSearchableSelect({ buscar: buscarFornecedores, placeholder: 'Pesquisar fornecedor...' });
+  const fornecedorSelect = criarSearchableSelect({ buscar: buscarFornecedores, placeholder: 'Pesquisar fornecedor...', criarNovo: { label: 'Cadastrar novo fornecedor', abrir: criarNovoFornecedor } });
   form.querySelector('[data-fornecedor-select]').appendChild(fornecedorSelect.el);
   const veiculoSelect = criarSearchableSelect({
     buscar: async (termo) => (await get(`/veiculos${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((v) => ({ value: v.id, label: v.placa })),
@@ -145,12 +146,13 @@ export async function render(container) {
       { chave: 'categoria', titulo: 'Categoria' },
       { chave: 'quantidade_atual', titulo: 'Qtd. Atual', render: (r) => `${r.quantidade_atual} ${r.unidade_medida}` },
       { chave: 'custo_medio', titulo: 'Custo Medio', render: (r) => formatarMoeda(r.custo_medio) },
-      { chave: 'ativo', titulo: 'Status', render: (r) => (r.ativo ? '<span class="badge bg-emerald-100 text-emerald-700">Ativo</span>' : '<span class="badge bg-slate-100 text-slate-500">Inativo</span>') },
+      { chave: 'ativo', titulo: 'Status', render: (r) => (r.ativo ? '<span class="badge-sucesso">Ativo</span>' : '<span class="badge-neutro">Inativo</span>') },
     ],
     buscarDados: (termo) => get(`/estoque/itens${termo ? `?search=${encodeURIComponent(termo)}` : ''}`),
     onNovo: gerenciar ? () => abrirFormularioItem(null, tabelaItens.recarregar) : undefined,
     onEditar: gerenciar ? (r) => abrirFormularioItem(r, tabelaItens.recarregar) : undefined,
     onExcluir: gerenciar ? (r) => del(`/estoque/itens/${r.id}`) : undefined,
+    onExcluirLote: gerenciar ? (ids) => post('/estoque/itens/batch-delete', { ids }) : undefined,
     tituloNovo: 'Item',
   });
   container.querySelector('[data-tabela-itens]').appendChild(tabelaItens.el);
@@ -158,7 +160,7 @@ export async function render(container) {
   const tabelaMov = criarDataTable({
     colunas: [
       { chave: 'data', titulo: 'Data', render: (r) => formatarDataBr(r.data) },
-      { chave: 'tipo', titulo: 'Tipo', render: (r) => (r.tipo === 'Entrada' ? '<span class="badge bg-emerald-100 text-emerald-700">Entrada</span>' : '<span class="badge bg-amber-100 text-amber-700">Saida</span>') },
+      { chave: 'tipo', titulo: 'Tipo', render: (r) => (r.tipo === 'Entrada' ? '<span class="badge-sucesso">Entrada</span>' : '<span class="badge-atencao">Saida</span>') },
       { chave: 'quantidade', titulo: 'Quantidade' },
       { chave: 'custo_unitario', titulo: 'Custo Unit.', render: (r) => formatarMoeda(r.custo_unitario) },
       { chave: 'observacao', titulo: 'Observacao', render: (r) => r.observacao || '-' },

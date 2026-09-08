@@ -62,6 +62,18 @@ router.delete('/regras/:id', requerAcessoModulo('alertas', 'Gerenciar'), exigirE
   res.status(204).send();
 }));
 
+router.post('/regras/batch-delete', requerAcessoModulo('alertas', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || !ids.length) throw new ApiError(400, 'Informe a lista de ids a excluir.');
+  for (const id of ids) {
+    const antes = db.prepare('SELECT * FROM alertas_regras WHERE id = ? AND empresa_id = ?').get(id, req.empresaId);
+    if (!antes) continue;
+    db.prepare('DELETE FROM alertas_regras WHERE id = ?').run(id);
+    registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'alertas_regras', registroId: id, acao: 'DELETE', antes });
+  }
+  res.status(204).send();
+}));
+
 router.get('/ocorrencias', requerAcessoModulo('alertas', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const { status, veiculo_id } = req.query;
   const condicoes = [];

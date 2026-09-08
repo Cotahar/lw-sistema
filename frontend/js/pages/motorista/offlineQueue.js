@@ -116,6 +116,39 @@ export async function tentarSincronizarTodos() {
   }
 }
 
+// Icone de nuvem + badge - mesmo bloco HTML usado no cabecalho de toda tela
+// do motorista (ver montarCabecalhoMotorista em cada pagina), pra fila
+// offline parar de ser invisivel fora do Painel (que ja tinha um card
+// detalhado, mas so aparecia ali).
+export function iconeFilaHtml() {
+  return `
+    <button type="button" data-fila-offline class="relative rounded-lg p-1.5 hover:bg-white/10" title="Fila de sincronizacao">
+      <svg data-fila-icone class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M6 18a4 4 0 01-1-7.9A5 5 0 0114.9 8H15a4.5 4.5 0 010 9H6z"/></svg>
+      <span data-fila-badge class="absolute -right-1 -top-1 hidden h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">0</span>
+    </button>
+  `;
+}
+
+// Atualiza o badge com a contagem atual da fila. `sincronizando` gira o
+// icone (feedback de "trabalhando nisso agora"), usado ao redor de
+// tentarSincronizarTodos() - nao fica girando parado so por ter pendencia.
+export async function atualizarIndicadorFila(root, { sincronizando = false } = {}) {
+  const btn = root.querySelector('[data-fila-offline]');
+  if (!btn) return;
+  const icone = btn.querySelector('[data-fila-icone]');
+  const badge = btn.querySelector('[data-fila-badge]');
+  icone.classList.toggle('animate-spin', sincronizando);
+  const pendentes = await listarPendentes();
+  if (pendentes.length) {
+    badge.textContent = String(pendentes.length);
+    badge.classList.remove('hidden');
+    badge.classList.add('flex');
+  } else {
+    badge.classList.add('hidden');
+    badge.classList.remove('flex');
+  }
+}
+
 // Background Sync (Android/Chrome): o service worker acorda e chama isso
 // mesmo com o app fechado. iOS Safari nao suporta - por isso o app tambem
 // tenta sincronizar no evento 'online' e ao abrir/focar o painel.

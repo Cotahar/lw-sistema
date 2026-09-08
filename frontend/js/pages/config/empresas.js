@@ -4,6 +4,7 @@ import { abrirModal, fecharModal } from '../../components/modal.js';
 import { mostrarToast, mostrarErro } from '../../components/toast.js';
 import { renderizarAcessoNegado } from '../../components/acessoNegado.js';
 import { attachCpfCnpjMask, apenasDigitos, formatarCpfCnpj, validarCnpj } from '../../masks.js';
+import { comCopiar } from '../../components/copiar.js';
 
 function abrirFormEmpresa(registro, recarregar) {
   const form = document.createElement('form');
@@ -145,14 +146,15 @@ export async function render(container) {
   const tabela = criarDataTable({
     colunas: [
       { chave: 'razao_social', titulo: 'Razão Social' },
-      { chave: 'cnpj', titulo: 'CNPJ', render: (r) => formatarCpfCnpj(r.cnpj) },
+      { chave: 'cnpj', titulo: 'CNPJ', render: (r) => comCopiar(formatarCpfCnpj(r.cnpj)) },
       { chave: 'endereco_cidade', titulo: 'Cidade/UF', render: (r) => [r.endereco_cidade, r.endereco_uf].filter(Boolean).join('/') || '-' },
-      { chave: 'ativo', titulo: 'Status', render: (r) => (r.ativo ? '<span class="badge bg-emerald-100 text-emerald-700">Ativa</span>' : '<span class="badge bg-slate-100 text-slate-500">Inativa</span>') },
+      { chave: 'ativo', titulo: 'Status', render: (r) => (r.ativo ? '<span class="badge-sucesso">Ativa</span>' : '<span class="badge-neutro">Inativa</span>') },
     ],
     buscarDados: (termo) => get(termo ? `/empresas?search=${encodeURIComponent(termo)}` : '/empresas'),
     onNovo: () => abrirFormEmpresa(null, tabela.recarregar),
     onEditar: (r) => abrirFormEmpresa(r, tabela.recarregar),
     onExcluir: (r) => del(`/empresas/${r.id}`),
+    onExcluirLote: (ids) => post('/empresas/batch-delete', { ids }),
     tituloNovo: 'Empresa',
     vazio: 'Nenhuma empresa cadastrada ainda.',
   });

@@ -5,6 +5,7 @@ const ApiError = require('../utils/ApiError');
 const { requerAcessoModulo } = require('../middleware/auth');
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { registrarAuditoria } = require('../utils/audit');
+const { withTransaction } = require('../utils/transaction');
 const { hojeIsoBrasilia, agoraDataHoraIsoBrasilia } = require('../utils/dataHora');
 
 const router = express.Router();
@@ -150,6 +151,26 @@ router.delete('/:id', requerAcessoModulo('multas', 'Gerenciar'), exigirEmpresaEs
   if (antes.status !== 'AguardandoIndicacao') throw new ApiError(400, 'So e possivel excluir multas ainda aguardando indicacao do condutor.');
   db.prepare('DELETE FROM multas WHERE id = ?').run(req.params.id);
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'multas', registroId: antes.id, acao: 'DELETE', antes });
+  res.status(204).send();
+}));
+
+// Tudo ou nada: valida todas as multas selecionadas antes de excluir
+// qualquer uma - evita a confusao de "selecionei 5, sumiram so 3".
+router.post('/batch-delete', requerAcessoModulo('multas', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || !ids.length) throw new ApiError(400, 'Informe a lista de ids a excluir.');
+  const registros = ids.map((id) => {
+    const antes = db.prepare('SELECT * FROM multas WHERE id = ? AND empresa_id = ?').get(id, req.empresaId);
+    if (!antes) throw new ApiError(404, `Multa #${id} nao encontrada.`);
+    if (antes.status !== 'AguardandoIndicacao') throw new ApiError(400, `A multa #${id} ja teve o condutor indicado e nao pode ser excluida em lote.`);
+    return antes;
+  });
+  withTransaction(db, () => {
+    for (const antes of registros) {
+      db.prepare('DELETE FROM multas WHERE id = ?').run(antes.id);
+      registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'multas', registroId: antes.id, acao: 'DELETE', antes });
+    }
+  });
   res.status(204).send();
 }));
 

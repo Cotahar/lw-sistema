@@ -4,7 +4,7 @@ import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { mostrarToast, mostrarErro } from '../../components/toast.js';
 import { attachMoedaMask, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso, hojeIsoLocal } from '../../masks.js';
 import { comprimirImagem } from '../../imageCompress.js';
-import { adicionarPendente, registrarSyncBackground } from './offlineQueue.js';
+import { adicionarPendente, registrarSyncBackground, iconeFilaHtml, atualizarIndicadorFila } from './offlineQueue.js';
 
 // Endpoint dedicado (nao GET /fornecedores) porque o perfil Motorista nao
 // tem acesso ao modulo "fornecedores" na matriz de permissoes - ver
@@ -44,16 +44,17 @@ export async function render(appEl) {
   appEl.innerHTML = `
     <div class="min-h-screen bg-brand-light">
       <header class="flex items-center gap-3 bg-brand-black px-4 py-3 text-white">
-        <button type="button" class="rounded-lg p-1 hover:bg-gray-800" data-voltar>
+        <button type="button" class="rounded-lg p-1 hover:bg-white/10" data-voltar>
           <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
         </button>
-        <p class="text-lg font-bold">Novo abastecimento</p>
+        <p class="flex-1 text-lg font-bold">Novo abastecimento</p>
+        ${iconeFilaHtml()}
       </header>
       <main class="p-4">
         <form class="card space-y-4 p-4" data-form>
           <div><label class="label">Valor total (diesel)</label><input type="text" name="valor" class="input" inputmode="decimal" /></div>
           <p class="-mt-2 text-xs text-slate-400">Deixe em branco se for so Arla (compra isolada).</p>
-          <div><label class="label">Data</label><input type="text" name="data" class="input" placeholder="DD/MM/AAAA" /></div>
+          <div><label class="label">Data</label><input type="text" name="data" class="input" inputmode="numeric" placeholder="DD/MM/AAAA" /></div>
           <div class="grid grid-cols-2 gap-3">
             <div><label class="label">Preco/Litro</label><input type="text" name="preco_litro" class="input" inputmode="decimal" /></div>
             <div><label class="label">Litragem</label><input type="number" step="0.01" name="litragem" class="input" /></div>
@@ -67,7 +68,7 @@ export async function render(appEl) {
           <div>
             <label class="label">Posto</label>
             <div data-posto-select></div>
-            <button type="button" class="mt-1 text-xs text-brand-black hover:underline" data-abrir-novo-posto>Nao encontrou? Cadastrar novo posto</button>
+            <button type="button" class="mt-1 text-xs text-gray-900 hover:underline" data-abrir-novo-posto>Nao encontrou? Cadastrar novo posto</button>
             <div class="mt-2 hidden space-y-3 rounded-lg border border-slate-200 p-3" data-novo-posto-bloco>
               <div><label class="label">Nome do novo posto</label><input type="text" class="input" data-novo-posto-nome /></div>
               <div><label class="label">Localizacao</label><input type="text" class="input" data-novo-posto-localizacao placeholder="Cidade/UF ou nome do local" /></div>
@@ -102,17 +103,18 @@ export async function render(appEl) {
           <div>
             <label class="label">Foto da nota/cupom *</label>
             <input type="file" accept="image/*" capture="environment" class="hidden" data-input-foto />
-            <button type="button" class="btn-secondary w-full" data-tirar-foto>Tirar foto</button>
+            <button type="button" class="btn-secondary w-full min-h-[48px]" data-tirar-foto>Tirar foto</button>
             <img class="mt-2 hidden w-full rounded-lg border border-slate-200" data-preview-foto />
           </div>
           <p class="hidden text-sm text-red-600" data-erro></p>
-          <button type="submit" class="btn-primary w-full">Lancar abastecimento</button>
+          <button type="submit" class="btn-primary w-full min-h-[48px]">Lancar abastecimento</button>
         </form>
       </main>
     </div>
   `;
 
   appEl.querySelector('[data-voltar]').addEventListener('click', () => navegar('/motorista'));
+  atualizarIndicadorFila(appEl);
 
   const form = appEl.querySelector('[data-form]');
   attachMoedaMask(form.valor, 0);

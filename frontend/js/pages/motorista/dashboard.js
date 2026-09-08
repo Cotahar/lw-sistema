@@ -1,7 +1,8 @@
 import { get, limparSessao, getUsuario } from '../../api.js';
 import { navegar } from '../../router.js';
 import { formatarDataBr, formatarMoeda } from '../../masks.js';
-import { listarPendentes, tentarSincronizarTodos } from './offlineQueue.js';
+import { listarPendentes, tentarSincronizarTodos, iconeFilaHtml, atualizarIndicadorFila } from './offlineQueue.js';
+import { esqueletoLinhas } from '../../components/skeleton.js';
 
 function formatarKmL(valor) {
   return valor != null ? `${valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km/l` : '-';
@@ -16,10 +17,13 @@ export async function render(appEl) {
           <p class="text-lg font-bold leading-tight">Frottex</p>
           <p class="text-xs leading-tight text-gray-400">Ola, ${usuario ? usuario.nome : ''}</p>
         </div>
-        <button type="button" class="btn-secondary btn-sm" data-sair>Sair</button>
+        <div class="flex items-center gap-1">
+          ${iconeFilaHtml()}
+          <button type="button" class="btn-secondary btn-sm" data-sair>Sair</button>
+        </div>
       </header>
       <main class="space-y-4 p-4" data-conteudo>
-        <p class="text-slate-400">Carregando...</p>
+        ${esqueletoLinhas(4)}
       </main>
     </div>
   `;
@@ -32,12 +36,21 @@ export async function render(appEl) {
   const conteudo = appEl.querySelector('[data-conteudo]');
   await renderizarViagem(conteudo);
   await renderizarPendentes(conteudo);
+  atualizarIndicadorFila(appEl);
 
   // Tenta sincronizar ao abrir o painel (cobre o caso de ter ficado online
   // com o app fechado/em segundo plano - iOS nao acorda o service worker
   // sozinho) e sempre que a conexao voltar enquanto o painel estiver aberto.
-  tentarSincronizarTodos().then(() => renderizarPendentes(conteudo));
-  window.addEventListener('online', () => tentarSincronizarTodos().then(() => renderizarPendentes(conteudo)));
+  // O icone da nuvem gira enquanto a sincronizacao esta rodando de verdade,
+  // nao so por ter pendencia parada na fila.
+  async function sincronizarEAtualizar() {
+    atualizarIndicadorFila(appEl, { sincronizando: true });
+    await tentarSincronizarTodos();
+    await renderizarPendentes(conteudo);
+    await atualizarIndicadorFila(appEl);
+  }
+  sincronizarEAtualizar();
+  window.addEventListener('online', sincronizarEAtualizar);
 }
 
 async function renderizarViagem(conteudo) {
@@ -47,16 +60,16 @@ async function renderizarViagem(conteudo) {
       ${viagem ? `
         <div class="card p-4">
           <p class="text-xs font-medium uppercase text-slate-500">Viagem atual</p>
-          <p class="text-2xl font-bold leading-tight text-brand-black">${viagem.motorista_nome || ''}</p>
+          <p class="text-2xl font-bold leading-tight text-gray-900">${viagem.motorista_nome || ''}</p>
           <p class="text-sm text-slate-500">Inicio em ${formatarDataBr(viagem.data_inicio)} - ${viagem.dias_fora} dia(s) fora</p>
           <p class="text-xs text-slate-400">${viagem.placas.join(' + ')}</p>
 
           <button type="button" data-ver-fretes class="mt-3 w-full rounded-lg border border-slate-200 p-3 text-left hover:bg-slate-50">
             <div class="flex items-center justify-between">
               <span class="text-xs font-medium uppercase text-slate-500">Faturamento (liquido)</span>
-              <span class="text-xs font-medium text-brand-black">Ver fretes &rsaquo;</span>
+              <span class="text-xs font-medium text-gray-900">Ver fretes &rsaquo;</span>
             </div>
-            <p class="text-xl font-bold text-brand-black">${formatarMoeda(viagem.faturamento_liquido)}</p>
+            <p class="text-xl font-bold text-gray-900">${formatarMoeda(viagem.faturamento_liquido)}</p>
           </button>
 
           <dl class="mt-3 grid grid-cols-2 gap-x-3 gap-y-3 text-sm">
@@ -86,11 +99,11 @@ async function renderizarViagem(conteudo) {
         ${viagem.frete_atual ? `
           <button type="button" data-ver-fretes class="card block w-full p-4 text-left">
             <p class="text-xs font-medium uppercase text-slate-500">Frete atual</p>
-            <p class="mt-1 font-semibold text-brand-black">${viagem.frete_atual.origem_cidade}/${viagem.frete_atual.origem_uf} &rarr; ${viagem.frete_atual.destino_cidade}/${viagem.frete_atual.destino_uf}</p>
+            <p class="mt-1 font-semibold text-gray-900">${viagem.frete_atual.origem_cidade}/${viagem.frete_atual.origem_uf} &rarr; ${viagem.frete_atual.destino_cidade}/${viagem.frete_atual.destino_uf}</p>
             <dl class="mt-2 grid grid-cols-2 gap-3 text-sm">
               <div><dt class="text-slate-500">Transportadora</dt><dd class="font-medium text-slate-900">${viagem.frete_atual.transportadora_nome || '-'}</dd></div>
               <div><dt class="text-slate-500">Peso</dt><dd class="font-medium text-slate-900">${viagem.frete_atual.peso_carga_kg != null ? `${viagem.frete_atual.peso_carga_kg.toLocaleString('pt-BR')} kg` : '-'}</dd></div>
-              <div class="col-span-2"><dt class="text-slate-500">Frete (liquido)</dt><dd class="font-semibold text-brand-black">${formatarMoeda(viagem.frete_atual.frete_liquido)}</dd></div>
+              <div class="col-span-2"><dt class="text-slate-500">Frete (liquido)</dt><dd class="font-semibold text-gray-900">${formatarMoeda(viagem.frete_atual.frete_liquido)}</dd></div>
             </dl>
           </button>
         ` : ''}
@@ -101,7 +114,7 @@ async function renderizarViagem(conteudo) {
         </div>
       ` : `
         <div class="card p-6 text-center text-slate-500">Nenhuma viagem em andamento no momento.</div>
-        <button type="button" class="btn-secondary w-full" data-ver-acertos>Meus Acertos</button>
+        <button type="button" class="btn-secondary w-full min-h-[48px]" data-ver-acertos>Meus Acertos</button>
       `}
       <div data-pendentes></div>
     `;

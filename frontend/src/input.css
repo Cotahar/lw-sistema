@@ -2,15 +2,98 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Fonte custom (Barlow Condensed + Public Sans) - troca a fonte padrao do
+   sistema operacional por uma dupla com personalidade propria, sem tocar
+   nenhuma classe existente nas telas (ver revisao de design - "Tipografia"). */
+body {
+  font-family: 'Public Sans', ui-sans-serif, system-ui, sans-serif;
+  /* Alinha digitos em colunas (placas, CPF, dinheiro) - so afeta numeros,
+     letras continuam normais, seguro aplicar em tudo (ver parecer de
+     refatoracao, Bloco 1). */
+  font-variant-numeric: tabular-nums;
+}
+
+/* Acoes de linha da tabela: com mouse (hover fino disponivel) só aparecem no
+   hover/foco da linha, pra nao poluir uma tabela densa de escritorio; em
+   touch (sem hover de verdade) ficam sempre visiveis, senao a acao
+   simplesmente nao existiria pra quem usa o dedo. */
+@media (hover: hover) and (pointer: fine) {
+  .acoes-tabela { opacity: 0; transition: opacity 0.1s ease-out; }
+  tr:hover .acoes-tabela, tr:focus-within .acoes-tabela { opacity: 1; }
+}
+
+/* Truncamento com tooltip (celulas de texto longo - descricao de ocorrencia,
+   alerta etc.): corta com "..." e mostra o texto inteiro num balao proprio
+   no hover/foco, sem depender do tooltip feio padrao do navegador. */
+.celula-truncar { position: relative; }
+.celula-truncar .truncar-texto { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+.celula-truncar .truncar-tooltip {
+  position: absolute; z-index: 30; left: 0; top: 100%; margin-top: 4px;
+  max-width: 320px; white-space: normal; background: var(--tw-brand-surface, #1E1E1E);
+  background: #1E1E1E; color: #fff; font-size: 12.5px; line-height: 1.4;
+  padding: 8px 10px; border-radius: 8px; box-shadow: 0 8px 20px -6px rgba(0,0,0,0.4);
+  border: 1px solid rgba(255,255,255,0.1);
+  opacity: 0; visibility: hidden; transition: opacity 0.12s ease-out;
+  pointer-events: none;
+}
+.celula-truncar:hover .truncar-tooltip, .celula-truncar:focus-within .truncar-tooltip { opacity: 1; visibility: visible; }
+h1, h2, h3 {
+  font-family: 'Barlow Condensed', ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.01em;
+}
+
+/* Sistema de animacao/skeleton (entrada, saida, carregamento, progresso) -
+   respeita quem desativou animacao no sistema operacional (prefers-reduced-
+   motion), pra nao forcar movimento em quem pediu explicitamente pra nao ter. */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.96); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  .fade-in { animation: fadeIn 0.2s ease-out both; }
+  .scale-in { animation: scaleIn 0.15s ease-out both; }
+  .fechando { animation: scaleIn 0.12s ease-in reverse both; }
+
+  /* Destaca um valor que acabou de ser recalculado automaticamente (ex.:
+     resumo do acerto apos o usuario mexer num campo de ajuste) - pisca um
+     fundo amarelo e esmaece, pra chamar atencao sem exigir leitura atenta
+     de cada numero a cada debounce. */
+  @keyframes flashRecalculo {
+    from { background-color: rgb(250 204 21 / 0.35); }
+    to { background-color: transparent; }
+  }
+  .flash-recalculo { animation: flashRecalculo 1s ease-out both; border-radius: 0.25rem; }
+
+  /* Accordion do menu (grid-rows trick: anima altura sem JS medindo pixel). */
+  .grupo-corpo {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows 0.18s ease-out, opacity 0.18s ease-out;
+    opacity: 1;
+  }
+  .grupo-corpo.recolhido { grid-template-rows: 0fr; opacity: 0; }
+  .grupo-corpo > div { overflow: hidden; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .grupo-corpo.recolhido { display: none; }
+}
+
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-yellow focus-visible:ring-offset-2 focus-visible:ring-offset-brand-light;
   }
   .btn-primary {
     @apply btn bg-brand-yellow text-brand-black font-bold shadow-sm hover:bg-brand-yellow-hover;
   }
   .btn-secondary {
-    @apply btn bg-brand-black text-white font-semibold hover:bg-brand-dark;
+    /* bg-brand-surface, nao bg-brand-black: no dark mode o fundo da pagina
+       (#121212) e quase identico ao brand-black (#131217) - um botao com
+       essa cor de fundo ficaria sem contraste nenhum contra a pagina. */
+    @apply btn bg-brand-surface text-white font-semibold border border-gray-700 hover:bg-brand-dark;
   }
   .btn-danger {
     @apply btn bg-red-600 text-white hover:bg-red-700;
@@ -19,13 +102,13 @@
     @apply px-2.5 py-1.5 text-xs;
   }
   .input {
-    @apply block w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm text-brand-black placeholder-gray-400 focus:border-brand-yellow focus:outline-none focus:ring-1 focus:ring-brand-yellow;
+    @apply block w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-yellow focus:outline-none focus:ring-1 focus:ring-brand-yellow;
   }
   .label {
     @apply mb-1 block text-sm font-medium text-slate-700;
   }
   .card {
-    @apply rounded-xl border border-gray-100 bg-white shadow-sm;
+    @apply rounded-xl border border-gray-100 bg-brand-surface shadow-sm;
   }
   .table-th {
     @apply px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-brand-yellow;
@@ -35,5 +118,20 @@
   }
   .badge {
     @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+  /* Sistema de cor com nome (sucesso/atencao/critico/neutro): antes cada tela
+     redigitava a cor do Tailwind a mao (~15 arquivos, ver revisao de design).
+     Trocar a cor de um status agora e mudar uma linha aqui, nao 15 arquivos. */
+  .badge-sucesso {
+    @apply badge bg-emerald-100 text-emerald-700;
+  }
+  .badge-atencao {
+    @apply badge bg-amber-100 text-amber-700;
+  }
+  .badge-critico {
+    @apply badge bg-red-100 text-red-700;
+  }
+  .badge-neutro {
+    @apply badge bg-slate-100 text-slate-500;
   }
 }

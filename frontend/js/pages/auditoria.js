@@ -1,27 +1,10 @@
 import { get, post, ehAdmin } from '../api.js';
-import { confirmarAcao, abrirModal } from '../components/modal.js';
+import { confirmarAcao } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
 import { formatarDataHoraBr } from '../masks.js';
 import { renderizarAcessoNegado } from '../components/acessoNegado.js';
-
-const ACAO_LABEL = { INSERT: 'Criacao', UPDATE: 'Alteracao', DELETE: 'Exclusao' };
-
-function verDetalhes(log) {
-  const corpo = document.createElement('div');
-  corpo.innerHTML = `
-    <div class="grid grid-cols-2 gap-3 text-xs">
-      <div>
-        <p class="mb-1 font-medium text-slate-500">Antes</p>
-        <pre class="max-h-80 overflow-auto whitespace-pre-wrap rounded bg-slate-50 p-2">${log.dados_antes ? JSON.stringify(JSON.parse(log.dados_antes), null, 2) : '-'}</pre>
-      </div>
-      <div>
-        <p class="mb-1 font-medium text-slate-500">Depois</p>
-        <pre class="max-h-80 overflow-auto whitespace-pre-wrap rounded bg-slate-50 p-2">${log.dados_depois ? JSON.stringify(JSON.parse(log.dados_depois), null, 2) : '-'}</pre>
-      </div>
-    </div>
-  `;
-  abrirModal({ titulo: `${log.tabela_afetada} #${log.registro_id}`, conteudo: corpo, largura: 'max-w-2xl' });
-}
+import { esqueletoLinhasTabela } from '../components/skeleton.js';
+import { verDetalhesAuditoria, ACAO_LABEL } from '../components/auditoriaTimeline.js';
 
 async function reverter(log, recarregar) {
   const ok = await confirmarAcao({
@@ -63,7 +46,7 @@ export async function render(container) {
 
   async function carregar(tabela) {
     const tbody = container.querySelector('[data-linhas]');
-    tbody.innerHTML = '<tr><td colspan="7" class="table-td py-6 text-center text-slate-400">Carregando...</td></tr>';
+    tbody.innerHTML = esqueletoLinhasTabela(7);
     try {
       const query = tabela ? `?tabela=${encodeURIComponent(tabela)}` : '';
       const logs = await get(`/admin/logs${query}`);
@@ -76,7 +59,7 @@ export async function render(container) {
           <td class="table-td">${l.usuario_nome || '-'}</td>
           <td class="table-td">${l.revertido_em ? `Revertido (${l.revertido_por_nome || ''} &middot; ${formatarDataHoraBr(l.revertido_em)})` : '-'}</td>
           <td class="table-td text-right whitespace-nowrap">
-            <button type="button" class="text-xs text-brand-black hover:underline" data-detalhes="${l.id}">Detalhes</button>
+            <button type="button" class="text-xs text-gray-900 hover:underline" data-detalhes="${l.id}">Detalhes</button>
             ${l.revertido_em ? '' : `<button type="button" class="ml-2 text-xs text-red-600 hover:underline" data-reverter="${l.id}">Reverter</button>`}
           </td>
         </tr>
@@ -84,7 +67,7 @@ export async function render(container) {
 
       tbody.querySelectorAll('[data-detalhes]').forEach((btn) => {
         const log = logs.find((l) => String(l.id) === btn.dataset.detalhes);
-        btn.addEventListener('click', () => verDetalhes(log));
+        btn.addEventListener('click', () => verDetalhesAuditoria(log));
       });
       tbody.querySelectorAll('[data-reverter]').forEach((btn) => {
         const log = logs.find((l) => String(l.id) === btn.dataset.reverter);

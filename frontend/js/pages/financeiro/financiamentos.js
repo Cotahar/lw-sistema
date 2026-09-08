@@ -1,6 +1,7 @@
 import { get, post, del, podeGerenciar } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
+import { criarNovoFornecedor } from '../../components/fornecedorQuickCreate.js';
 import { abrirModal, fecharModal } from '../../components/modal.js';
 import { mostrarToast, mostrarErro } from '../../components/toast.js';
 import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso } from '../../masks.js';
@@ -39,7 +40,7 @@ async function abrirNovoFinanciamento(recarregar) {
   attachDataMask(form.primeira_parcela_vencimento);
   const centroSelect = criarSearchableSelect({ buscar: buscarCentrosCusto, placeholder: 'Pesquisar centro de custo...' });
   form.querySelector('[data-centro]').appendChild(centroSelect.el);
-  const credorSelect = criarSearchableSelect({ buscar: buscarFornecedores, placeholder: 'Pesquisar credor...' });
+  const credorSelect = criarSearchableSelect({ buscar: buscarFornecedores, placeholder: 'Pesquisar credor...', criarNovo: { label: 'Cadastrar novo fornecedor', abrir: criarNovoFornecedor } });
   form.querySelector('[data-credor]').appendChild(credorSelect.el);
 
   // Autocalculo entre Valor total / Qtd. parcelas / Valor da parcela: 2
@@ -136,6 +137,7 @@ export async function render(container) {
     },
     onNovo: gerenciar ? () => abrirNovoFinanciamento(tabela.recarregar) : undefined,
     onExcluir: gerenciar ? (r) => del(`/financiamentos/${r.id}`) : undefined,
+    onExcluirLote: gerenciar ? (ids) => post('/financiamentos/batch-delete', { ids }) : undefined,
     acoesExtras: () => [{ label: 'Ver parcelas', onClick: verParcelas }],
     tituloNovo: 'Financiamento',
     vazio: 'Nenhum financiamento cadastrado.',

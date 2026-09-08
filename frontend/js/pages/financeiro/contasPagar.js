@@ -1,12 +1,13 @@
 import { get, post, podeGerenciar } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
+import { criarNovoFornecedor } from '../../components/fornecedorQuickCreate.js';
 import { abrirModal, fecharModal, confirmarAcao } from '../../components/modal.js';
 import { mostrarToast, mostrarErro } from '../../components/toast.js';
 import { criarOcorrencias } from '../../components/ocorrencias.js';
 import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr, hojeIsoLocal } from '../../masks.js';
 
-const STATUS_BADGE = { Pendente: 'bg-amber-100 text-amber-700', Parcial: 'bg-amber-100 text-amber-700', Pago: 'bg-emerald-100 text-emerald-700', Atrasado: 'bg-red-100 text-red-700' };
+const STATUS_BADGE = { Pendente: 'badge-atencao', Parcial: 'badge-atencao', Pago: 'badge-sucesso', Atrasado: 'badge-critico' };
 const STATUS_OPCOES = [
   { value: '', label: 'Todos' },
   { value: 'Pendente', label: 'Pendente' },
@@ -35,9 +36,9 @@ function badgePrazo(conta) {
   const hoje = new Date(`${hojeIsoLocal()}T00:00:00Z`);
   const venc = new Date(`${conta.data_vencimento}T00:00:00Z`);
   const dias = Math.round((venc - hoje) / 86400000);
-  const cor = dias < 0 ? 'bg-red-100 text-red-700' : dias <= 5 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500';
+  const cor = dias < 0 ? 'badge-critico' : dias <= 5 ? 'badge-atencao' : 'badge-neutro';
   const texto = dias < 0 ? `${Math.abs(dias)} dia(s) vencido` : dias === 0 ? 'vence hoje' : `${dias} dia(s)`;
-  return `<span class="badge ${cor} ml-1">${texto}</span>`;
+  return `<span class="${cor} ml-1">${texto}</span>`;
 }
 
 async function abrirNovaConta(recarregar) {
@@ -56,7 +57,7 @@ async function abrirNovaConta(recarregar) {
   `;
   attachMoedaMaskReais(form.valor, 0);
   attachDataMask(form.data_vencimento);
-  const fornecedorSelect = criarSearchableSelect({ buscar: buscarFornecedores, placeholder: 'Pesquisar fornecedor...' });
+  const fornecedorSelect = criarSearchableSelect({ buscar: buscarFornecedores, placeholder: 'Pesquisar fornecedor...', criarNovo: { label: 'Cadastrar novo fornecedor', abrir: criarNovoFornecedor } });
   form.querySelector('[data-fornecedor]').appendChild(fornecedorSelect.el);
   const centroSelect = criarSearchableSelect({ buscar: buscarCentrosCusto, placeholder: 'Pesquisar centro de custo...' });
   form.querySelector('[data-centro]').appendChild(centroSelect.el);
@@ -273,9 +274,9 @@ export async function render(container, params, query) {
       ${podeGerenciar('contas_pagar') ? '<button type="button" class="btn-secondary btn-sm" data-consolidar-fatura>Consolidar em fatura</button>' : ''}
     </div>
     ${origemFiltrada ? `
-      <div class="card mb-4 flex items-center justify-between border-yellow-300 bg-yellow-50 p-3 text-sm">
+      <div class="card mb-4 flex items-center justify-between border-yellow-800 bg-yellow-950/40 p-3 text-sm">
         <span>Filtrado pelas parcelas do ${origemFiltrada.label}.</span>
-        <a href="#/contas-pagar" class="text-brand-black hover:underline">Limpar filtro</a>
+        <a href="#/contas-pagar" class="text-gray-900 hover:underline">Limpar filtro</a>
       </div>
     ` : ''}
     <div class="card mb-4 grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -326,15 +327,17 @@ export async function render(container, params, query) {
 
   const tabela = criarDataTable({
     colunas: [
-      { chave: 'descricao', titulo: 'Descricao', render: (r) => (r.viagem_id ? `${r.descricao} <a href="#/viagens/${r.viagem_id}" class="ml-1 text-xs text-brand-black hover:underline">(viagem #${r.viagem_id})</a>` : r.descricao) },
+      { chave: 'descricao', titulo: 'Descricao', truncar: true, render: (r) => (r.viagem_id ? `${r.descricao} <a href="#/viagens/${r.viagem_id}" class="ml-1 text-xs text-gray-900 hover:underline">(viagem #${r.viagem_id})</a>` : r.descricao) },
       { chave: 'categoria_nome', titulo: 'Categoria', render: (r) => r.categoria_nome || '-' },
       { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => r.veiculo_placa || '-' },
-      { chave: 'valor', titulo: 'Valor', render: (r) => formatarMoeda(r.valor) },
-      { chave: 'valor_pago', titulo: 'Pago', render: (r) => formatarMoeda(r.valor_pago + r.valor_descontado) },
-      { chave: 'data_vencimento', titulo: 'Vencimento', render: (r) => `${formatarDataBr(r.data_vencimento)}${badgePrazo(r)}` },
-      { chave: 'status', titulo: 'Status', render: (r) => `<span class="badge ${STATUS_BADGE[r.status]}">${r.status}</span>` },
+      { chave: 'valor', titulo: 'Valor', render: (r) => formatarMoeda(r.valor), exportar: (r) => r.valor / 100 },
+      { chave: 'valor_pago', titulo: 'Pago', render: (r) => formatarMoeda(r.valor_pago + r.valor_descontado), exportar: (r) => (r.valor_pago + r.valor_descontado) / 100 },
+      { chave: 'data_vencimento', titulo: 'Vencimento', render: (r) => `${formatarDataBr(r.data_vencimento)}${badgePrazo(r)}`, exportar: (r) => formatarDataBr(r.data_vencimento) },
+      { chave: 'status', titulo: 'Status', render: (r) => `<span class="${STATUS_BADGE[r.status]}">${r.status}</span>`, exportar: (r) => r.status },
     ],
     ordenacaoInicial: { chave: 'data_vencimento', direcao: 'asc' },
+    corLinha: (r) => (r.status === 'Atrasado' ? 'bg-red-950/40' : ''),
+    exportar: { nomeArquivo: 'contas-a-pagar' },
     buscarDados: async (termo) => {
       const params = new URLSearchParams();
       if (financiamentoId) params.set('financiamento_id', financiamentoId);
