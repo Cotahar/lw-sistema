@@ -1,4 +1,15 @@
 let overlayAtual = null;
+let aoFecharAtual = null;
+
+// Esc fecha o modal aberto - padrao que todo usuario de teclado/mouse espera,
+// e antes so dava pra fechar clicando no X ou no botao de cancelar/fora do
+// modal. Um so listener global (nao um por abertura de modal, senao
+// acumularia handler a cada abrirModal). searchableSelect.js para a
+// propagacao do proprio Escape quando so quer fechar a lista de sugestoes
+// (nao o formulario inteiro por cima) - ver comentario la.
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && overlayAtual) fecharModal();
+});
 
 // Duracao da saida (ms) - precisa bater com a animacao ".fechando" no CSS
 // (input.css) pra nao cortar a transicao no meio nem deixar vao antes de
@@ -8,10 +19,16 @@ const DURACAO_SAIDA = 120;
 export function fecharModal() {
   if (!overlayAtual) return;
   const overlay = overlayAtual;
+  const aoFechar = aoFecharAtual;
   overlayAtual = null;
+  aoFecharAtual = null;
   overlay.classList.add('fechando');
   overlay.querySelector(':scope > div')?.classList.add('fechando');
   setTimeout(() => overlay.remove(), DURACAO_SAIDA);
+  // Dispara DEPOIS de liberar overlayAtual/aoFecharAtual, pra quem escuta
+  // poder abrir outro modal na hora (ex.: um fluxo que encadeia modals) sem
+  // o fecharModal() do proximo achar que ainda ha um aberto.
+  if (aoFechar) aoFechar();
 }
 
 // Usado pelas paginas com atualizacao automatica em segundo plano (Viagem,
@@ -23,7 +40,7 @@ export function modalAberto() {
 
 // Abre um modal generico. `conteudo` pode ser string HTML ou um Node.
 // Retorna o elemento raiz do modal, para quem chamou poder buscar campos etc.
-export function abrirModal({ titulo, conteudo, largura = 'max-w-lg' }) {
+export function abrirModal({ titulo, conteudo, largura = 'max-w-lg', aoFechar }) {
   fecharModal();
   const overlay = document.createElement('div');
   overlay.className = 'fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-8 fade-in';
@@ -49,10 +66,15 @@ export function abrirModal({ titulo, conteudo, largura = 'max-w-lg' }) {
 
   document.body.appendChild(overlay);
   overlayAtual = overlay;
+  aoFecharAtual = aoFechar || null;
   return overlay;
 }
 
 // Modal de confirmacao (obrigatorio para exclusoes, por regra do PRD).
+// Fechar de QUALQUER jeito sem confirmar (Cancelar, X, clicar fora, Esc)
+// resolve false via aoFechar - antes so os botoes resolviam a Promise, entao
+// fechar pelo X/fora/Esc deixava o await de quem chamou preso pra sempre
+// (bug que so ficou visivel depois do Esc passar a fechar o modal).
 export function confirmarAcao({ titulo = 'Confirmar', mensagem, textoConfirmar = 'Confirmar', perigo = true }) {
   return new Promise((resolve) => {
     const corpo = document.createElement('div');
@@ -63,14 +85,11 @@ export function confirmarAcao({ titulo = 'Confirmar', mensagem, textoConfirmar =
         <button type="button" data-confirmar class="${perigo ? 'btn-danger' : 'btn-primary'}">${textoConfirmar}</button>
       </div>
     `;
-    const overlay = abrirModal({ titulo, conteudo: corpo, largura: 'max-w-md' });
-    overlay.querySelector('[data-cancelar]').addEventListener('click', () => {
-      fecharModal();
-      resolve(false);
-    });
+    const overlay = abrirModal({ titulo, conteudo: corpo, largura: 'max-w-md', aoFechar: () => resolve(false) });
+    overlay.querySelector('[data-cancelar]').addEventListener('click', fecharModal);
     overlay.querySelector('[data-confirmar]').addEventListener('click', () => {
-      fecharModal();
       resolve(true);
+      fecharModal();
     });
   });
 }

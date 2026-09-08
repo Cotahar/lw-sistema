@@ -8,7 +8,10 @@ async function camposFormulario() {
   return [
     { nome: 'nome', label: 'Nome', tipo: 'texto', obrigatorio: true },
     { nome: 'cnpj', label: 'CPF/CNPJ', tipo: 'cpf_cnpj' },
-    { nome: 'tipo_id', label: 'Tipo', tipo: 'select', obrigatorio: true, opcoes: tipos.map((t) => ({ label: t.nome, value: t.id })) },
+    {
+      nome: 'tipo_id', label: 'Tipo', tipo: 'select', obrigatorio: true, opcoes: tipos.map((t) => ({ label: t.nome, value: t.id })),
+      avisoSemOpcoes: { mensagem: 'Nenhum tipo de fornecedor cadastrado ainda.', rota: '/config/fornecedor-tipos' },
+    },
     { nome: 'telefone', label: 'Telefone', tipo: 'texto' },
     { nome: 'localizacao', label: 'Localizacao', tipo: 'texto' },
   ];

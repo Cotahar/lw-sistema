@@ -166,7 +166,13 @@ export function criarSearchableSelect({ buscar, valorInicial = null, labelInicia
         selecionar(opcoesAtuais[indiceAtivo]);
       }
     } else if (ev.key === 'Escape') {
-      fecharLista();
+      // So fecha a lista de sugestoes - se deixar o Escape borbulhar, o
+      // listener global do modal.js (Esc fecha o modal) tambem dispararia
+      // no mesmo toque, fechando o formulario inteiro so pra descartar a lista.
+      if (!lista.classList.contains('hidden')) {
+        ev.stopPropagation();
+        fecharLista();
+      }
     }
   });
 

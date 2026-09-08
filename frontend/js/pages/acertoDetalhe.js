@@ -44,6 +44,7 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
     <h1 class="mb-1 text-xl font-bold text-slate-900">Acerto - Viagem #${viagem.id}</h1>
     <p class="mb-4 text-sm text-slate-500">${motorista.nome} · ${formatarDataBr(viagem.data_inicio)} a ${formatarDataBr(viagem.data_fim)} · ${(viagem.km_final - viagem.km_inicial).toLocaleString('pt-BR')} km</p>
     <div class="mb-4 hidden rounded-lg border border-amber-800 bg-amber-950/40 p-3 text-sm text-amber-400" data-aviso-pendentes></div>
+    <div class="mb-4 hidden rounded-lg border border-amber-800 bg-amber-950/40 p-3 text-sm text-amber-400" data-aviso-comissao></div>
     <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
       <div class="card p-4">
         <h2 class="mb-3 font-semibold text-slate-900">Dados calculados</h2>
@@ -71,6 +72,7 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
   const form = container.querySelector('[data-form]');
   const erroEl = container.querySelector('[data-erro]');
   const avisoPendentesEl = container.querySelector('[data-aviso-pendentes]');
+  const avisoComissaoEl = container.querySelector('[data-aviso-comissao]');
   const btnFecharEl = container.querySelector('[data-fechar]');
 
   const valoresAnteriores = {};
@@ -84,6 +86,16 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
       btnFecharEl.disabled = bloqueado;
       btnFecharEl.classList.toggle('opacity-50', bloqueado);
       btnFecharEl.classList.toggle('cursor-not-allowed', bloqueado);
+    }
+    // Sem nenhuma faixa de comissao configurada (ou nenhuma que cubra essa
+    // media de consumo), o percentual aplicado cai pra 0% em silencio - achado
+    // testando o fluxo completo do zero. So avisa enquanto o campo de ajuste
+    // manual estiver vazio: se o usuario ja digitou um percentual, ele esta
+    // no controle e o aviso vira ruido.
+    const semFaixaEComSemAjuste = p.percentualSugerido === null && form.percentual.value === '';
+    avisoComissaoEl.classList.toggle('hidden', !semFaixaEComSemAjuste);
+    if (semFaixaEComSemAjuste) {
+      avisoComissaoEl.innerHTML = 'Nenhuma faixa de comissao cadastrada cobre a media de consumo desta viagem - a comissao vai ficar em <strong>0%</strong> a nao ser que voce digite um percentual manual ao lado, ou <a href="#/config/comissao-faixas" class="font-medium underline">cadastre uma faixa</a> antes de fechar.';
     }
     resumoEl.innerHTML = [
       linha('Frete bruto total', formatarMoeda(p.freteBrutoTotal)),

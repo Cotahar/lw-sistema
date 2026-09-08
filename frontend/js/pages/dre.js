@@ -116,6 +116,7 @@ async function renderGeral(resultadoEl, inicio, fim) {
   const despesasBaseTotal = dre.despesasBase
     ? dre.despesasBase.total
     : (dre.porEmpresa || []).reduce((t, e) => t + e.despesasBase.total, 0);
+  const semNenhumValor = dre.receitaTotal === 0 && dre.custoTotalVeiculos === 0 && despesasBaseTotal === 0 && dre.porVeiculo.length > 0;
   resultadoEl.innerHTML = `
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
       ${cartao('Receita Total', formatarMoeda(dre.receitaTotal))}
@@ -123,6 +124,9 @@ async function renderGeral(resultadoEl, inicio, fim) {
       ${cartao('Despesas Base/Admin', formatarMoeda(despesasBaseTotal))}
       ${cartao('Lucro Liquido', formatarMoeda(dre.lucroLiquido), dre.lucroLiquido >= 0 ? 'text-emerald-600' : 'text-red-600')}
     </div>
+    ${semNenhumValor ? `
+      <p class="mt-3 text-xs text-slate-400">Tudo zerado neste periodo (${formatarDataBr(inicio) || 'inicio'} a ${formatarDataBr(fim) || 'hoje'}), mas ha veiculos cadastrados. Se esperava ver valores, confira se o filtro de datas acima cobre a data das viagens/despesas lancadas.</p>
+    ` : ''}
     <div class="card mt-6 overflow-x-auto border-gray-300 p-0">
       <table class="w-full min-w-max border-collapse">
         <thead class="bg-brand-black"><tr>
@@ -189,12 +193,16 @@ async function renderVeiculo(resultadoEl, veiculoId, inicio, fim) {
   if (inicio) qs.set('data_inicio', inicio);
   if (fim) qs.set('data_fim', fim);
   const dre = await get(`/dre/veiculo/${veiculoId}?${qs.toString()}`);
+  const semNenhumValor = dre.receita === 0 && dre.custos.total === 0;
   resultadoEl.innerHTML = `
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       ${cartao('Receita', formatarMoeda(dre.receita))}
       ${cartao('Custo Total', formatarMoeda(dre.custos.total))}
       ${cartao('Lucro', formatarMoeda(dre.lucro), dre.lucro >= 0 ? 'text-emerald-600' : 'text-red-600')}
     </div>
+    ${semNenhumValor ? `
+      <p class="mt-3 text-xs text-slate-400">Tudo zerado neste veiculo entre ${formatarDataBr(inicio) || 'o inicio'} e ${formatarDataBr(fim) || 'hoje'}. Se esperava ver valores, confira se o periodo filtrado acima cobre a data das viagens/despesas lancadas.</p>
+    ` : ''}
     <div class="card mt-6 p-4">
       <h2 class="mb-1 font-semibold text-slate-900">Detalhamento de custos - ${dre.veiculo.placa}</h2>
       <p class="mb-2 text-xs text-slate-400">Clique numa linha para ver os lancamentos individuais.</p>
