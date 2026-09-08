@@ -48,7 +48,7 @@ function renderGrupoAccordion(chave, titulo, itens, forcarAberto) {
   const aberto = forcarAberto || itens.some((item) => rotaEstaAtiva(item.rota));
   return `
     <div data-grupo="${chave}">
-      <button type="button" data-grupo-toggle="${chave}" class="flex w-full items-center justify-between rounded-lg px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide ${aberto ? 'text-brand-yellow' : 'text-gray-400 hover:text-gray-300'}">
+      <button type="button" data-grupo-toggle="${chave}" class="flex w-full items-center justify-between rounded-lg px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide ${aberto ? 'text-brand-yellow' : 'text-white/50 hover:text-white/80'}">
         <span class="flex items-center gap-1.5">${iconeGrupo(titulo)}${titulo}</span>
         <svg data-grupo-chevron class="h-3 w-3 shrink-0 transition-transform duration-150 ${aberto ? 'rotate-90' : ''}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
@@ -57,7 +57,7 @@ function renderGrupoAccordion(chave, titulo, itens, forcarAberto) {
       <div data-grupo-body class="grupo-corpo ${aberto ? '' : 'recolhido'}">
         <div class="space-y-0.5">
           ${itens.map((item) => `
-            <a href="#${item.rota}" data-rota="${item.rota}" data-cor-base="text-gray-300" data-peso-base="font-medium" class="menu-link flex items-center rounded-lg border-l-4 border-transparent px-3 py-2 text-sm font-medium text-gray-300 hover:bg-white/10 hover:text-white">
+            <a href="#${item.rota}" data-rota="${item.rota}" data-cor-base="text-white/60" data-peso-base="font-medium" class="menu-link flex items-center rounded-lg border-l-4 border-transparent px-3 py-2 text-sm font-medium text-white/60 hover:bg-white/10 hover:text-white">
               ${item.label}
             </a>
           `).join('')}
@@ -87,7 +87,7 @@ function montarSidebarHtml() {
     : '';
 
   return `
-    <a href="#${ROTA_PAINEL}" data-rota="${ROTA_PAINEL}" data-cor-base="text-gray-300" data-peso-base="font-semibold" class="menu-link mb-2 flex items-center gap-2 rounded-lg border-l-4 border-transparent px-3 py-2 text-sm font-semibold text-gray-300 hover:bg-white/10 hover:text-white">
+    <a href="#${ROTA_PAINEL}" data-rota="${ROTA_PAINEL}" data-cor-base="text-white/60" data-peso-base="font-semibold" class="menu-link mb-2 flex items-center gap-2 rounded-lg border-l-4 border-transparent px-3 py-2 text-sm font-semibold text-white/60 hover:bg-white/10 hover:text-white">
       ${ICONE_PAINEL} Painel
     </a>
     ${grupos}
