@@ -1,10 +1,34 @@
 let overlayAtual = null;
+let aoFecharAtual = null;
+
+// Esc fecha o modal aberto - padrao que todo usuario de teclado/mouse espera,
+// e antes so dava pra fechar clicando no X ou no botao de cancelar/fora do
+// modal. Um so listener global (nao um por abertura de modal, senao
+// acumularia handler a cada abrirModal). searchableSelect.js para a
+// propagacao do proprio Escape quando so quer fechar a lista de sugestoes
+// (nao o formulario inteiro por cima) - ver comentario la.
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && overlayAtual) fecharModal();
+});
+
+// Duracao da saida (ms) - precisa bater com a animacao ".fechando" no CSS
+// (input.css) pra nao cortar a transicao no meio nem deixar vao antes de
+// remover o elemento.
+const DURACAO_SAIDA = 120;
 
 export function fecharModal() {
-  if (overlayAtual) {
-    overlayAtual.remove();
-    overlayAtual = null;
-  }
+  if (!overlayAtual) return;
+  const overlay = overlayAtual;
+  const aoFechar = aoFecharAtual;
+  overlayAtual = null;
+  aoFecharAtual = null;
+  overlay.classList.add('fechando');
+  overlay.querySelector(':scope > div')?.classList.add('fechando');
+  setTimeout(() => overlay.remove(), DURACAO_SAIDA);
+  // Dispara DEPOIS de liberar overlayAtual/aoFecharAtual, pra quem escuta
+  // poder abrir outro modal na hora (ex.: um fluxo que encadeia modals) sem
+  // o fecharModal() do proximo achar que ainda ha um aberto.
+  if (aoFechar) aoFechar();
 }
 
 // Usado pelas paginas com atualizacao automatica em segundo plano (Viagem,
@@ -16,15 +40,15 @@ export function modalAberto() {
 
 // Abre um modal generico. `conteudo` pode ser string HTML ou um Node.
 // Retorna o elemento raiz do modal, para quem chamou poder buscar campos etc.
-export function abrirModal({ titulo, conteudo, largura = 'max-w-lg' }) {
+export function abrirModal({ titulo, conteudo, largura = 'max-w-lg', aoFechar }) {
   fecharModal();
   const overlay = document.createElement('div');
-  overlay.className = 'fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 px-4 py-8';
+  overlay.className = 'fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-8 fade-in';
   overlay.innerHTML = `
-    <div class="w-full ${largura} rounded-2xl bg-white shadow-xl">
+    <div class="scale-in w-full ${largura} rounded-2xl bg-brand-surface shadow-xl">
       <div class="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-        <h3 class="text-base font-semibold text-brand-black">${titulo}</h3>
-        <button type="button" data-fechar-modal class="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-brand-black">
+        <h3 class="text-base font-semibold text-gray-900">${titulo}</h3>
+        <button type="button" data-fechar-modal class="rounded-lg p-1 text-gray-400 hover:bg-white/10 hover:text-gray-900">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
         </button>
       </div>
@@ -42,10 +66,15 @@ export function abrirModal({ titulo, conteudo, largura = 'max-w-lg' }) {
 
   document.body.appendChild(overlay);
   overlayAtual = overlay;
+  aoFecharAtual = aoFechar || null;
   return overlay;
 }
 
 // Modal de confirmacao (obrigatorio para exclusoes, por regra do PRD).
+// Fechar de QUALQUER jeito sem confirmar (Cancelar, X, clicar fora, Esc)
+// resolve false via aoFechar - antes so os botoes resolviam a Promise, entao
+// fechar pelo X/fora/Esc deixava o await de quem chamou preso pra sempre
+// (bug que so ficou visivel depois do Esc passar a fechar o modal).
 export function confirmarAcao({ titulo = 'Confirmar', mensagem, textoConfirmar = 'Confirmar', perigo = true }) {
   return new Promise((resolve) => {
     const corpo = document.createElement('div');
@@ -56,14 +85,11 @@ export function confirmarAcao({ titulo = 'Confirmar', mensagem, textoConfirmar =
         <button type="button" data-confirmar class="${perigo ? 'btn-danger' : 'btn-primary'}">${textoConfirmar}</button>
       </div>
     `;
-    const overlay = abrirModal({ titulo, conteudo: corpo, largura: 'max-w-md' });
-    overlay.querySelector('[data-cancelar]').addEventListener('click', () => {
-      fecharModal();
-      resolve(false);
-    });
+    const overlay = abrirModal({ titulo, conteudo: corpo, largura: 'max-w-md', aoFechar: () => resolve(false) });
+    overlay.querySelector('[data-cancelar]').addEventListener('click', fecharModal);
     overlay.querySelector('[data-confirmar]').addEventListener('click', () => {
-      fecharModal();
       resolve(true);
+      fecharModal();
     });
   });
 }

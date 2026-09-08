@@ -7,9 +7,9 @@ import { attachDataMask, parseDataBrParaIso, formatarDataBr, formatarDataHoraBr 
 import { navegar } from '../router.js';
 
 const STATUS_BADGE = {
-  EmAndamento: 'bg-emerald-100 text-emerald-700',
-  AguardandoAcerto: 'bg-amber-100 text-amber-700',
-  Finalizada: 'bg-slate-100 text-slate-600',
+  EmAndamento: 'badge-sucesso',
+  AguardandoAcerto: 'badge-atencao',
+  Finalizada: 'badge-neutro',
 };
 const STATUS_LABEL = { EmAndamento: 'Em Andamento', AguardandoAcerto: 'Aguardando Acerto', Finalizada: 'Finalizada' };
 
@@ -135,17 +135,19 @@ export async function render(container) {
           const consulta = encodeURIComponent(`${r.localizacao_cidade}, ${r.localizacao_uf}`);
           return `
             <details>
-              <summary class="inline cursor-pointer text-brand-black hover:underline">${r.localizacao_cidade}/${r.localizacao_uf}</summary>
+              <summary class="inline cursor-pointer text-gray-900 hover:underline">${r.localizacao_cidade}/${r.localizacao_uf}</summary>
               <div class="mt-1 text-xs text-slate-500">
                 Atualizado em ${formatarDataHoraBr(r.localizacao_atualizado_em)}<br />
-                <a href="https://www.google.com/maps/search/?api=1&query=${consulta}" target="_blank" rel="noopener" class="text-brand-black hover:underline">Abrir no Google Maps</a>
+                <a href="https://www.google.com/maps/search/?api=1&query=${consulta}" target="_blank" rel="noopener" class="text-gray-900 hover:underline">Abrir no Google Maps</a>
               </div>
             </details>
           `;
         },
+        exportar: (r) => (r.localizacao_cidade ? `${r.localizacao_cidade}/${r.localizacao_uf}` : '-'),
       },
-      { chave: 'status', titulo: 'Status', render: (r) => `<span class="badge ${STATUS_BADGE[r.status]}">${STATUS_LABEL[r.status]}</span>` },
+      { chave: 'status', titulo: 'Status', render: (r) => `<span class="${STATUS_BADGE[r.status]}">${STATUS_LABEL[r.status]}</span>`, exportar: (r) => STATUS_LABEL[r.status] },
     ],
+    exportar: { nomeArquivo: 'viagens' },
     buscarDados: async () => {
       const params = new URLSearchParams();
       if (selectStatus.value) params.set('status', selectStatus.value);

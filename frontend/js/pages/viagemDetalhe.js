@@ -1,12 +1,15 @@
 import { get, post, put, patch, del, podeGerenciar, getUsuario } from '../api.js';
 import { criarDataTable } from '../components/dataTable.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
+import { criarNovoFornecedor } from '../components/fornecedorQuickCreate.js';
 import { abrirModal, fecharModal, confirmarAcao, modalAberto } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
 import { criarOcorrencias } from '../components/ocorrencias.js';
 import { formatarMoeda, attachMoedaMask, attachMoedaMaskReais, getMoedaValue, setMoedaValue, attachPesoMask, getPesoValue, attachDataMask, parseDataBrParaIso, formatarDataBr, formatarDataHoraBr, hojeIsoLocal } from '../masks.js';
 import { navegar } from '../router.js';
 import { criarBotaoSincronizarOnixsat } from '../components/onixsatSync.js';
+import { esqueletoPagina } from '../components/skeleton.js';
+import { criarTimelineAuditoria } from '../components/auditoriaTimeline.js';
 
 const TIPOS_TRATORA = ['Cavalo', 'Truck', 'Toco'];
 
@@ -80,7 +83,7 @@ function montarFormularioFrete(aoSalvar) {
     <p class="hidden text-sm text-red-600" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Cadastrar frete</button></div>
   `;
-  const transportadoraSelect = criarSearchableSelect({ buscar: buscarFornecedores, placeholder: 'Pesquisar transportadora...' });
+  const transportadoraSelect = criarSearchableSelect({ buscar: buscarFornecedores, placeholder: 'Pesquisar transportadora...', criarNovo: { label: 'Cadastrar novo fornecedor', abrir: criarNovoFornecedor } });
   form.querySelector('[data-transportadora]').appendChild(transportadoraSelect.el);
   attachPesoMask(form.peso_carga_kg);
   attachMoedaMaskReais(form.frete_bruto, 0);
@@ -261,7 +264,7 @@ async function abrirNovaDespesa(viagemId, recarregar) {
   form.className = 'space-y-4';
   form.innerHTML = `
     <div class="grid grid-cols-2 gap-3">
-      <div><label class="label" data-label-valor>Valor *</label><input type="text" name="valor" class="input" required /></div>
+      <div data-bloco-valor-generico><label class="label">Valor *</label><input type="text" name="valor" class="input" required /></div>
       <div><label class="label">Categoria *</label><select name="categoria_id" class="input" required>${categorias.map((c) => `<option value="${c.id}">${c.nome}</option>`).join('')}</select></div>
     </div>
     <div class="grid grid-cols-2 gap-3">
@@ -282,10 +285,20 @@ async function abrirNovaDespesa(viagemId, recarregar) {
       <p class="mt-1 text-xs text-slate-400">Deixe em branco para usar o veiculo da viagem (padrao). Escolha "Base/Administrativo" se este gasto nao deve entrar no resultado do veiculo (ex.: aporte pessoal).</p>
     </div>
     <div class="rounded-lg border border-slate-200 p-3" data-bloco-abastecimento>
-      <p class="mb-2 text-xs font-medium uppercase text-slate-500">Campos de abastecimento (se aplicavel)</p>
-      <div class="grid grid-cols-2 gap-3">
-        <div><label class="label">Preco/Litro (diesel)</label><input type="text" name="preco_litro" class="input" /></div>
-        <div><label class="label">Litragem (diesel)</label><input type="number" step="0.01" name="litragem" class="input" /></div>
+      <p class="mb-2 text-xs font-medium uppercase text-slate-500">Abastecimento</p>
+      <div><label class="label">Valor total (diesel + Arla)</label><input type="text" name="valor_total_abastecimento" class="input" /></div>
+      <p class="mt-1 text-xs text-slate-400">Soma diesel + Arla automaticamente. Pode digitar o total direto (ex.: o valor do cupom) mesmo que nao bata exatamente com preco x litragem.</p>
+
+      <div class="mt-3 rounded-lg bg-slate-50 p-2">
+        <p class="mb-2 text-xs font-medium uppercase text-slate-500">Diesel</p>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="label">Preco/Litro (diesel)</label><input type="text" name="preco_litro" class="input" /></div>
+          <div><label class="label">Litragem (diesel)</label><input type="number" step="0.01" name="litragem" class="input" /></div>
+        </div>
+        <label class="mt-2 flex items-center gap-2 text-sm text-slate-700">
+          <input type="checkbox" name="tanque_completo" class="h-4 w-4" />
+          Encheu o tanque completamente?
+        </label>
       </div>
       <div class="mt-3 max-w-[12rem]"><label class="label">KM no abastecimento</label><input type="number" name="km_abastecimento" class="input" /></div>
 
@@ -300,16 +313,6 @@ async function abrirNovaDespesa(viagemId, recarregar) {
           <div><label class="label">Valor Arla</label><input type="text" name="arla_valor" class="input" /></div>
         </div>
       </details>
-
-      <p class="mt-3 text-sm font-medium text-slate-600" data-total-despesa></p>
-    </div>
-    <div class="hidden rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800" data-divergencia>
-      <p class="mb-2 font-medium" data-divergencia-msg></p>
-      <div class="flex flex-wrap gap-2">
-        <button type="button" class="btn-secondary btn-sm" data-recalcular="valor">Recalcular valor total</button>
-        <button type="button" class="btn-secondary btn-sm" data-recalcular="preco">Recalcular preco/litro</button>
-        <button type="button" class="btn-secondary btn-sm" data-recalcular="litragem">Recalcular litragem</button>
-      </div>
     </div>
     <div><label class="label">Observacao</label><textarea name="observacao" class="input" rows="2"></textarea></div>
     <p class="hidden text-sm text-red-600" data-erro></p>
@@ -319,6 +322,7 @@ async function abrirNovaDespesa(viagemId, recarregar) {
   attachDataMask(form.data);
   attachDataMask(form.data_vencimento);
   attachMoedaMaskReais(form.valor_pago_dinheiro, 0);
+  attachMoedaMaskReais(form.valor_total_abastecimento, 0);
   attachMoedaMask(form.preco_litro, 0);
   attachMoedaMask(form.arla_preco, 0);
   attachMoedaMask(form.arla_valor, 0);
@@ -336,22 +340,23 @@ async function abrirNovaDespesa(viagemId, recarregar) {
     return categoriaAbastecimentoId !== null && Number(form.categoria_id.value) === categoriaAbastecimentoId;
   }
 
-  const camposAbastecimento = [form.preco_litro, form.litragem, form.km_abastecimento, form.arla_preco, form.arla_qtd, form.arla_valor];
+  const camposAbastecimento = [form.preco_litro, form.litragem, form.km_abastecimento, form.arla_preco, form.arla_qtd, form.arla_valor, form.valor_total_abastecimento, form.tanque_completo];
   let categoriaEraAbastecimento = categoriaEhAbastecimento();
+  let totalAbastecimentoTravado = false;
   function atualizarDisponibilidadeAbastecimento() {
     const ativo = categoriaEhAbastecimento();
     form.querySelector('[data-bloco-abastecimento]').classList.toggle('hidden', !ativo);
+    form.querySelector('[data-bloco-valor-generico]').classList.toggle('hidden', ativo);
     for (const campo of camposAbastecimento) campo.disabled = !ativo;
     if (!ativo) {
-      form.preco_litro.value = ''; form.litragem.value = ''; form.km_abastecimento.value = '';
+      form.preco_litro.value = ''; form.litragem.value = ''; form.km_abastecimento.value = ''; form.tanque_completo.checked = false;
       setMoedaValue(form.arla_preco, 0); form.arla_qtd.value = ''; setMoedaValue(form.arla_valor, 0);
+      setMoedaValue(form.valor_total_abastecimento, 0); totalAbastecimentoTravado = false;
     }
     // Abastecimento aceita lancar so o Arla (compra isolada, sem diesel) -
     // o valor do diesel deixa de ser obrigatorio aqui; o submit exige pelo
     // menos um dos dois preenchidos (ver validacao no listener de submit).
     form.valor.required = !ativo;
-    form.querySelector('[data-label-valor]').textContent = ativo ? 'Valor do diesel' : 'Valor *';
-    atualizarTotalDespesa();
   }
   form.categoria_id.addEventListener('change', () => {
     const agoraAbastecimento = categoriaEhAbastecimento();
@@ -383,12 +388,16 @@ async function abrirNovaDespesa(viagemId, recarregar) {
   // terceiro estiver em branco/zerado, ele e calculado a partir dos outros
   // dois. Nunca sobrescreve um campo que ja tenha valor (o usuario pode ter
   // digitado algo diferente do que o calculo daria). O mesmo vale para o
-  // trio do Arla. O "Total desta despesa" e so uma exibicao (diesel + arla),
-  // nao e enviado como campo separado.
+  // trio do Arla. "Valor total" soma diesel + arla automaticamente, mas o
+  // usuario pode digitar direto nele (ex.: o valor do cupom) - trava
+  // (mesmo padrao do "Frete total" em calculoFrete.js) e passa a mandar
+  // esse valor como valor do diesel (arla mantem o proprio valor
+  // digitado), mesmo que nao bata com preco x litragem do diesel. Editar
+  // preco/litragem/arla de novo destrava e volta a somar automatico.
   function atualizarTotalDespesa() {
-    if (!categoriaEhAbastecimento()) { form.querySelector('[data-total-despesa]').textContent = ''; return; }
+    if (!categoriaEhAbastecimento() || totalAbastecimentoTravado) return;
     const total = getMoedaValue(form.valor) + getMoedaValue(form.arla_valor);
-    form.querySelector('[data-total-despesa]').textContent = `Total desta despesa (diesel + arla): ${formatarMoeda(total)}`;
+    setMoedaValue(form.valor_total_abastecimento, total);
   }
   function recalcularDiesel(campoEditado) {
     if (!categoriaEhAbastecimento()) return;
@@ -400,15 +409,17 @@ async function abrirNovaDespesa(viagemId, recarregar) {
     recalcularTrio(form.arla_preco, form.arla_qtd, form.arla_valor, campoEditado);
     atualizarTotalDespesa();
   }
-  form.valor.addEventListener('input', () => recalcularDiesel(form.valor));
-  form.preco_litro.addEventListener('input', () => recalcularDiesel(form.preco_litro));
-  form.litragem.addEventListener('input', () => recalcularDiesel(form.litragem));
-  form.arla_valor.addEventListener('input', () => recalcularArla(form.arla_valor));
-  form.arla_preco.addEventListener('input', () => recalcularArla(form.arla_preco));
-  form.arla_qtd.addEventListener('input', () => recalcularArla(form.arla_qtd));
+  form.preco_litro.addEventListener('input', () => { totalAbastecimentoTravado = false; recalcularDiesel(form.preco_litro); });
+  form.litragem.addEventListener('input', () => { totalAbastecimentoTravado = false; recalcularDiesel(form.litragem); });
+  form.arla_valor.addEventListener('input', () => { totalAbastecimentoTravado = false; recalcularArla(form.arla_valor); });
+  form.arla_preco.addEventListener('input', () => { totalAbastecimentoTravado = false; recalcularArla(form.arla_preco); });
+  form.arla_qtd.addEventListener('input', () => { totalAbastecimentoTravado = false; recalcularArla(form.arla_qtd); });
+  form.valor_total_abastecimento.addEventListener('input', () => {
+    totalAbastecimentoTravado = true;
+    setMoedaValue(form.valor, Math.max(0, getMoedaValue(form.valor_total_abastecimento) - getMoedaValue(form.arla_valor)));
+  });
 
   const erro = form.querySelector('[data-erro]');
-  const divergenciaEl = form.querySelector('[data-divergencia]');
 
   function montarArlaPayload() {
     const valor = getMoedaValue(form.arla_valor);
@@ -439,6 +450,7 @@ async function abrirNovaDespesa(viagemId, recarregar) {
         arla: montarArlaPayload(),
         centro_custo_id: centroCustoSelect.getValue(),
         valor_pago_dinheiro: form.pago_por.value === 'Empresa' ? getMoedaValue(form.valor_pago_dinheiro) : 0,
+        tanque_completo: categoriaEhAbastecimento() && form.tanque_completo.checked ? 1 : 0,
       });
       if (form.observacao.value.trim()) {
         await post('/ocorrencias', { entidade_tipo: 'DespesaViagem', entidade_id: despesa.id, texto: form.observacao.value.trim() });
@@ -452,24 +464,9 @@ async function abrirNovaDespesa(viagemId, recarregar) {
     }
   }
 
-  divergenciaEl.querySelectorAll('[data-recalcular]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const valor = getMoedaValue(form.valor);
-      const preco = getMoedaValue(form.preco_litro);
-      const litragem = form.litragem.value ? Number(form.litragem.value) : 0;
-      if (btn.dataset.recalcular === 'valor') setMoedaValue(form.valor, Math.round(preco * litragem));
-      else if (btn.dataset.recalcular === 'preco') setMoedaValue(form.preco_litro, litragem > 0 ? Math.round(valor / litragem) : 0);
-      else if (btn.dataset.recalcular === 'litragem') form.litragem.value = preco > 0 ? (valor / preco).toFixed(2) : '0';
-      divergenciaEl.classList.add('hidden');
-      atualizarTotalDespesa();
-      await enviarDespesa();
-    });
-  });
-
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     erro.classList.add('hidden');
-    divergenciaEl.classList.add('hidden');
     if (form.pago_por.value === 'AdminOutros' && !usuarioSelect.getValue()) {
       erro.textContent = 'Selecione quem desembolsou.';
       erro.classList.remove('hidden');
@@ -479,26 +476,6 @@ async function abrirNovaDespesa(viagemId, recarregar) {
       erro.textContent = 'Informe o valor do diesel ou do Arla.';
       erro.classList.remove('hidden');
       return;
-    }
-    // "Prova real": com os 3 valores de diesel preenchidos, confere se
-    // valor == preco_litro x litragem antes de gravar. Se nao bater, deixa o
-    // usuario escolher qual dos 3 recalcular em vez de adivinhar. (O mesmo
-    // cuidado nao se aplica ao Arla porque ele so tem 1 campo de "valor" -
-    // o proprio arla_valor - sem uma segunda fonte independente pra divergir.)
-    if (categoriaEhAbastecimento()) {
-      const valor = getMoedaValue(form.valor);
-      const preco = getMoedaValue(form.preco_litro);
-      const litragem = form.litragem.value ? Number(form.litragem.value) : 0;
-      if (valor > 0 && preco > 0 && litragem > 0) {
-        const esperado = Math.round(preco * litragem);
-        const diferenca = Math.abs(esperado - valor);
-        if (diferenca > 1) {
-          form.querySelector('[data-divergencia-msg]').textContent =
-            `Valor do diesel informado: ${formatarMoeda(valor)} • Preco/Litro x Litragem = ${formatarMoeda(esperado)}. Qual campo deseja recalcular?`;
-          divergenciaEl.classList.remove('hidden');
-          return;
-        }
-      }
     }
     await enviarDespesa();
   });
@@ -518,6 +495,7 @@ function abrirOcorrenciasDespesa(despesa, gerenciar) {
 // vencimento antes da conta a pagar existir).
 function montarFormularioDespesaExistente({ despesa, arlaDespesa, categoriaNome, fornecedorLabelInicial, centroCustoLabelInicial, incluirFormaPagamento, textoSubmit }) {
   const ehArlaIsolada = (categoriaNome || '').trim().toLowerCase() === 'arla';
+  const ehDiesel = (categoriaNome || '').trim().toLowerCase() === 'abastecimento';
   const mostrarVencimento = incluirFormaPagamento && despesa.forma_pagamento_posto === 'AssinarNota' && !despesa.contas_pagar_id;
 
   const form = document.createElement('form');
@@ -537,6 +515,12 @@ function montarFormularioDespesaExistente({ despesa, arlaDespesa, categoriaNome,
       <div><label class="label">${ehArlaIsolada ? 'Preco/Litro (Arla)' : 'Preco/Litro (diesel)'}</label><input type="text" name="preco_litro" class="input" /></div>
       <div><label class="label">${ehArlaIsolada ? 'Litragem (Arla)' : 'Litragem (diesel)'}</label><input type="number" step="0.01" name="litragem" class="input" /></div>
     </div>
+    ${ehDiesel ? `
+      <label class="flex items-center gap-2 text-sm text-slate-700">
+        <input type="checkbox" name="tanque_completo" class="h-4 w-4" />
+        Encheu o tanque completamente?
+      </label>
+    ` : ''}
     <div class="max-w-[12rem]"><label class="label">KM no abastecimento</label><input type="number" name="km_abastecimento" class="input" /></div>
     <div><label class="label">Posto</label><div data-posto-select></div></div>
     <div><label class="label">Centro de custo</label><div data-centro-custo-select></div></div>
@@ -581,6 +565,7 @@ function montarFormularioDespesaExistente({ despesa, arlaDespesa, categoriaNome,
   attachMoedaMask(form.preco_litro, despesa.preco_litro || 0);
   form.litragem.value = despesa.litragem ?? '';
   form.km_abastecimento.value = despesa.km_abastecimento ?? '';
+  if (ehDiesel) form.tanque_completo.checked = Boolean(despesa.tanque_completo);
   if (despesa.pago_por === 'Empresa') {
     attachMoedaMaskReais(form.valor_pago_dinheiro, despesa.valor_pago_dinheiro || 0);
   }
@@ -662,6 +647,7 @@ function abrirValidarDespesa(despesa, arlaDespesa, categoriaNome, fornecedorLabe
       centro_custo_id: centroCustoSelect.getValue(),
       forma_pagamento_posto: form.forma_pagamento_posto.value || undefined,
       valor_pago_dinheiro: form.valor_pago_dinheiro ? getMoedaValue(form.valor_pago_dinheiro) : undefined,
+      tanque_completo: form.tanque_completo ? (form.tanque_completo.checked ? 1 : 0) : undefined,
     };
     if (arlaDespesa) {
       payload.arla_valor = getMoedaValue(form.arla_valor) || undefined;
@@ -716,6 +702,7 @@ function abrirEditarDespesa(despesa, arlaDespesa, categoriaNome, fornecedorLabel
       posto_fornecedor_id: postoSelect.getValue(),
       centro_custo_id: centroCustoSelect.getValue(),
       valor_pago_dinheiro: form.valor_pago_dinheiro ? getMoedaValue(form.valor_pago_dinheiro) : undefined,
+      tanque_completo: form.tanque_completo ? (form.tanque_completo.checked ? 1 : 0) : undefined,
     };
     if (arlaDespesa) {
       payload.arla_valor = getMoedaValue(form.arla_valor) || undefined;
@@ -849,8 +836,8 @@ async function reabrirViagem(viagem, recarregarPagina) {
 // nao atualizava de forma confiavel dentro do <summary>.
 function resumoSecao(titulo, contagem, aberto) {
   return `
-    <summary class="mb-3 flex cursor-pointer list-none items-center justify-between rounded-lg bg-brand-black px-4 py-2.5 hover:bg-gray-800">
-      <h2 class="font-semibold text-white">${titulo} <span class="text-sm font-normal text-gray-400">(${contagem})</span></h2>
+    <summary class="mb-3 flex cursor-pointer list-none items-center justify-between rounded-lg bg-brand-black px-4 py-2.5 hover:bg-white/10">
+      <h2 class="font-semibold text-white">${titulo}${contagem !== null ? ` <span class="text-sm font-normal text-gray-400">(${contagem})</span>` : ''}</h2>
       <svg data-chevron-fechado class="h-4 w-4 shrink-0 text-brand-yellow ${aberto ? 'hidden' : ''}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
       </svg>
@@ -872,7 +859,7 @@ let intervaloAtualizacao = null;
 
 export async function render(container, params) {
   const viagemId = params.id;
-  container.innerHTML = '<p class="text-slate-400">Carregando...</p>';
+  container.innerHTML = esqueletoPagina({ cards: 4 });
   const gerenciar = podeGerenciar('viagens');
 
   async function recarregarPagina() {
@@ -904,6 +891,13 @@ export async function render(container, params) {
     const totalFaturado = (viagem.fretes || []).reduce((t, f) => t + f.frete_bruto, 0);
     const totalDespesas = despesas.reduce((t, d) => t + d.valor, 0);
     const lucroAteAgora = totalFaturado - totalDespesas;
+    // HUD de viabilidade economica: metricas derivadas, so calculadas quando o
+    // denominador faz sentido (km rodado > 0, faturado > 0) - senao ficam "-"
+    // em vez de Infinity/NaN na tela.
+    const faturamentoPorDia = totalFaturado / diasDecorridos;
+    const custoPorDia = totalDespesas / diasDecorridos;
+    const despesaPorKm = kmPercorrido > 0 ? totalDespesas / kmPercorrido : null;
+    const margemPercentual = totalFaturado > 0 ? (lucroAteAgora / totalFaturado) * 100 : null;
 
     // Controle de caixa em dinheiro do motorista (escopo desta viagem):
     // adiantamento sem conta bancaria = dinheiro entregue em especie (nao
@@ -915,23 +909,22 @@ export async function render(container, params) {
     const dinheiroGasto = despesas.reduce((t, d) => t + (d.valor_pago_dinheiro || 0), 0);
     const saldoDinheiro = dinheiroAdiantado - dinheiroGasto;
 
-    // Media de consumo ate agora (so litragem de Abastecimento - Arla nao e
-    // diesel, mesmo lancado junto no formulario unificado - ver acertos.routes.js).
-    const categoriaAbastecimentoId = categorias.find((c) => c.nome.trim().toLowerCase() === 'abastecimento')?.id ?? null;
-    const litrosAbastecidos = despesas
-      .filter((d) => d.categoria_id === categoriaAbastecimentoId)
-      .reduce((t, d) => t + (d.litragem || 0), 0);
-    const mediaConsumo = kmPercorrido && litrosAbastecidos > 0 ? kmPercorrido / litrosAbastecidos : null;
+    // Media "tanque cheio a tanque cheio" - calculada no servidor
+    // (mediaConsumoHelper.js, mesma formula do Acerto/DRE/painel do
+    // motorista) e devolvida junto com a viagem, pra nao duplicar a logica
+    // aqui no frontend.
+    const mediaConsumo = viagem.media_consumo_km_l;
+    const mediaUltimoTanque = viagem.media_ultima_abastecida_km_l;
 
     container.innerHTML = `
       <div class="mb-4 flex items-center justify-between">
         <div>
-          <button type="button" class="mb-2 text-sm text-brand-black hover:underline" data-voltar>&larr; Voltar para Viagens</button>
+          <button type="button" class="mb-2 text-sm text-gray-900 hover:underline" data-voltar>&larr; Voltar para Viagens</button>
           <h1 class="text-xl font-bold text-slate-900">Viagem #${viagem.id} - ${motorista.nome}</h1>
           <p class="text-sm text-slate-500">${conjunto.itens.map((i) => i.placa).join(' + ')} · ${formatarDataBr(viagem.data_inicio)}${viagem.data_fim ? ` a ${formatarDataBr(viagem.data_fim)}` : ''}</p>
         </div>
         <div class="flex items-center gap-2">
-          <span class="badge ${viagem.status === 'EmAndamento' ? 'bg-emerald-100 text-emerald-700' : viagem.status === 'AguardandoAcerto' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}">${STATUS_LABEL[viagem.status]}</span>
+          <span class="${viagem.status === 'EmAndamento' ? 'badge-sucesso' : viagem.status === 'AguardandoAcerto' ? 'badge-atencao' : 'badge-neutro'}">${STATUS_LABEL[viagem.status]}</span>
           ${gerenciar && viagem.status === 'EmAndamento' ? '<button type="button" class="btn-primary" data-finalizar>Finalizar viagem</button>' : ''}
           ${viagem.status !== 'EmAndamento' ? `<button type="button" class="btn-secondary" data-ir-acerto>Ir para Acerto</button>` : ''}
           ${getUsuario()?.perfil === 'Admin' && viagem.status === 'Finalizada' ? '<button type="button" class="btn-danger" data-reabrir>Reabrir viagem</button>' : ''}
@@ -939,7 +932,7 @@ export async function render(container, params) {
       </div>
 
       <div class="mb-2 flex justify-end" data-onixsat-botao></div>
-      <div class="card mb-6 grid grid-cols-2 gap-4 p-4 sm:grid-cols-4 lg:grid-cols-7">
+      <div class="card mb-4 grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 lg:grid-cols-5">
         <div>
           <p class="text-xs font-medium uppercase text-slate-500">Localizacao atual</p>
           ${tratora && tratora.localizacao_cidade ? `
@@ -947,7 +940,7 @@ export async function render(container, params) {
               <summary class="inline cursor-pointer text-sm font-semibold text-slate-900">${tratora.localizacao_cidade}/${tratora.localizacao_uf}</summary>
               <div class="mt-1 text-xs text-slate-500">
                 Atualizado em ${formatarDataHoraBr(tratora.localizacao_atualizado_em)}<br />
-                <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${tratora.localizacao_cidade}, ${tratora.localizacao_uf}`)}" target="_blank" rel="noopener" class="text-brand-black hover:underline">Google Maps</a>
+                <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${tratora.localizacao_cidade}, ${tratora.localizacao_uf}`)}" target="_blank" rel="noopener" class="text-gray-900 hover:underline">Google Maps</a>
               </div>
             </details>
           ` : '<p class="text-sm text-slate-400">Nao informada</p>'}
@@ -962,19 +955,45 @@ export async function render(container, params) {
         </div>
         <div>
           <p class="text-xs font-medium uppercase text-slate-500">Media de consumo</p>
-          <p class="text-sm font-semibold text-slate-900">${mediaConsumo !== null ? `${mediaConsumo.toFixed(2)} km/l` : '-'}</p>
+          <p class="text-sm font-semibold text-slate-900" title="Tanque cheio a tanque cheio">${mediaConsumo !== null ? `${mediaConsumo.toFixed(2)} km/l` : '-'}</p>
         </div>
         <div>
-          <p class="text-xs font-medium uppercase text-slate-500">Faturado ate agora</p>
-          <p class="text-sm font-semibold text-slate-900">${formatarMoeda(totalFaturado)}</p>
+          <p class="text-xs font-medium uppercase text-slate-500">Media do ultimo tanque</p>
+          <p class="text-sm font-semibold text-slate-900">${mediaUltimoTanque !== null ? `${mediaUltimoTanque.toFixed(2)} km/l` : '-'}</p>
         </div>
-        <div>
-          <p class="text-xs font-medium uppercase text-slate-500">Despesas ate agora</p>
-          <p class="text-sm font-semibold text-slate-900">${formatarMoeda(totalDespesas)}</p>
-        </div>
-        <div>
-          <p class="text-xs font-medium uppercase text-slate-500">Lucro ate agora</p>
-          <p class="text-sm font-semibold ${lucroAteAgora >= 0 ? 'text-emerald-600' : 'text-red-600'}">${formatarMoeda(lucroAteAgora)}</p>
+      </div>
+
+      <div class="card mb-6 p-4">
+        <p class="mb-3 text-xs font-medium uppercase text-slate-500">Viabilidade economica ate agora</p>
+        <div class="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-7">
+          <div>
+            <p class="text-xs font-medium uppercase text-slate-500">Faturado</p>
+            <p class="text-sm font-semibold text-slate-900">${formatarMoeda(totalFaturado)}</p>
+          </div>
+          <div>
+            <p class="text-xs font-medium uppercase text-slate-500">Despesas</p>
+            <p class="text-sm font-semibold text-slate-900">${formatarMoeda(totalDespesas)}</p>
+          </div>
+          <div>
+            <p class="text-xs font-medium uppercase text-slate-500">Lucro</p>
+            <p class="text-sm font-semibold ${lucroAteAgora >= 0 ? 'text-emerald-600' : 'text-red-600'}">${formatarMoeda(lucroAteAgora)}</p>
+          </div>
+          <div>
+            <p class="text-xs font-medium uppercase text-slate-500">Margem</p>
+            <p class="text-sm font-semibold ${margemPercentual !== null && margemPercentual >= 0 ? 'text-emerald-600' : 'text-red-600'}">${margemPercentual !== null ? `${margemPercentual.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%` : '-'}</p>
+          </div>
+          <div>
+            <p class="text-xs font-medium uppercase text-slate-500">Faturamento/dia</p>
+            <p class="text-sm font-semibold text-slate-900">${formatarMoeda(Math.round(faturamentoPorDia))}</p>
+          </div>
+          <div>
+            <p class="text-xs font-medium uppercase text-slate-500">Custo/dia</p>
+            <p class="text-sm font-semibold text-slate-900">${formatarMoeda(Math.round(custoPorDia))}</p>
+          </div>
+          <div>
+            <p class="text-xs font-medium uppercase text-slate-500">Despesas/km</p>
+            <p class="text-sm font-semibold text-slate-900">${despesaPorKm !== null ? formatarMoeda(Math.round(despesaPorKm)) : '-'}</p>
+          </div>
         </div>
       </div>
 
@@ -1011,9 +1030,23 @@ export async function render(container, params) {
           </table>
         </div>
       </details>
+
+      ${getUsuario()?.perfil === 'Admin' ? `
+        <details class="mt-6" data-secao-auditoria>
+          ${resumoSecao('Historico (auditoria)', null, false)}
+          <div data-timeline-auditoria></div>
+        </details>
+      ` : ''}
     `;
 
-    ['[data-secao-fretes]', '[data-secao-despesas]', '[data-secao-adiantamentos]'].forEach((seletor) => {
+    const secoesColapsaveis = ['[data-secao-fretes]', '[data-secao-despesas]', '[data-secao-adiantamentos]'];
+    if (getUsuario()?.perfil === 'Admin') {
+      secoesColapsaveis.push('[data-secao-auditoria]');
+      container.querySelector('[data-timeline-auditoria]').appendChild(
+        criarTimelineAuditoria({ tabela: 'viagens', registroId: viagem.id }).el,
+      );
+    }
+    secoesColapsaveis.forEach((seletor) => {
       ligarChevronSecao(container.querySelector(seletor));
     });
     container.querySelector('[data-voltar]').addEventListener('click', () => navegar('/viagens'));
@@ -1083,9 +1116,9 @@ export async function render(container, params) {
           titulo: 'Status',
           render: (d) => (d.validado_em
             ? '<span class="text-xs text-slate-400">Validada</span>'
-            : `<span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">Pendente de validacao${d.forma_pagamento_posto === 'AssinarNota' ? ' (assinar nota)' : ''}</span>`),
+            : `<span class="badge-atencao">Pendente de validacao${d.forma_pagamento_posto === 'AssinarNota' ? ' (assinar nota)' : ''}</span>`),
         },
-        { chave: 'vencimento', titulo: 'Vencimento', render: (d) => (d.data_vencimento ? formatarDataBr(d.data_vencimento) : '-') + (d.contas_pagar_id ? ' <a href="#/contas-pagar" class="text-xs text-brand-black hover:underline">(ver conta)</a>' : '') },
+        { chave: 'vencimento', titulo: 'Vencimento', render: (d) => (d.data_vencimento ? formatarDataBr(d.data_vencimento) : '-') + (d.contas_pagar_id ? ' <a href="#/contas-pagar" class="text-xs text-gray-900 hover:underline">(ver conta)</a>' : '') },
       ],
       buscarDados: (termo) => {
         if (!termo) return Promise.resolve(despesas);

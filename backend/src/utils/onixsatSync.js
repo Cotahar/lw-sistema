@@ -72,6 +72,12 @@ async function sincronizarEmpresa(empresaId, usuarioId = null) {
 
   const { mapa: mapaVeiIdParaVeiculoId, veiculosOnixsat } = await obterMapeamentoVeiculos(empresa);
 
+  // Timestamp de "ultima sincronizacao" (mostrado no cabecalho do app) marca
+  // o momento em que a API da Onixsat respondeu com sucesso - inclusive nos
+  // dois casos de aviso abaixo (a chamada RequestVeiculo funcionou, so nao
+  // ha nada util pra mapear ainda).
+  db.prepare("UPDATE empresas SET onixsat_ultima_sincronizacao = datetime('now', '-3 hours') WHERE id = ?").run(empresaId);
+
   if (!veiculosOnixsat) {
     return {
       veiculosOnixsat: 0, veiculosMapeados: 0, mensagensProcessadas: 0,

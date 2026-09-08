@@ -1,0 +1,61 @@
+name: CI
+
+# Roda sozinho a cada push/PR - ninguem precisa lembrar de rodar `npm test`
+# manualmente antes de subir uma mudanca.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Instalar dependencias do backend
+        working-directory: backend
+        run: npm install
+      - name: Rodar testes do backend
+        working-directory: backend
+        run: npm test
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Instalar dependencias do frontend
+        working-directory: frontend
+        run: npm install
+      - name: Compilar CSS (garante que o Tailwind nao quebrou)
+        working-directory: frontend
+        run: npm run build
+
+  e2e-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Instalar dependencias do backend
+        working-directory: backend
+        run: npm install
+      - name: Instalar dependencias do frontend
+        working-directory: frontend
+        run: npm install
+      - name: Compilar CSS
+        working-directory: frontend
+        run: npm run build
+      - name: Instalar navegador do Playwright
+        working-directory: frontend
+        run: npx playwright install chromium --with-deps
+      - name: Rodar testes end-to-end
+        working-directory: frontend
+        run: npm run test:e2e

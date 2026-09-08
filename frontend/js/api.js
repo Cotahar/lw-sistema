@@ -1,3 +1,5 @@
+import { notificarMudanca } from './components/syncAbas.js';
+
 const TOKEN_KEY = 'frotista_token';
 const USUARIO_KEY = 'frotista_usuario';
 const EMPRESA_KEY = 'frotista_empresa_id';
@@ -106,6 +108,13 @@ export async function api(method, path, body) {
   if (!res.ok) {
     const mensagem = (data && data.erro) || `Erro ${res.status}`;
     throw new ApiError(res.status, mensagem);
+  }
+  // Avisa outras abas que algo mudou (ver syncAbas.js) - so em escrita bem
+  // sucedida, e so o primeiro segmento do caminho (ex.: "/veiculos/5" ->
+  // "veiculos"), o bastante pra outra aba decidir se aquilo importa pra ela.
+  if (method !== 'GET') {
+    const recurso = path.split('/').filter(Boolean)[0];
+    if (recurso) notificarMudanca(recurso);
   }
   return data;
 }

@@ -1,6 +1,7 @@
 import { get, post } from '../api.js';
 import { formatarDataHoraBr } from '../masks.js';
 import { mostrarErro } from './toast.js';
+import { esqueletoLinhas } from './skeleton.js';
 
 // Linha do tempo de ocorrencias reutilizavel, anexada a um registro
 // (entidadeTipo + entidadeId precisam bater com MODULO_POR_ENTIDADE no
@@ -33,7 +34,7 @@ export function criarOcorrencias({ entidadeTipo, entidadeId, podeGerenciar, resu
 
   async function carregar() {
     const lista = el.querySelector('[data-lista]');
-    lista.innerHTML = '<p class="text-sm text-slate-400">Carregando...</p>';
+    lista.innerHTML = esqueletoLinhas(2);
     try {
       const ocorrencias = await get(`/ocorrencias?entidade_tipo=${entidadeTipo}&entidade_id=${entidadeId}`);
       if (!ocorrencias.length) {
@@ -44,7 +45,7 @@ export function criarOcorrencias({ entidadeTipo, entidadeId, podeGerenciar, resu
         const restantes = ocorrencias.slice(1);
         lista.innerHTML = `
           ${renderItem(ocorrencias[0])}
-          <button type="button" class="text-xs text-brand-black hover:underline" data-ver-todas>Ver mais ${restantes.length} ocorrencia${restantes.length > 1 ? 's' : ''}</button>
+          <button type="button" class="text-xs text-gray-900 hover:underline" data-ver-todas>Ver mais ${restantes.length} ocorrencia${restantes.length > 1 ? 's' : ''}</button>
           <div class="hidden space-y-2" data-restantes>${restantes.map(renderItem).join('')}</div>
         `;
         lista.querySelector('[data-ver-todas]').addEventListener('click', (ev) => {

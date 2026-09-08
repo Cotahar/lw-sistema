@@ -38,16 +38,16 @@ router.get('/:id', requerAcessoModulo('veiculos', 'Visualizar'), exigirEmpresaEs
 }));
 
 router.post('/', requerAcessoModulo('veiculos', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const { placa, tipo, qtd_eixos, marca, modelo, ano_fabricacao, carreta_padrao_id, hodometro_atual } = req.body;
+  const { placa, tipo, qtd_eixos, marca, modelo, ano_fabricacao, carreta_padrao_id, hodometro_atual, tipo_tracao } = req.body;
   if (!placa || !tipo || !qtd_eixos) throw new ApiError(400, 'Preencha placa, tipo e quantidade de eixos.');
   if (!TIPOS.includes(tipo)) throw new ApiError(400, `Tipo invalido. Use um de: ${TIPOS.join(', ')}`);
   validarCarretaPadrao(tipo, carreta_padrao_id, req.empresaId);
 
   const veiculo = withTransaction(db, () => {
     const info = db.prepare(`
-      INSERT INTO veiculos (empresa_id, placa, tipo, qtd_eixos, marca, modelo, ano_fabricacao, carreta_padrao_id, hodometro_atual)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(req.empresaId, placa.toUpperCase(), tipo, qtd_eixos, marca || null, modelo || null, ano_fabricacao || null, carreta_padrao_id || null, hodometro_atual || 0);
+      INSERT INTO veiculos (empresa_id, placa, tipo, qtd_eixos, marca, modelo, ano_fabricacao, carreta_padrao_id, hodometro_atual, tipo_tracao)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(req.empresaId, placa.toUpperCase(), tipo, qtd_eixos, marca || null, modelo || null, ano_fabricacao || null, carreta_padrao_id || null, hodometro_atual || 0, tipo === 'Cavalo' ? tipo_tracao || null : null);
     // Todo veiculo e, por si so, um centro de custo (usado por despesas, OS, DRE...).
     db.prepare('INSERT INTO centros_custo (empresa_id, tipo, veiculo_id, nome) VALUES (?, ?, ?, ?)')
       .run(req.empresaId, 'Veiculo', info.lastInsertRowid, placa.toUpperCase());
@@ -66,7 +66,7 @@ router.put('/:id', requerAcessoModulo('veiculos', 'Gerenciar'), exigirEmpresaEsp
   const carretaPadraoId = req.body.carreta_padrao_id !== undefined ? req.body.carreta_padrao_id : antes.carreta_padrao_id;
   validarCarretaPadrao(tipo, carretaPadraoId, req.empresaId);
 
-  const campos = { placa: 'placa', tipo: 'tipo', qtd_eixos: 'qtd_eixos', marca: 'marca', modelo: 'modelo', ano_fabricacao: 'ano_fabricacao', carreta_padrao_id: 'carreta_padrao_id', ativo: 'ativo' };
+  const campos = { placa: 'placa', tipo: 'tipo', qtd_eixos: 'qtd_eixos', marca: 'marca', modelo: 'modelo', ano_fabricacao: 'ano_fabricacao', carreta_padrao_id: 'carreta_padrao_id', ativo: 'ativo', tipo_tracao: 'tipo_tracao' };
   const sets = [];
   const valores = [];
   for (const [campo, coluna] of Object.entries(campos)) {
@@ -86,12 +86,59 @@ router.put('/:id', requerAcessoModulo('veiculos', 'Gerenciar'), exigirEmpresaEsp
   res.json(depois);
 }));
 
+// Todo veiculo ganha um centro_custo automatico no POST (ver acima) - o DELETE
+// precisa desfazer isso na mesma ordem inversa, senao a FK de centros_custo
+// bloqueia ate a exclusao de um veiculo novo, nunca usado (bug encontrado ao
+// escrever o teste do batch-delete abaixo). Um veiculo com despesas/OS/
+// financiamentos de verdade continua protegido: nesse caso e o proprio
+// DELETE FROM centros_custo que falha (FK de quem referencia o centro de
+// custo), entao a exclusao ainda e bloqueada onde deveria.
 router.delete('/:id', requerAcessoModulo('veiculos', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const antes = db.prepare('SELECT * FROM veiculos WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
   if (!antes) throw new ApiError(404, 'Veiculo nao encontrado.');
-  db.prepare('DELETE FROM veiculos WHERE id = ?').run(req.params.id);
+  withTransaction(db, () => {
+    db.prepare('DELETE FROM centros_custo WHERE veiculo_id = ?').run(req.params.id);
+    db.prepare('DELETE FROM veiculos WHERE id = ?').run(req.params.id);
+  });
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'veiculos', registroId: antes.id, acao: 'DELETE', antes });
   res.status(204).send();
+}));
+
+// Rota ja era chamada pelo frontend (tela de veiculos tem selecao em lote) mas
+// nunca existiu no backend - toda exclusao em lote de veiculo dava 404 silencioso.
+router.post('/batch-delete', requerAcessoModulo('veiculos', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || !ids.length) throw new ApiError(400, 'Informe a lista de ids a excluir.');
+  withTransaction(db, () => {
+    for (const id of ids) {
+      const antes = db.prepare('SELECT * FROM veiculos WHERE id = ? AND empresa_id = ?').get(id, req.empresaId);
+      if (!antes) continue;
+      db.prepare('DELETE FROM centros_custo WHERE veiculo_id = ?').run(id);
+      db.prepare('DELETE FROM veiculos WHERE id = ?').run(id);
+      registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'veiculos', registroId: id, acao: 'DELETE', antes });
+    }
+  });
+  res.status(204).send();
+}));
+
+// Motorista vinculado a este veiculo NUMA data especifica (regra do dominio:
+// so um motorista por placa a cada periodo, via a viagem cujo periodo cobre
+// aquela data) - usado como sugestao inteligente em "Indicar condutor" da
+// multa, nunca como filtro rigido (o operador sempre pode escolher outro).
+router.get('/:id/motorista-do-periodo', requerAcessoModulo('veiculos', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { data } = req.query;
+  if (!data) throw new ApiError(400, 'Informe a data.');
+  const veiculo = db.prepare('SELECT id FROM veiculos WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
+  if (!veiculo) throw new ApiError(404, 'Veiculo nao encontrado.');
+  const viagem = db.prepare(`
+    SELECT vg.motorista_id, m.nome AS motorista_nome
+    FROM viagens vg
+    JOIN conjunto_itens ci ON ci.conjunto_id = vg.conjunto_id
+    JOIN motoristas m ON m.id = vg.motorista_id
+    WHERE ci.veiculo_id = ? AND vg.data_inicio <= ? AND (vg.data_fim IS NULL OR vg.data_fim >= ?)
+    ORDER BY vg.data_inicio DESC LIMIT 1
+  `).get(req.params.id, data, data);
+  res.json(viagem ? { motorista_id: viagem.motorista_id, motorista_nome: viagem.motorista_nome } : null);
 }));
 
 // Historico de hodometro e ajuste manual (fallback quando a telemetria Onixsat falha).

@@ -84,6 +84,20 @@ async function abrirFormularioUsuario(registro, recarregar) {
   abrirModal({ titulo: registro ? `Editar ${registro.nome}` : 'Novo usuario', conteudo: form });
 }
 
+// Matriz (modulo x nivel) em vez do dropdown antigo: da pra ver o desenho
+// completo de acesso do usuario num relance (quais modulos ele gerencia,
+// quais so ve, quais nao acessa) em vez de abrir select por select. Cada
+// celula e um radio - so uma coluna pode estar marcada por linha.
+function celulaPermissao(modulo, nivel, nivelAtual) {
+  const id = `perm-${modulo}-${nivel}`;
+  return `
+    <label for="${id}" class="flex cursor-pointer items-center justify-center rounded-lg py-1.5 has-[:checked]:bg-brand-yellow has-[:checked]:font-semibold has-[:checked]:text-brand-black">
+      <input type="radio" id="${id}" name="perm-${modulo}" value="${nivel}" class="sr-only" ${nivel === nivelAtual ? 'checked' : ''} />
+      <span class="text-xs text-slate-600 has-[:checked]:text-brand-black">${nivel}</span>
+    </label>
+  `;
+}
+
 async function abrirPermissoes(usuarioRow) {
   try {
     const { usuario, permissoes } = await get(`/usuarios/${usuarioRow.id}/permissoes`);
@@ -91,12 +105,14 @@ async function abrirPermissoes(usuarioRow) {
     corpo.innerHTML = `
       <p class="mb-3 text-sm text-slate-500">Perfil base: <span class="font-medium">${usuario.perfil}</span>. Mude o nivel abaixo so onde o acesso deve ser diferente do padrao.</p>
       <div class="max-h-96 space-y-1 overflow-y-auto">
+        <div class="grid grid-cols-[1fr_repeat(3,5rem)] items-center gap-1 px-2 pb-1 text-xs font-medium uppercase text-slate-500">
+          <span></span>
+          ${NIVEIS.map((n) => `<span class="text-center">${n}</span>`).join('')}
+        </div>
         ${permissoes.map((p) => `
-          <div class="flex items-center justify-between rounded-lg px-2 py-1.5 ${p.excecao ? 'bg-amber-50' : ''}">
-            <span class="text-sm text-slate-700">${p.nome}</span>
-            <select class="input w-40" data-modulo="${p.modulo}">
-              ${NIVEIS.map((n) => `<option value="${n}" ${n === p.nivel ? 'selected' : ''}>${n}</option>`).join('')}
-            </select>
+          <div class="grid grid-cols-[1fr_repeat(3,5rem)] items-center gap-1 rounded-lg px-2 py-1 ${p.excecao ? 'bg-amber-950/40' : ''}" data-linha-modulo="${p.modulo}">
+            <span class="truncate text-sm text-slate-700" title="${p.nome}">${p.nome}</span>
+            ${NIVEIS.map((n) => celulaPermissao(p.modulo, n, p.nivel)).join('')}
           </div>
         `).join('')}
       </div>
@@ -107,8 +123,11 @@ async function abrirPermissoes(usuarioRow) {
     `;
     const overlay = abrirModal({ titulo: `Permissoes - ${usuario.nome}`, conteudo: corpo, largura: 'max-w-lg' });
     overlay.querySelector('[data-salvar]').addEventListener('click', async () => {
-      const selects = overlay.querySelectorAll('[data-modulo]');
-      const payload = [...selects].map((s) => ({ modulo: s.dataset.modulo, nivel: s.value }));
+      const linhas = overlay.querySelectorAll('[data-linha-modulo]');
+      const payload = [...linhas].map((linha) => ({
+        modulo: linha.dataset.linhaModulo,
+        nivel: linha.querySelector('input:checked').value,
+      }));
       try {
         await put(`/usuarios/${usuarioRow.id}/permissoes`, { permissoes: payload });
         fecharModal();
@@ -172,12 +191,13 @@ export async function render(container) {
       { chave: 'nome', titulo: 'Nome' },
       { chave: 'email', titulo: 'E-mail' },
       { chave: 'perfil', titulo: 'Perfil' },
-      { chave: 'ativo', titulo: 'Status', render: (r) => (r.ativo ? '<span class="badge bg-emerald-100 text-emerald-700">Ativo</span>' : '<span class="badge bg-slate-100 text-slate-500">Inativo</span>') },
+      { chave: 'ativo', titulo: 'Status', render: (r) => (r.ativo ? '<span class="badge-sucesso">Ativo</span>' : '<span class="badge-neutro">Inativo</span>') },
     ],
     buscarDados: () => get('/usuarios'),
     onNovo: () => abrirFormularioUsuario(null, tabela.recarregar),
     onEditar: (r) => abrirFormularioUsuario(r, tabela.recarregar),
     onExcluir: (r) => del(`/usuarios/${r.id}`),
+    onExcluirLote: (ids) => post('/usuarios/batch-delete', { ids }),
     acoesExtras: (r) => (['Admin', 'Motorista'].includes(r.perfil) ? [] : [{ label: 'Permissoes', onClick: abrirPermissoes }, { label: 'Empresas', onClick: abrirEmpresas }]),
     tituloNovo: 'Usuario',
   });

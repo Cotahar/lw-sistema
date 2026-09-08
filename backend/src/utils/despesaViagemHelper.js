@@ -78,7 +78,7 @@ function resolverContaPagarAposEdicao({ contaPagarId, novoValor, despesaId }) {
 function criarDespesaViagem({
   empresaId, viagem, freteId, centroCustoId, categoriaId, valor, data, pagoPor, pagoPorUsuarioId,
   postoFornecedorId, precoLitro, litragem, kmAbastecimento, dataVencimento, descricao, arla, usuarioId,
-  fotoRecibo, idempotencyKey, formaPagamentoPosto, precisaValidacao, valorPagoDinheiro,
+  fotoRecibo, idempotencyKey, formaPagamentoPosto, precisaValidacao, valorPagoDinheiro, tanqueCompleto,
 }) {
   return withTransaction(db, () => {
     const validadoPor = precisaValidacao ? null : usuarioId;
@@ -88,12 +88,12 @@ function criarDespesaViagem({
       INSERT INTO despesas_viagem (
         empresa_id, viagem_id, frete_id, centro_custo_id, categoria_id, valor, data, pago_por, pago_por_usuario_id,
         posto_fornecedor_id, preco_litro, litragem, km_abastecimento, data_vencimento, descricao, criado_por,
-        foto_recibo, idempotency_key, forma_pagamento_posto, validado_por, validado_em, valor_pago_dinheiro
-      ) VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        foto_recibo, idempotency_key, forma_pagamento_posto, validado_por, validado_em, valor_pago_dinheiro, tanque_completo
+      ) VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       empresaId, viagem.id, freteId, centroCustoId, categoriaId, valor, data || null, pagoPor, pagoPorUsuarioId || null,
       postoFornecedorId || null, precoLitro || null, litragem || null, kmAbastecimento || null, dataVencimento || null, descricao || null, usuarioId,
-      fotoRecibo || null, idempotencyKey || null, formaPagamentoPosto || null, validadoPor, validadoEm, valorPagoDinheiro || 0
+      fotoRecibo || null, idempotencyKey || null, formaPagamentoPosto || null, validadoPor, validadoEm, valorPagoDinheiro || 0, tanqueCompleto ? 1 : 0
     );
     const novaDespesa = db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(info.lastInsertRowid);
 

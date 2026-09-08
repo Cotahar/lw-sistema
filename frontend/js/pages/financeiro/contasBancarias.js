@@ -107,7 +107,7 @@ export async function render(container) {
       { chave: 'nome', titulo: 'Nome' },
       { chave: 'banco', titulo: 'Banco', render: (r) => r.banco || '-' },
       { chave: 'saldo_atual', titulo: 'Saldo Atual', render: (r) => formatarMoeda(r.saldo_atual) },
-      { chave: 'ativo', titulo: 'Status', render: (r) => (r.ativo ? '<span class="badge bg-emerald-100 text-emerald-700">Ativa</span>' : '<span class="badge bg-slate-100 text-slate-500">Inativa</span>') },
+      { chave: 'ativo', titulo: 'Status', render: (r) => (r.ativo ? '<span class="badge-sucesso">Ativa</span>' : '<span class="badge-neutro">Inativa</span>') },
     ],
     buscarDados: () => get('/contas-bancarias'),
     onNovo: gerenciar ? () => abrirFormulario(null, tabela.recarregar) : undefined,

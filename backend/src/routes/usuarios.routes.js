@@ -101,6 +101,24 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   res.status(204).send();
 }));
 
+// O proprio usuario nunca e excluido, mesmo se vier marcado na selecao -
+// mesma regra do DELETE unitario, so que aqui e mais facil de acontecer por
+// acidente (selecionar "todos" numa lista onde voce tambem aparece).
+router.post('/batch-delete', asyncHandler(async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || !ids.length) throw new ApiError(400, 'Informe a lista de ids a excluir.');
+  withTransaction(db, () => {
+    for (const id of ids) {
+      if (Number(id) === req.usuario.id) continue;
+      const antes = db.prepare(`${SELECT_SEGURO} WHERE u.id = ?`).get(id);
+      if (!antes) continue;
+      db.prepare('DELETE FROM usuarios WHERE id = ?').run(id);
+      registrarAuditoria({ usuarioId: req.usuario.id, tabela: 'usuarios', registroId: id, acao: 'DELETE', antes });
+    }
+  });
+  res.status(204).send();
+}));
+
 // ---- Excecoes de permissao por modulo (ver usuario_permissoes no schema) ----
 // Devolve TODOS os modulos do sistema, com o nivel efetivo (excecao, se
 // houver, senao o padrao do perfil base) e se aquela linha e uma excecao

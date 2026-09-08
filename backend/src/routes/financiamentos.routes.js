@@ -97,4 +97,23 @@ router.delete('/:id', requerAcessoModulo('financiamentos', 'Gerenciar'), exigirE
   res.status(204).send();
 }));
 
+router.post('/batch-delete', requerAcessoModulo('financiamentos', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || !ids.length) throw new ApiError(400, 'Informe a lista de ids a excluir.');
+  const registros = ids.map((id) => {
+    const antes = buscarFinanciamentoCompleto(id, req.empresaId);
+    if (!antes) throw new ApiError(404, `Financiamento #${id} nao encontrado.`);
+    if (antes.parcelas.some((p) => p.status === 'Paga')) throw new ApiError(400, `O financiamento #${id} tem parcelas ja pagas e nao pode ser excluido em lote.`);
+    return antes;
+  });
+  withTransaction(db, () => {
+    for (const antes of registros) {
+      db.prepare("DELETE FROM contas_pagar WHERE origem_tipo = 'FinanciamentoParcela' AND origem_id IN (SELECT id FROM financiamento_parcelas WHERE financiamento_id = ?)").run(antes.id);
+      db.prepare('DELETE FROM financiamentos WHERE id = ?').run(antes.id);
+      registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'financiamentos', registroId: antes.id, acao: 'DELETE', antes });
+    }
+  });
+  res.status(204).send();
+}));
+
 module.exports = router;

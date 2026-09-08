@@ -4,6 +4,7 @@ import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { abrirModal, fecharModal, confirmarAcao, modalAberto } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
 import { formatarDataBr, formatarDataHoraBr } from '../masks.js';
+import { comCopiar } from '../components/copiar.js';
 import { criarBotaoSincronizarOnixsat } from '../components/onixsatSync.js';
 
 const TIPOS = ['Cavalo', 'Carreta', 'Dolly', 'Truck', 'Toco'];
@@ -38,9 +39,21 @@ function montarFormulario(registro, aoSalvar) {
       <div><label class="label">Modelo</label><input type="text" name="modelo" class="input" /></div>
     </div>
     <div><label class="label">Ano de fabricacao</label><input type="number" name="ano_fabricacao" class="input" /></div>
-    <div data-bloco-carreta class="hidden">
-      <label class="label">Carreta padrao</label>
-      <div data-carreta-select></div>
+    <div data-bloco-carreta class="hidden space-y-4">
+      <div>
+        <label class="label">Carreta padrao</label>
+        <div data-carreta-select></div>
+      </div>
+      <div>
+        <label class="label">Tracao</label>
+        <select name="tipo_tracao" class="input">
+          <option value="">Nao informado</option>
+          <option value="4x2">4x2 (2 eixos, so o 2 traciona)</option>
+          <option value="6x2">6x2 (3 eixos, so o 2 traciona)</option>
+          <option value="6x4">6x4 (3 eixos, 2 e 3 tracionam)</option>
+        </select>
+        <p class="mt-1 text-xs text-slate-500">Usado no diagrama de pneus pra saber qual eixo e de tracao. Eixo 1 (dianteiro) nunca traciona.</p>
+      </div>
     </div>
     <p class="hidden text-sm text-red-600" data-erro></p>
     <div class="flex justify-end gap-2 pt-2">
@@ -54,6 +67,7 @@ function montarFormulario(registro, aoSalvar) {
   form.marca.value = registro?.marca || '';
   form.modelo.value = registro?.modelo || '';
   form.ano_fabricacao.value = registro?.ano_fabricacao ?? '';
+  form.tipo_tracao.value = registro?.tipo_tracao || '';
 
   const blocoCarreta = form.querySelector('[data-bloco-carreta]');
   const carretaSelect = criarSearchableSelect({
@@ -82,6 +96,7 @@ function montarFormulario(registro, aoSalvar) {
       modelo: form.modelo.value || null,
       ano_fabricacao: form.ano_fabricacao.value ? Number(form.ano_fabricacao.value) : null,
       carreta_padrao_id: form.tipo.value === 'Cavalo' ? carretaSelect.getValue() : null,
+      tipo_tracao: form.tipo.value === 'Cavalo' ? (form.tipo_tracao.value || null) : null,
     };
     try {
       await aoSalvar(valores);
@@ -205,7 +220,7 @@ export async function render(container) {
 
   const tabela = criarDataTable({
     colunas: [
-      { chave: 'placa', titulo: 'Placa' },
+      { chave: 'placa', titulo: 'Placa', render: (r) => comCopiar(r.placa) },
       { chave: 'tipo', titulo: 'Tipo' },
       { chave: 'qtd_eixos', titulo: 'Eixos' },
       { chave: 'marca_modelo', titulo: 'Marca/Modelo', render: (r) => [r.marca, r.modelo].filter(Boolean).join(' ') || '-' },
@@ -219,7 +234,7 @@ export async function render(container) {
           </details>
         ` : '-'),
       },
-      { chave: 'ativo', titulo: 'Status', render: (r) => (r.ativo ? '<span class="badge bg-emerald-100 text-emerald-700">Ativo</span>' : '<span class="badge bg-slate-100 text-slate-500">Inativo</span>') },
+      { chave: 'ativo', titulo: 'Status', render: (r) => (r.ativo ? '<span class="badge-sucesso">Ativo</span>' : '<span class="badge-neutro">Inativo</span>') },
     ],
     buscarDados: (termo) => get(termo ? `/veiculos?search=${encodeURIComponent(termo)}` : '/veiculos'),
     onNovo: gerenciar ? () => abrirFormulario(null, tabela.recarregar) : undefined,

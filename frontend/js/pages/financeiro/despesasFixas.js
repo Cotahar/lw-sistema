@@ -17,7 +17,11 @@ async function montarFormulario(registro, aoSalvar) {
   form.innerHTML = `
     <div><label class="label">Centro de custo *</label><div data-centro></div></div>
     <div class="grid grid-cols-2 gap-3">
-      <div><label class="label">Categoria *</label><select name="categoria_id" class="input" required>${categorias.map((c) => `<option value="${c.id}">${c.nome}</option>`).join('')}</select></div>
+      <div>
+        <label class="label">Categoria *</label>
+        <select name="categoria_id" class="input" required>${categorias.map((c) => `<option value="${c.id}">${c.nome}</option>`).join('')}</select>
+        ${!categorias.length ? '<p class="mt-1 text-xs text-amber-500">Nenhuma categoria de despesa cadastrada ainda. <a href="#/config/categorias-despesa" class="font-medium underline" data-ir-categorias>Cadastrar agora</a>.</p>' : ''}
+      </div>
       <div><label class="label">Valor *</label><input type="text" name="valor" class="input" required /></div>
     </div>
     <div class="grid grid-cols-2 gap-3">
@@ -40,6 +44,9 @@ async function montarFormulario(registro, aoSalvar) {
   `;
   const centroSelect = criarSearchableSelect({ buscar: buscarCentrosCusto, placeholder: 'Pesquisar centro de custo...', valorInicial: registro?.centro_custo_id, labelInicial: registro?.centro_custo_nome || '' });
   form.querySelector('[data-centro]').appendChild(centroSelect.el);
+  // Fecha o modal antes de navegar - senao a lista de categorias carrega por
+  // baixo com este formulario (agora inutil) ainda aberto por cima.
+  form.querySelector('[data-ir-categorias]')?.addEventListener('click', () => fecharModal());
   attachMoedaMaskReais(form.valor, registro?.valor || 0);
   attachDataMask(form.data, registro?.data);
   if (registro) {
@@ -152,6 +159,7 @@ export async function render(container) {
     onNovo: gerenciar ? () => abrirFormulario(null, tabela.recarregar) : undefined,
     onEditar: gerenciar ? (r) => abrirFormulario(r, tabela.recarregar) : undefined,
     onExcluir: gerenciar ? (r) => del(`/despesas-fixas/${r.id}`) : undefined,
+    onExcluirLote: gerenciar ? (ids) => post('/despesas-fixas/batch-delete', { ids }) : undefined,
     acoesExtras: (r) => (r.qtd_parcelas ? [{ label: 'Ver parcelas', onClick: (d) => navegar(`/contas-pagar?despesa_fixa_id=${d.id}`) }] : []),
     tituloNovo: 'Despesa Fixa',
     vazio: 'Nenhuma despesa fixa cadastrada.',

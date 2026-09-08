@@ -5,11 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Frottex - Gestão de Frota e Transporte</title>
   <link rel="icon" type="image/png" href="/img/favicon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/dist/output.css" />
+  <!-- SheetJS (geracao de XLSX no navegador) - primeira dependencia de
+       terceiro do frontend, decisao consciente (ver parecer de produtividade,
+       Grupo 1 "Exportacao XLSX"). Carregada global (window.XLSX) via CDN,
+       igual ao padrao ja usado pra fonte - sem bundler no projeto. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
   <!-- PWA do modulo do motorista (ver frontend/js/main.js) - inofensivo pro
        resto do app, so afeta quem instala/abre via /#/motorista. -->
   <link rel="manifest" href="/manifest.json" />
-  <meta name="theme-color" content="#111827" />
+  <meta name="theme-color" content="#131217" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="apple-touch-icon" href="/img/favicon.png" />

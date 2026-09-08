@@ -9,6 +9,10 @@ const { withTransaction } = require('../utils/transaction');
 
 const router = express.Router();
 
+function formatarMoeda(centavos) {
+  return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
 // Join usado tanto na listagem quanto na busca por :id - traz o nome da
 // categoria e o veiculo/viagem de origem (quando a conta veio de uma despesa
 // de viagem ou fixa), pra permitir filtrar/linkar sem precisar guardar essas
@@ -71,6 +75,85 @@ router.get('/', requerAcessoModulo('contas_pagar', 'Visualizar'), exigirEmpresaE
   if (data_vencimento_ate) { condicoes.push('cp.data_vencimento <= ?'); params.push(data_vencimento_ate); }
   const where = `WHERE ${condicoes.join(' AND ')}`;
   res.json(db.prepare(`${SELECT_LISTA} ${where} ORDER BY cp.data_vencimento`).all(...params));
+}));
+
+// Lista contas a pagar "consolidaveis": Pendentes, sem nenhum pagamento/
+// desconto ja lancado, de um fornecedor (posto) especifico - usado pela
+// tela de "Consolidar em fatura" (postos que faturam varios abastecimentos
+// juntos, de veiculos/viagens diferentes, num boleto so). Precisa vir ANTES
+// de GET /:id nesta rota, senao "consolidaveis" seria interpretado como id.
+router.get('/consolidaveis', requerAcessoModulo('contas_pagar', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { fornecedor_id } = req.query;
+  if (!fornecedor_id) throw new ApiError(400, 'Informe fornecedor_id.');
+  const contas = db.prepare(`
+    ${SELECT_LISTA}
+    WHERE cp.empresa_id = ? AND cp.fornecedor_id = ? AND cp.status = 'Pendente'
+      AND cp.valor_pago = 0 AND cp.valor_descontado = 0
+    ORDER BY cp.data_vencimento
+  `).all(req.empresaId, fornecedor_id);
+  res.json(contas);
+}));
+
+// Mescla varias contas a pagar (mesmo fornecedor, Pendentes, sem nenhum
+// pagamento/desconto lancado) numa unica - usado quando o posto fatura
+// consolidado (varios abastecimentos, de veiculos/viagens diferentes, num
+// boleto so, mesmo que cada abastecimento tenha sido validado em momentos
+// diferentes e ja tivesse ganhado sua propria conta a pagar individual).
+// Cada despesa_viagem ligada as contas originais passa a apontar pra conta
+// nova (contas_pagar_id) - o "rateio" por veiculo/viagem ja existe sozinho
+// (cada despesa mantem seu proprio valor e centro de custo, o DRE agrega
+// por despesa, nao por conta a pagar), so o pagamento vira um so. Se a soma
+// das contas selecionadas nao bater com o valor real do boleto (juros,
+// desconto do posto etc.), avisa (409) e so segue com
+// confirmarDivergencia=true - mesmo padrao ja usado em POST /:id/baixar.
+router.post('/consolidar', requerAcessoModulo('contas_pagar', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { conta_pagar_ids, valor_boleto, data_vencimento, descricao, confirmarDivergencia } = req.body;
+  if (!Array.isArray(conta_pagar_ids) || conta_pagar_ids.length < 2) {
+    throw new ApiError(400, 'Selecione pelo menos 2 contas a pagar para consolidar.');
+  }
+  if (!valor_boleto || Number(valor_boleto) <= 0 || !data_vencimento) {
+    throw new ApiError(400, 'Preencha o valor e o vencimento do boleto.');
+  }
+
+  const resultado = withTransaction(db, () => {
+    const contas = conta_pagar_ids.map((id) => {
+      const c = db.prepare('SELECT * FROM contas_pagar WHERE id = ? AND empresa_id = ?').get(id, req.empresaId);
+      if (!c) throw new ApiError(404, `Conta a pagar #${id} nao encontrada.`);
+      if (c.status !== 'Pendente' || c.valor_pago > 0 || c.valor_descontado > 0) {
+        throw new ApiError(400, `A conta #${id} ja tem pagamento/desconto lancado e nao pode ser consolidada.`);
+      }
+      return c;
+    });
+    const fornecedorId = contas[0].fornecedor_id;
+    if (contas.some((c) => c.fornecedor_id !== fornecedorId)) {
+      throw new ApiError(400, 'Todas as contas selecionadas precisam ser do mesmo fornecedor.');
+    }
+
+    const somaContas = contas.reduce((t, c) => t + c.valor, 0);
+    if (Math.abs(somaContas - Number(valor_boleto)) > 1 && !confirmarDivergencia) {
+      throw new ApiError(409, `A soma das despesas selecionadas (${formatarMoeda(somaContas)}) e diferente do valor do boleto informado (${formatarMoeda(Number(valor_boleto))}). Confirme para prosseguir mesmo assim.`);
+    }
+
+    const fornecedor = db.prepare('SELECT nome FROM fornecedores WHERE id = ?').get(fornecedorId);
+    const descricaoFinal = descricao || `Fatura consolidada - ${fornecedor ? fornecedor.nome : 'fornecedor'} (${contas.length} lancamentos)`;
+    const info = db.prepare(`
+      INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo)
+      VALUES (?, ?, ?, ?, ?, 'Pendente', 'Outro')
+    `).run(req.empresaId, fornecedorId, descricaoFinal, Number(valor_boleto), data_vencimento);
+    const novaContaId = info.lastInsertRowid;
+
+    // Desvincula as despesas das contas antigas ANTES de apagar essas
+    // contas - senao a FK acusa violacao (mesma regra de ordem ja usada no
+    // resto do sistema: quem "segura" a referencia sai primeiro).
+    const placeholders = conta_pagar_ids.map(() => '?').join(',');
+    db.prepare(`UPDATE despesas_viagem SET contas_pagar_id = ? WHERE contas_pagar_id IN (${placeholders})`).run(novaContaId, ...conta_pagar_ids);
+    db.prepare(`DELETE FROM contas_pagar WHERE id IN (${placeholders})`).run(...conta_pagar_ids);
+
+    return { novaConta: db.prepare('SELECT * FROM contas_pagar WHERE id = ?').get(novaContaId), contasOriginais: contas };
+  });
+
+  registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'contas_pagar', registroId: resultado.novaConta.id, acao: 'INSERT', depois: resultado.novaConta });
+  res.status(201).json(resultado.novaConta);
 }));
 
 router.get('/:id', requerAcessoModulo('contas_pagar', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {

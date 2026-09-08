@@ -3,7 +3,18 @@ import { criarDataTable } from '../components/dataTable.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { abrirModal, fecharModal, confirmarAcao } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
-import { formatarDataBr } from '../masks.js';
+import { formatarDataBr, hojeIsoLocal } from '../masks.js';
+import { ICONE_ATENCAO, ICONE_CRITICO } from '../components/statusIcons.js';
+
+// Alerta pendente ha mais de 7 dias pesa mais (risco de esquecer de verdade)
+// - mesma cor+icone dos outros modulos (multas, pneus), so que a severidade
+// aqui vem do tempo parado, nao de um campo de status proprio (toda linha
+// desta tabela ja e "Pendente" por definicao do filtro da busca).
+function diasPendente(dataDisparo) {
+  const hoje = new Date(`${hojeIsoLocal()}T00:00:00Z`);
+  const disparo = new Date(`${dataDisparo}T00:00:00Z`);
+  return Math.round((hoje - disparo) / 86400000);
+}
 
 async function buscarVeiculos(termo) {
   return (await get(`/veiculos${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((v) => ({ value: v.id, label: v.placa }));
@@ -64,9 +75,18 @@ export async function render(container) {
   const tabelaOcorrencias = criarDataTable({
     colunas: [
       { chave: 'placa', titulo: 'Veiculo' },
-      { chave: 'regra_descricao', titulo: 'Regra' },
+      { chave: 'regra_descricao', titulo: 'Regra', truncar: true },
       { chave: 'km_atual_no_disparo', titulo: 'KM no disparo', render: (r) => r.km_atual_no_disparo.toLocaleString('pt-BR') },
       { chave: 'data_disparo', titulo: 'Data', render: (r) => formatarDataBr(r.data_disparo) },
+      {
+        chave: 'status',
+        titulo: 'Status',
+        render: (r) => {
+          const dias = diasPendente(r.data_disparo);
+          const critico = dias >= 7;
+          return `<span class="${critico ? 'badge-critico' : 'badge-atencao'}">${critico ? ICONE_CRITICO : ICONE_ATENCAO}Pendente ha ${dias} dia(s)</span>`;
+        },
+      },
     ],
     buscarDados: () => get('/alertas/ocorrencias?status=Pendente'),
     acoesExtras: gerenciar ? () => [{
@@ -89,7 +109,7 @@ export async function render(container) {
   const tabelaRegras = criarDataTable({
     colunas: [
       { chave: 'placa', titulo: 'Veiculo' },
-      { chave: 'descricao', titulo: 'Descricao' },
+      { chave: 'descricao', titulo: 'Descricao', truncar: true },
       { chave: 'intervalo_km', titulo: 'Intervalo (km)', render: (r) => r.intervalo_km.toLocaleString('pt-BR') },
       { chave: 'km_referencia', titulo: 'Referencia atual (km)', render: (r) => r.km_referencia.toLocaleString('pt-BR') },
     ],
@@ -100,6 +120,7 @@ export async function render(container) {
     },
     onNovo: gerenciar ? () => abrirNovaRegra(tabelaRegras.recarregar) : undefined,
     onExcluir: gerenciar ? (r) => del(`/alertas/regras/${r.id}`) : undefined,
+    onExcluirLote: gerenciar ? (ids) => post('/alertas/regras/batch-delete', { ids }) : undefined,
     tituloNovo: 'Regra',
     vazio: 'Nenhuma regra cadastrada.',
   });

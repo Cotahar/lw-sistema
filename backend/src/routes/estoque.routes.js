@@ -67,6 +67,20 @@ router.delete('/itens/:id', requerAcessoModulo('estoque', 'Gerenciar'), exigirEm
   res.status(204).send();
 }));
 
+router.post('/itens/batch-delete', requerAcessoModulo('estoque', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || !ids.length) throw new ApiError(400, 'Informe a lista de ids a excluir.');
+  withTransaction(db, () => {
+    for (const id of ids) {
+      const antes = db.prepare('SELECT * FROM estoque_itens WHERE id = ? AND empresa_id = ?').get(id, req.empresaId);
+      if (!antes) continue;
+      db.prepare('DELETE FROM estoque_itens WHERE id = ?').run(id);
+      registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'estoque_itens', registroId: id, acao: 'DELETE', antes });
+    }
+  });
+  res.status(204).send();
+}));
+
 // ---- Movimentacoes (entrada/saida) ----
 // Entrada: soma ao estoque, recalcula custo medio ponderado, gera Conta a Pagar (fluxo de caixa).
 // Saida com veiculo_destino_id: e o que lanca o custo no DRE do veiculo (a nao ser que venha

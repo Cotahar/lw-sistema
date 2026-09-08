@@ -10,6 +10,7 @@ const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 const { criarDespesaViagem } = require('../utils/despesaViagemHelper');
 const { registrarAuditoria } = require('../utils/audit');
+const { calcularMediasConsumo, buscarCategoriaAbastecimentoId: buscarCategoriaAbastecimentoIdGlobal } = require('../utils/mediaConsumoHelper');
 
 const router = express.Router();
 router.use(requerMotorista, exigirEmpresaEspecifica);
@@ -54,17 +55,13 @@ function resolverPercentualComissao(mediaKmL, marca) {
   return faixa ? faixa.percentual_comissao : null;
 }
 
-// Media "oficial" (mesma formula do Acerto - litros lancados nos
-// abastecimentos da viagem toda / km rodado) - a unica usada pra estimar a
-// comissao, pra nunca mostrar ao motorista um numero que o Acerto real vai
-// contrariar depois.
-function calcularMediaAbastecimentos(viagemId, kmInicial, hodometroAtual) {
-  const categoriaAbastecimento = db.prepare("SELECT id FROM categorias_despesa WHERE lower(trim(nome)) = 'abastecimento'").get();
-  const despesas = db.prepare('SELECT litragem FROM despesas_viagem WHERE viagem_id = ? AND categoria_id = ?')
-    .all(viagemId, categoriaAbastecimento ? categoriaAbastecimento.id : -1);
-  const litrosTotal = somar(despesas.map((d) => d.litragem));
-  const kmTotal = hodometroAtual !== null ? hodometroAtual - kmInicial : null;
-  return litrosTotal > 0 && kmTotal > 0 ? kmTotal / litrosTotal : null;
+// Mesma formula "tanque cheio a tanque cheio" do Acerto (mediaConsumoHelper.js)
+// - a unica usada pra estimar a comissao, pra nunca mostrar ao motorista um
+// numero que o Acerto real vai contrariar depois.
+function calcularMediaAbastecimentos(viagemId) {
+  const despesas = db.prepare('SELECT categoria_id, km_abastecimento, litragem, tanque_completo FROM despesas_viagem WHERE viagem_id = ?').all(viagemId);
+  const categoriaAbastecimentoId = buscarCategoriaAbastecimentoIdGlobal();
+  return calcularMediasConsumo(despesas, categoriaAbastecimentoId);
 }
 
 function montarFreteResumo(frete, percentualImposto) {
@@ -112,8 +109,8 @@ router.get('/viagem-atual', asyncHandler(async (req, res) => {
   const adiantamentos = db.prepare('SELECT valor FROM viagem_adiantamentos WHERE viagem_id = ?').all(viagem.id);
   const adiantamentosTotal = somar(adiantamentos.map((a) => a.valor));
 
-  const mediaAbastecimentos = calcularMediaAbastecimentos(viagem.id, viagem.km_inicial, hodometroAtual);
-  const percentualComissao = resolverPercentualComissao(mediaAbastecimentos, tratora ? tratora.marca : null);
+  const { mediaViagemKmL, mediaUltimaAbastecidaKmL } = calcularMediaAbastecimentos(viagem.id);
+  const percentualComissao = resolverPercentualComissao(mediaViagemKmL, tratora ? tratora.marca : null);
   const comissaoEstimada = percentualComissao !== null
     ? Math.round(faturamentoLiquido * (percentualComissao / 100)) - adiantamentosTotal
     : null;
@@ -133,7 +130,8 @@ router.get('/viagem-atual', asyncHandler(async (req, res) => {
       faturamento_bruto: faturamentoBruto,
       faturamento_liquido: faturamentoLiquido,
       percentual_imposto: percentualImposto,
-      media_abastecimentos_km_l: mediaAbastecimentos,
+      media_abastecimentos_km_l: mediaViagemKmL,
+      media_ultima_abastecida_km_l: mediaUltimaAbastecidaKmL,
       percentual_comissao: percentualComissao,
       comissao_estimada: comissaoEstimada,
       adiantamentos_total: adiantamentosTotal,
@@ -187,7 +185,7 @@ router.get('/acertos/:id', asyncHandler(async (req, res) => {
 router.post('/abastecimentos', upload.single('foto'), asyncHandler(async (req, res) => {
   const {
     valor, data, preco_litro, litragem, km_abastecimento, posto_fornecedor_id, idempotency_key,
-    forma_pagamento_posto, arla_valor, arla_preco_litro, arla_litragem,
+    forma_pagamento_posto, arla_valor, arla_preco_litro, arla_litragem, tanque_completo,
   } = req.body;
   if (!idempotency_key) throw new ApiError(400, 'idempotency_key obrigatoria.');
   const dieselValor = valor !== undefined && Number(valor) > 0 ? Number(valor) : 0;
@@ -223,6 +221,7 @@ router.post('/abastecimentos', upload.single('foto'), asyncHandler(async (req, r
         litragem: litragem ? Number(litragem) : null, kmAbastecimento: km_abastecimento ? Number(km_abastecimento) : null,
         usuarioId: req.usuario.id, fotoRecibo: req.file ? req.file.filename : null, idempotencyKey: idempotency_key,
         formaPagamentoPosto: forma_pagamento_posto || null, precisaValidacao: true,
+        tanqueCompleto: tanque_completo === '1' || tanque_completo === 1,
         arla: arlaValor > 0
           ? { valor: arlaValor, preco_litro: arla_preco_litro ? Number(arla_preco_litro) : null, litragem: arla_litragem ? Number(arla_litragem) : null }
           : null,

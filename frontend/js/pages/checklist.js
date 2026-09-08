@@ -19,6 +19,45 @@ function diasDesde(dataIso) {
   return Math.round((hoje - data) / 86400000);
 }
 
+// Tela estreita (celular/tablet, provavelmente preenchida no patio, sem
+// mesa) ganha botoes grandes OK/Avaria em vez de checkbox+texto; tela larga
+// (escritorio, varias vistorias seguidas) mantem a tabela densa de sempre.
+// Detecta por tamanho de tela (matchMedia), nao por user-agent - funciona
+// certo num tablet e nao quebra se a janela for redimensionada.
+const TELA_ESTREITA = window.matchMedia('(max-width: 640px)');
+
+async function salvarItem(vistoriaId, veiculoId, itemId, dados) {
+  try {
+    await put(`/checklist/vistorias/${vistoriaId}/veiculo/${veiculoId}/item/${itemId}`, dados);
+    mostrarToast('Checklist atualizado.');
+  } catch (err) {
+    mostrarErro(err);
+  }
+}
+
+function montarLinhaTabela(item, gerenciar) {
+  return `
+    <tr class="border-b border-slate-100" data-item-id="${item.item_id}">
+      <td class="table-td"><input type="checkbox" data-presente ${item.presente ? 'checked' : ''} ${gerenciar ? '' : 'disabled'} /></td>
+      <td class="table-td">${item.item_nome}</td>
+      <td class="table-td"><input type="text" class="input" data-observacao value="${item.observacao || ''}" ${gerenciar ? '' : 'disabled'} /></td>
+    </tr>
+  `;
+}
+
+function montarCartaoMobile(item) {
+  return `
+    <div class="card p-3" data-item-id="${item.item_id}">
+      <p class="mb-2 text-sm font-medium text-slate-900">${item.item_nome}</p>
+      <div class="flex gap-2">
+        <button type="button" data-ok class="flex-1 rounded-lg py-3 text-sm font-bold uppercase tracking-wide text-white ${item.presente ? 'bg-emerald-600' : 'bg-emerald-900/40 text-emerald-500'}">OK</button>
+        <button type="button" data-avaria class="flex-1 rounded-lg py-3 text-sm font-bold uppercase tracking-wide text-white ${item.presente === false ? 'bg-red-600' : 'bg-red-900/40 text-red-500'}">Avaria</button>
+      </div>
+      ${item.observacao ? `<p class="mt-2 text-xs text-slate-500">Obs.: ${item.observacao}</p>` : ''}
+    </div>
+  `;
+}
+
 async function carregarItensVistoria(vistoriaId, container, gerenciar, recarregar) {
   try {
     const { vistoria, itens, conjuntoDivergente, placasNaVistoria, placasAtuais } = await get(`/checklist/vistorias/${vistoriaId}`);
@@ -28,10 +67,11 @@ async function carregarItensVistoria(vistoriaId, container, gerenciar, recarrega
       porVeiculo.get(item.veiculo_id).itens.push(item);
     }
 
+    const mobile = TELA_ESTREITA.matches;
     container.innerHTML = `
       <div class="mb-3 flex items-center justify-between">
         <p class="text-sm text-slate-500">Vistoria de ${formatarDataBr(vistoria.data_vistoria)}</p>
-        ${conjuntoDivergente ? `<span class="badge bg-amber-100 text-amber-700">Conjunto era ${placasNaVistoria.join('+')}, hoje e ${placasAtuais.join('+')}</span>` : ''}
+        ${conjuntoDivergente ? `<span class="badge-atencao">Conjunto era ${placasNaVistoria.join('+')}, hoje e ${placasAtuais.join('+')}</span>` : ''}
       </div>
       <div class="space-y-6" data-grupos></div>
     `;
@@ -40,35 +80,35 @@ async function carregarItensVistoria(vistoriaId, container, gerenciar, recarrega
       const bloco = document.createElement('div');
       bloco.innerHTML = `
         <h3 class="mb-2 text-sm font-semibold text-slate-900">${grupo.placa} <span class="font-normal text-slate-400">(${grupo.tipo})</span></h3>
-        <table class="w-full text-sm">
-          <thead><tr class="bg-brand-black text-left text-xs uppercase">
-            <th class="table-th">Presente</th><th class="table-th">Item</th><th class="table-th">Observacao</th>
-          </tr></thead>
-          <tbody>
-            ${grupo.itens.map((item) => `
-              <tr class="border-b border-slate-100" data-item-id="${item.item_id}">
-                <td class="table-td"><input type="checkbox" data-presente ${item.presente ? 'checked' : ''} ${gerenciar ? '' : 'disabled'} /></td>
-                <td class="table-td">${item.item_nome}</td>
-                <td class="table-td"><input type="text" class="input" data-observacao value="${item.observacao || ''}" ${gerenciar ? '' : 'disabled'} /></td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
+        ${mobile
+          ? `<div class="space-y-2">${grupo.itens.map(montarCartaoMobile).join('')}</div>`
+          : `<table class="w-full text-sm">
+              <thead><tr class="bg-brand-black text-left text-xs uppercase">
+                <th class="table-th">Presente</th><th class="table-th">Item</th><th class="table-th">Observacao</th>
+              </tr></thead>
+              <tbody>${grupo.itens.map((item) => montarLinhaTabela(item, gerenciar)).join('')}</tbody>
+            </table>`}
       `;
-      if (gerenciar) {
+      if (gerenciar && mobile) {
+        bloco.querySelectorAll('[data-item-id]').forEach((cartao) => {
+          const itemId = cartao.dataset.itemId;
+          cartao.querySelector('[data-ok]').addEventListener('click', async () => {
+            await salvarItem(vistoriaId, veiculoId, itemId, { presente: true });
+            carregarItensVistoria(vistoriaId, container, gerenciar, recarregar);
+          });
+          cartao.querySelector('[data-avaria]').addEventListener('click', async () => {
+            await salvarItem(vistoriaId, veiculoId, itemId, { presente: false });
+            mostrarToast('Avaria registrada. Se precisar, anexe uma foto na secao de fotos abaixo.', 'info');
+            carregarItensVistoria(vistoriaId, container, gerenciar, recarregar);
+          });
+        });
+      } else if (gerenciar) {
         bloco.querySelectorAll('tr[data-item-id]').forEach((tr) => {
           const itemId = tr.dataset.itemId;
-          const salvar = async () => {
-            try {
-              await put(`/checklist/vistorias/${vistoriaId}/veiculo/${veiculoId}/item/${itemId}`, {
-                presente: tr.querySelector('[data-presente]').checked,
-                observacao: tr.querySelector('[data-observacao]').value || null,
-              });
-              mostrarToast('Checklist atualizado.');
-            } catch (err) {
-              mostrarErro(err);
-            }
-          };
+          const salvar = () => salvarItem(vistoriaId, veiculoId, itemId, {
+            presente: tr.querySelector('[data-presente]').checked,
+            observacao: tr.querySelector('[data-observacao]').value || null,
+          });
           tr.querySelector('[data-presente]').addEventListener('change', salvar);
           tr.querySelector('[data-observacao]').addEventListener('blur', salvar);
         });
@@ -93,7 +133,7 @@ async function carregarVistorias(conjunto, container, gerenciar) {
 
     container.innerHTML = `
       <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <p class="text-sm ${!ultima || diasDesde(ultima.data_vistoria) >= 30 ? 'text-amber-700' : 'text-slate-500'}">${aviso}</p>
+        <p class="text-sm ${!ultima || diasDesde(ultima.data_vistoria) >= 30 ? 'text-amber-400' : 'text-slate-500'}">${aviso}</p>
         <div class="flex items-center gap-2">
           <select class="input" data-select-vistoria>
             ${vistorias.map((v) => `<option value="${v.id}">${formatarDataBr(v.data_vistoria)}</option>`).join('')}
@@ -148,7 +188,10 @@ function abrirFotoAmpliada(foto) {
   const img = document.createElement('img');
   img.src = `/uploads/checklist/${foto.arquivo}`;
   img.className = 'w-full rounded-lg';
-  abrirModal({ titulo: `Foto - ${foto.momento}`, conteudo: img, largura: 'max-w-2xl' });
+  // Modal mais largo pra documento/imagem - visualizador acoplado, sem sair
+  // da tela nem precisar baixar o arquivo (ver parecer de produtividade,
+  // Grupo 3 "Visualizador de documentos").
+  abrirModal({ titulo: `Foto - ${foto.momento}`, conteudo: img, largura: 'max-w-4xl' });
 }
 
 function montarColunaFotos(momento, fotos, veiculoId, gerenciar, recarregar) {

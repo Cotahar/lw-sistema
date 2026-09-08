@@ -5,6 +5,8 @@ import { abrirModal, fecharModal, confirmarAcao } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
 import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr } from '../masks.js';
 
+import { ICONE_SUCESSO, ICONE_ATENCAO, ICONE_CRITICO, ICONE_NEUTRO } from '../components/statusIcons.js';
+
 const STATUS_LABEL = {
   AguardandoIndicacao: 'Aguardando indicacao',
   CondutorIndicado: 'Condutor indicado',
@@ -12,6 +14,22 @@ const STATUS_LABEL = {
   Paga: 'Paga',
   Recorrida: 'Recorrida',
   Cancelada: 'Cancelada',
+};
+const STATUS_BADGE = {
+  AguardandoIndicacao: 'badge-atencao',
+  CondutorIndicado: 'badge-neutro',
+  NaoIndicado: 'badge-critico',
+  Paga: 'badge-sucesso',
+  Recorrida: 'badge-neutro',
+  Cancelada: 'badge-neutro',
+};
+const STATUS_ICONE = {
+  AguardandoIndicacao: ICONE_ATENCAO,
+  CondutorIndicado: ICONE_NEUTRO,
+  NaoIndicado: ICONE_CRITICO,
+  Paga: ICONE_SUCESSO,
+  Recorrida: ICONE_NEUTRO,
+  Cancelada: ICONE_NEUTRO,
 };
 
 async function buscarVeiculos(termo) {
@@ -25,9 +43,9 @@ async function buscarMotoristas(termo) {
 function badgePrazo(multa) {
   if (multa.status !== 'AguardandoIndicacao') return '';
   const dias = multa.dias_restantes;
-  const cor = dias <= 5 ? 'bg-red-100 text-red-700' : dias <= 15 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500';
+  const cor = dias <= 5 ? 'badge-critico' : dias <= 15 ? 'badge-atencao' : 'badge-neutro';
   const texto = dias < 0 ? `${Math.abs(dias)} dia(s) vencido` : dias === 0 ? 'vence hoje' : `${dias} dia(s)`;
-  return `<span class="badge ${cor} ml-1">${texto}</span>`;
+  return `<span class="${cor} ml-1">${texto}</span>`;
 }
 
 async function montarFormulario(registro, aoSalvar) {
@@ -113,12 +131,35 @@ async function abrirIndicarCondutor(registro, recarregar) {
   corpo.className = 'space-y-4';
   corpo.innerHTML = `
     <div><label class="label">Motorista *</label><div data-motorista></div></div>
+    <p class="hidden text-xs text-slate-500" data-sugestao></p>
     <p class="hidden text-sm text-red-600" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="button" class="btn-primary" data-salvar>Indicar condutor</button></div>
   `;
   const motoristaSelect = criarSearchableSelect({ buscar: buscarMotoristas, placeholder: 'Pesquisar motorista...', valorInicial: registro.motorista_id ?? null, labelInicial: registro.motorista_nome || '' });
   corpo.querySelector('[data-motorista]').appendChild(motoristaSelect.el);
   const overlay = abrirModal({ titulo: `Indicar condutor - ${registro.veiculo_placa}`, conteudo: corpo });
+
+  // Sugestao inteligente (nunca um filtro rigido): so um motorista por placa
+  // a cada periodo, entao a viagem que cobria a data da infracao ja diz quem
+  // provavelmente era o condutor - so pre-preenche quando ainda nao ha
+  // condutor indicado, e o operador sempre pode trocar na busca normal.
+  if (!registro.motorista_id) {
+    const dataReferencia = registro.data_infracao || registro.data_notificacao;
+    if (dataReferencia) {
+      try {
+        const sugestao = await get(`/veiculos/${registro.veiculo_id}/motorista-do-periodo?data=${dataReferencia}`);
+        if (sugestao) {
+          motoristaSelect.setValue(sugestao.motorista_id, sugestao.motorista_nome);
+          const sugestaoEl = overlay.querySelector('[data-sugestao]');
+          sugestaoEl.textContent = `Sugestao: ${sugestao.motorista_nome} (motorista da viagem deste veiculo na data da infracao - confira antes de confirmar).`;
+          sugestaoEl.classList.remove('hidden');
+        }
+      } catch {
+        // Sugestao e so uma conveniencia - sem ela o operador so busca na mao.
+      }
+    }
+  }
+
   overlay.querySelector('[data-salvar]').addEventListener('click', async () => {
     const erroEl = overlay.querySelector('[data-erro]');
     erroEl.classList.add('hidden');
@@ -196,15 +237,16 @@ export async function render(container) {
     colunas: [
       { chave: 'veiculo_placa', titulo: 'Veiculo' },
       { chave: 'motorista_nome', titulo: 'Motorista', render: (r) => r.motorista_nome || '-' },
-      { chave: 'descricao', titulo: 'Infracao' },
+      { chave: 'descricao', titulo: 'Infracao', truncar: true },
       { chave: 'valor_original', titulo: 'Valor', render: (r) => formatarMoeda(r.status === 'NaoIndicado' && r.valor_nao_indicacao ? r.valor_nao_indicacao : r.valor_original) },
       { chave: 'prazo_indicacao', titulo: 'Prazo indicacao', render: (r) => `${formatarDataBr(r.prazo_indicacao)}${badgePrazo(r)}` },
-      { chave: 'status', titulo: 'Status', render: (r) => STATUS_LABEL[r.status] || r.status },
+      { chave: 'status', titulo: 'Status', render: (r) => `<span class="${STATUS_BADGE[r.status] || 'badge-neutro'}">${STATUS_ICONE[r.status] || ''}${STATUS_LABEL[r.status] || r.status}</span>` },
     ],
     buscarDados: () => get('/multas'),
     onNovo: gerenciar ? () => abrirFormulario(null, tabela.recarregar) : undefined,
     onEditar: gerenciar ? (r) => abrirFormulario(r, tabela.recarregar) : undefined,
     onExcluir: gerenciar ? (r) => del(`/multas/${r.id}`) : undefined,
+    onExcluirLote: gerenciar ? (ids) => post('/multas/batch-delete', { ids }) : undefined,
     acoesExtras: gerenciar ? (r) => {
       const acoes = [];
       if (r.status === 'AguardandoIndicacao' || r.status === 'CondutorIndicado') {

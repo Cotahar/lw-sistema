@@ -1,9 +1,11 @@
 import { get, post, del, authHeaders, podeGerenciar } from '../api.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
+import { criarNovoFornecedor } from '../components/fornecedorQuickCreate.js';
 import { abrirModal, fecharModal, confirmarAcao } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
 import { formatarMoeda, attachMoedaMask, getMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataHoraBr } from '../masks.js';
 import { renderizarAcessoNegado } from '../components/acessoNegado.js';
+import { esqueletoLinhasTabela } from '../components/skeleton.js';
 
 const PAGO_POR = ['Empresa', 'Motorista', 'AdminOutros'];
 
@@ -106,7 +108,7 @@ function abrirResolverPendencia(pendencia, recarregar) {
     attachMoedaMask(form.frete_bruto, Math.round((parseFloat(bruto.valor) || 0) * 100));
     const viagemSelect = criarSearchableSelect({ buscar: buscarViagensAbertas, placeholder: 'Selecione a viagem...' });
     form.querySelector('[data-viagem]').appendChild(viagemSelect.el);
-    const transpSelect = criarSearchableSelect({ buscar: buscarFornecedores, placeholder: 'Pesquisar transportadora...' });
+    const transpSelect = criarSearchableSelect({ buscar: buscarFornecedores, placeholder: 'Pesquisar transportadora...', criarNovo: { label: 'Cadastrar novo fornecedor', abrir: criarNovoFornecedor } });
     form.querySelector('[data-transportadora]').appendChild(transpSelect.el);
 
     const erro = form.querySelector('[data-erro]');
@@ -244,7 +246,7 @@ export async function render(container) {
 
   async function carregarPendencias() {
     const tbody = container.querySelector('[data-linhas]');
-    tbody.innerHTML = '<tr><td colspan="6" class="table-td py-6 text-center text-slate-400">Carregando...</td></tr>';
+    tbody.innerHTML = esqueletoLinhasTabela(6);
     try {
       const pendencias = await get('/drivvo/pendencias');
       tbody.innerHTML = pendencias.length ? pendencias.map((p) => {

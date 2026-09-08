@@ -31,12 +31,32 @@ function descompactarSeNecessario(buffer) {
   throw new Error(`Onixsat: metodo de compressao ZIP nao suportado (${metodoCompressao}).`);
 }
 
-async function chamarOnixsat(xmlRequisicao) {
-  const res = await fetch(ENDPOINT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/xml' },
-    body: xmlRequisicao,
-  });
+function esperar(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// So 1 retry, com espera generosa (5s) e so pra falha de REDE (timeout,
+// conexao recusada) - nao pra erro de negocio da Onixsat (ErrorRequest, ver
+// abaixo). A propria API documenta limite de 1 requisicao a cada 30s
+// (RequestMensagemCB) ou 5min (RequestVeiculo): um retry agressivo por
+// varias tentativas seria contraproducente, arriscando disparar o proprio
+// rate limit que se quer contornar - por isso nao e exponencial de verdade.
+async function chamarOnixsat(xmlRequisicao, tentativa = 1) {
+  let res;
+  try {
+    res = await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/xml' },
+      body: xmlRequisicao,
+      signal: AbortSignal.timeout(15000),
+    });
+  } catch (err) {
+    if (tentativa < 2) {
+      await esperar(5000);
+      return chamarOnixsat(xmlRequisicao, tentativa + 1);
+    }
+    throw err;
+  }
   const buffer = Buffer.from(await res.arrayBuffer());
   const xmlResposta = descompactarSeNecessario(buffer).toString('utf8');
   const objeto = parser.parse(xmlResposta);

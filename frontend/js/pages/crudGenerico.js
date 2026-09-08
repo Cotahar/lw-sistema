@@ -48,6 +48,11 @@ export function criarPaginaCrud({ titulo, endpoint, colunas, campos, modulo, tit
       onExcluirLote: gerenciar ? (ids) => post(`${endpoint}/batch-delete`, { ids }) : undefined,
       tituloNovo: nomeItem,
       acoesExtras,
+      // Edicao inline (duplo clique) so entra em vigor nas colunas que o
+      // chamador marcar com `editavel:true` - ver colunas de cada tela
+      // (fornecedorTipos.js, categoriasDespesa.js etc). Restrita as telas
+      // que usam esta fabrica generica, por pedido explicito.
+      onSalvarCampo: gerenciar ? (linha, chave, novoValor) => put(`${endpoint}/${linha.id}`, { [chave]: novoValor }) : undefined,
     });
     container.querySelector('[data-tabela]').appendChild(tabela.el);
   };

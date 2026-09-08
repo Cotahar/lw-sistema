@@ -8,6 +8,7 @@ const { condicaoEmpresa } = require('../utils/empresaScope');
 const { registrarAuditoria } = require('../utils/audit');
 const { withTransaction } = require('../utils/transaction');
 const { buscarUnidadeTratora } = require('../utils/conjuntoHelper');
+const { calcularMediasConsumo, buscarCategoriaAbastecimentoId } = require('../utils/mediaConsumoHelper');
 
 const router = express.Router();
 
@@ -49,14 +50,16 @@ function calcularAcerto(viagemId, empresaId, overrides = {}) {
   const adiantamentosTotal = somar(adiantamentos.map((a) => a.valor));
 
   const despesas = db.prepare('SELECT * FROM despesas_viagem WHERE viagem_id = ?').all(viagemId);
-  // So litragem de Abastecimento entra na media de consumo - Arla (mesmo
-  // lancado junto no formulario unificado) e um insumo separado, nao diesel.
-  const categoriaAbastecimento = db.prepare("SELECT id FROM categorias_despesa WHERE lower(trim(nome)) = 'abastecimento'").get();
-  const litrosTotal = somar(
-    despesas.filter((d) => !categoriaAbastecimento || d.categoria_id === categoriaAbastecimento.id).map((d) => d.litragem)
-  );
   const kmTotal = viagem.km_final - viagem.km_inicial;
-  const mediaConsumoKmL = litrosTotal > 0 ? kmTotal / litrosTotal : null;
+  // Media "tanque cheio a tanque cheio" (ver mediaConsumoHelper.js) - unica
+  // forma confiavel de saber litros/km real quando existem abastecimentos
+  // parciais no meio (ex.: so pra chegar a um posto mais em conta).
+  const categoriaAbastecimentoId = buscarCategoriaAbastecimentoId();
+  const { mediaViagemKmL, mediaUltimaAbastecidaKmL } = calcularMediasConsumo(despesas, categoriaAbastecimentoId);
+  const mediaConsumoKmL = mediaViagemKmL;
+  const litrosTotal = somar(
+    despesas.filter((d) => d.categoria_id === categoriaAbastecimentoId).map((d) => d.litragem)
+  );
 
   // A faixa de comissao varia por marca do cavalo/truck/toco da composicao
   // (ex.: Scania e VW tem medias tipicas bem diferentes). marca = NULL na
@@ -95,7 +98,7 @@ function calcularAcerto(viagemId, empresaId, overrides = {}) {
 
   return {
     viagem, motorista, fretes, despesas, empresa,
-    freteBrutoTotal, kmTotal, litrosTotal, mediaConsumoKmL,
+    freteBrutoTotal, kmTotal, litrosTotal, mediaConsumoKmL, mediaUltimaAbastecidaKmL,
     percentualSugerido, percentualAplicado, valorComissao,
     percentualImposto, valorImposto, baseCalculoComissao,
     valorReembolsos, adiantamentosTotal, valorDescontosSugerido, valorDescontos,

@@ -23,8 +23,10 @@ export function attachMoedaMask(input, centavosIniciais = 0) {
     aplicar(digitos ? parseInt(digitos, 10) : 0);
   });
   input.addEventListener('focus', () => {
-    // deixa o cursor sempre no fim, coerente com o modelo "digita da direita"
-    requestAnimationFrame(() => input.setSelectionRange(input.value.length, input.value.length));
+    // seleciona tudo ao focar - digitar direto substitui o "R$ 0,00" (ou
+    // qualquer valor ja preenchido) em vez de acrescentar por cima; quem
+    // quiser editar em vez de retypar clica de novo pra reposicionar o cursor.
+    requestAnimationFrame(() => input.select());
   });
   aplicar(centavosIniciais);
 }
@@ -52,7 +54,7 @@ export function attachMoedaMaskReais(input, centavosIniciais = 0) {
   });
   input.addEventListener('blur', () => aplicarFinal(getMoedaValue(input)));
   input.addEventListener('focus', () => {
-    requestAnimationFrame(() => input.setSelectionRange(input.value.length, input.value.length));
+    requestAnimationFrame(() => input.select());
   });
   aplicarFinal(centavosIniciais);
 }
@@ -82,7 +84,7 @@ export function attachPesoMask(input, kgInicial) {
     aplicar(digitos ? parseInt(digitos, 10) : 0);
   });
   input.addEventListener('focus', () => {
-    requestAnimationFrame(() => input.setSelectionRange(input.value.length, input.value.length));
+    requestAnimationFrame(() => input.select());
   });
   if (kgInicial) aplicar(kgInicial);
 }

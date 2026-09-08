@@ -6,6 +6,7 @@ const { requerAcessoModulo } = require('../middleware/auth');
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 const { hojeIsoBrasilia } = require('../utils/dataHora');
+const { calcularMediasConsumo, buscarCategoriaAbastecimentoId } = require('../utils/mediaConsumoHelper');
 
 const router = express.Router();
 
@@ -89,15 +90,22 @@ router.get('/viagem/:viagemId', requerAcessoModulo('dre', 'Visualizar'), exigirE
   const dias = Math.max(1, Math.round((new Date(dataFimOuHoje) - new Date(viagem.data_inicio)) / 86400000) + 1);
   const faturamentoPorDia = Math.round(receita / dias);
 
-  const abastecimentos = despesas.filter((d) => d.litragem);
+  // So diesel (categoria Abastecimento) entra no preco medio/media de
+  // consumo - Arla tem seu proprio litragem/preco_litro mas nao e
+  // combustivel do motor, contaria litros errados se entrasse aqui.
+  const categoriaAbastecimentoId = buscarCategoriaAbastecimentoId();
+  const abastecimentos = despesas.filter((d) => d.categoria_id === categoriaAbastecimentoId && d.litragem);
   const litrosTotal = somar(abastecimentos.map((d) => d.litragem));
   const gastoCombustivelTotal = somar(abastecimentos.map((d) => Math.round((d.preco_litro || 0) * (d.litragem || 0) / 100)));
   const precoMedioDiesel = litrosTotal > 0 ? Math.round(somar(abastecimentos.map((d) => (d.preco_litro || 0) * (d.litragem || 0))) / litrosTotal) : null;
-  const mediaConsumoKmL = viagem.km_final && litrosTotal > 0 ? (viagem.km_final - viagem.km_inicial) / litrosTotal : null;
+  const { mediaViagemKmL, mediaUltimaAbastecidaKmL } = calcularMediasConsumo(despesas, categoriaAbastecimentoId);
 
   res.json({
     viagem, receita, custosVariaveis, resultadoOperacional,
-    metricas: { faturamentoPorDia, precoMedioDieselCentavos: precoMedioDiesel, mediaConsumoKmL, litrosTotal, gastoCombustivelTotal },
+    metricas: {
+      faturamentoPorDia, precoMedioDieselCentavos: precoMedioDiesel,
+      mediaConsumoKmL: mediaViagemKmL, mediaUltimaAbastecidaKmL, litrosTotal, gastoCombustivelTotal,
+    },
   });
 }));
 
@@ -130,6 +138,72 @@ router.get('/veiculo/:veiculoId', requerAcessoModulo('dre', 'Visualizar'), exigi
     },
     lucro,
   });
+}));
+
+// Drill-down: os lancamentos individuais por tras de cada linha do
+// "Detalhamento de custos" da DRE do veiculo. Reusa exatamente os mesmos
+// filtros (centro de custo/veiculo + periodo) das funcoes acima, pra nunca
+// divergir do total mostrado. Sem grafico - so a lista, como pedido.
+const CATEGORIAS_DETALHE = ['viagem', 'pecasDireto', 'ordensServico', 'pneus', 'despesasFixas', 'financiamento'];
+router.get('/veiculo/:veiculoId/detalhe/:categoria', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const veiculo = db.prepare('SELECT * FROM veiculos WHERE id = ? AND empresa_id = ?').get(req.params.veiculoId, req.empresaId);
+  if (!veiculo) throw new ApiError(404, 'Veiculo nao encontrado.');
+  const centroCusto = buscarCentroCustoDoVeiculo(veiculo.id);
+  if (!centroCusto) throw new ApiError(400, 'Centro de custo do veiculo nao encontrado.');
+  const { categoria } = req.params;
+  if (!CATEGORIAS_DETALHE.includes(categoria)) throw new ApiError(400, `Categoria invalida. Use uma de: ${CATEGORIAS_DETALHE.join(', ')}`);
+  const { inicio, fim } = periodoOuTudo(req.query.data_inicio, req.query.data_fim);
+
+  let linhas;
+  if (categoria === 'viagem') {
+    linhas = db.prepare(`
+      SELECT dv.id, dv.data, dv.valor, dv.viagem_id, cat.nome AS categoria_nome
+      FROM despesas_viagem dv
+      LEFT JOIN categorias_despesa cat ON cat.id = dv.categoria_id
+      WHERE dv.centro_custo_id = ? AND dv.data BETWEEN ? AND ?
+      ORDER BY dv.data DESC
+    `).all(centroCusto.id, inicio, fim);
+  } else if (categoria === 'pecasDireto') {
+    linhas = db.prepare(`
+      SELECT em.id, em.data, (em.quantidade * em.custo_unitario) AS valor, em.quantidade, ei.nome AS item_nome
+      FROM estoque_movimentacoes em
+      JOIN estoque_itens ei ON ei.id = em.item_id
+      WHERE em.tipo = 'Saida' AND em.veiculo_destino_id = ? AND em.os_id IS NULL AND em.data BETWEEN ? AND ?
+      ORDER BY em.data DESC
+    `).all(veiculo.id, inicio, fim);
+  } else if (categoria === 'ordensServico') {
+    linhas = db.prepare(`
+      SELECT id, data, (valor_pecas + valor_mao_obra) AS valor, tipo, descricao
+      FROM ordens_servico
+      WHERE veiculo_id = ? AND data BETWEEN ? AND ?
+      ORDER BY data DESC
+    `).all(veiculo.id, inicio, fim);
+  } else if (categoria === 'pneus') {
+    linhas = db.prepare(`
+      SELECT pe.id, pe.data, pe.custo AS valor, p.numero_fogo
+      FROM pneu_eventos pe
+      JOIN pneus p ON p.id = pe.pneu_id
+      WHERE pe.tipo_evento = 'Instalacao' AND pe.veiculo_id = ? AND pe.data BETWEEN ? AND ?
+      ORDER BY pe.data DESC
+    `).all(veiculo.id, inicio, fim);
+  } else if (categoria === 'despesasFixas') {
+    linhas = db.prepare(`
+      SELECT df.id, df.data, df.valor, cat.nome AS categoria_nome, df.descricao
+      FROM despesas_fixas df
+      LEFT JOIN categorias_despesa cat ON cat.id = df.categoria_id
+      WHERE df.centro_custo_id = ? AND df.data BETWEEN ? AND ?
+      ORDER BY df.data DESC
+    `).all(centroCusto.id, inicio, fim);
+  } else {
+    linhas = db.prepare(`
+      SELECT fp.id, fp.data_vencimento AS data, fp.valor_parcela AS valor, fp.numero_parcela, f.descricao
+      FROM financiamento_parcelas fp
+      JOIN financiamentos f ON f.id = fp.financiamento_id
+      WHERE f.centro_custo_id = ? AND fp.data_vencimento BETWEEN ? AND ?
+      ORDER BY fp.data_vencimento DESC
+    `).all(centroCusto.id, inicio, fim);
+  }
+  res.json(linhas);
 }));
 
 // ---- DRE Geral da Empresa ----
@@ -219,6 +293,74 @@ router.get('/geral', requerAcessoModulo('dre', 'Visualizar'), asyncHandler(async
   }
 
   res.json(resposta);
+}));
+
+// Comparativo entre o periodo filtrado e o periodo imediatamente anterior de
+// mesma duracao (ex.: filtrou o mes atual -> compara com o mes anterior
+// inteiro, dia a dia, nao so "mes calendario"). Cobre DRE (receita/custo/
+// lucro da frota + Base) e Acertos fechados (quantidade e soma do saldo
+// final) lado a lado - escopo combinado que o usuario pediu no lugar de um
+// MoM/YoY completo.
+function totaisDreDoPeriodo(empresaId, inicio, fim) {
+  const veiculos = empresaId
+    ? db.prepare('SELECT id FROM veiculos WHERE empresa_id = ?').all(empresaId)
+    : db.prepare('SELECT id FROM veiculos').all();
+
+  let receitaTotal = 0;
+  let custoTotal = 0;
+  for (const veiculo of veiculos) {
+    const centroCusto = buscarCentroCustoDoVeiculo(veiculo.id);
+    if (!centroCusto) continue;
+    const { receita, custosViagem } = receitaECustosDaViagemPorCentro(centroCusto.id, inicio, fim);
+    const { custoPecasDireto, custoOrdensServico, custoPneus } = custosDiretosDoVeiculo(veiculo.id, inicio, fim);
+    const fixosEFinanciamento = custosDoCentroCusto(centroCusto.id, inicio, fim);
+    receitaTotal += receita;
+    custoTotal += custosViagem + custoPecasDireto + custoOrdensServico + custoPneus + fixosEFinanciamento.total;
+  }
+
+  const centrosBase = empresaId
+    ? db.prepare("SELECT id FROM centros_custo WHERE tipo = 'Base' AND empresa_id = ?").all(empresaId)
+    : db.prepare("SELECT id FROM centros_custo WHERE tipo = 'Base'").all();
+  const custosBaseTotal = somar(centrosBase.map((c) => custosDoCentroCusto(c.id, inicio, fim).total));
+
+  return { receitaTotal, custoTotal: custoTotal + custosBaseTotal, lucroLiquido: receitaTotal - custoTotal - custosBaseTotal };
+}
+
+function totaisAcertosDoPeriodo(empresaId, inicio, fim) {
+  const condicoes = ["status = 'Fechado'", 'date(data_acerto) BETWEEN ? AND ?'];
+  const params = [inicio, fim];
+  if (empresaId) { condicoes.push('empresa_id = ?'); params.push(empresaId); }
+  const row = db.prepare(`
+    SELECT COUNT(*) AS quantidade, COALESCE(SUM(saldo_final), 0) AS somaSaldoFinal
+    FROM acertos_viagem WHERE ${condicoes.join(' AND ')}
+  `).get(...params);
+  return { quantidade: row.quantidade, somaSaldoFinal: row.somaSaldoFinal };
+}
+
+router.get('/comparativo', requerAcessoModulo('dre', 'Visualizar'), asyncHandler(async (req, res) => {
+  const { data_inicio: dataInicio, data_fim: dataFim } = req.query;
+  if (!dataInicio || !dataFim) throw new ApiError(400, 'Informe data_inicio e data_fim.');
+
+  const diasPeriodo = Math.max(1, Math.round((new Date(`${dataFim}T00:00:00Z`) - new Date(`${dataInicio}T00:00:00Z`)) / 86400000) + 1);
+  const fimAnterior = new Date(`${dataInicio}T00:00:00Z`);
+  fimAnterior.setUTCDate(fimAnterior.getUTCDate() - 1);
+  const inicioAnterior = new Date(fimAnterior);
+  inicioAnterior.setUTCDate(inicioAnterior.getUTCDate() - (diasPeriodo - 1));
+  const isoFimAnterior = fimAnterior.toISOString().slice(0, 10);
+  const isoInicioAnterior = inicioAnterior.toISOString().slice(0, 10);
+
+  res.json({
+    atual: {
+      periodo: { inicio: dataInicio, fim: dataFim },
+      dre: totaisDreDoPeriodo(req.empresaId, dataInicio, dataFim),
+      acertos: totaisAcertosDoPeriodo(req.empresaId, dataInicio, dataFim),
+    },
+    anterior: {
+      periodo: { inicio: isoInicioAnterior, fim: isoFimAnterior },
+      dre: totaisDreDoPeriodo(req.empresaId, isoInicioAnterior, isoFimAnterior),
+      acertos: totaisAcertosDoPeriodo(req.empresaId, isoInicioAnterior, isoFimAnterior),
+    },
+  });
 }));
 
 module.exports = router;

@@ -1,25 +1,9 @@
 // Espelha os modulos cadastrados em modulos_sistema (schema.sql) + suas
 // rotas no frontend, agrupados para o menu lateral.
+// Ordem por frequencia de uso real (nao por categoria): Operacao e Financeiro
+// sao o dia a dia; Frota e Cadastros sao majoritariamente configuracao inicial
+// (ver revisao de design - "Ordem do menu").
 export const GRUPOS_MENU = [
-  {
-    titulo: 'Cadastros',
-    itens: [
-      { chave: 'fornecedores', label: 'Fornecedores', rota: '/fornecedores' },
-      { chave: 'motoristas', label: 'Motoristas', rota: '/motoristas' },
-      { chave: 'veiculos', label: 'Veiculos e Frota', rota: '/veiculos' },
-      { chave: 'conjuntos', label: 'Composicoes', rota: '/conjuntos' },
-    ],
-  },
-  {
-    titulo: 'Frota',
-    itens: [
-      { chave: 'estoque', label: 'Estoque', rota: '/estoque' },
-      { chave: 'pneus', label: 'Pneus', rota: '/pneus' },
-      { chave: 'manutencao', label: 'Manutencao (OS)', rota: '/manutencao' },
-      { chave: 'alertas', label: 'Alertas', rota: '/alertas' },
-      { chave: 'checklist', label: 'Checklist de Bordo', rota: '/checklist' },
-    ],
-  },
   {
     titulo: 'Operacao',
     itens: [
@@ -38,6 +22,25 @@ export const GRUPOS_MENU = [
       { chave: 'contas_receber', label: 'Contas a Receber', rota: '/contas-receber' },
       { chave: 'despesas_fixas', label: 'Despesas Fixas', rota: '/despesas-fixas' },
       { chave: 'financiamentos', label: 'Financiamentos', rota: '/financiamentos' },
+    ],
+  },
+  {
+    titulo: 'Frota',
+    itens: [
+      { chave: 'estoque', label: 'Estoque', rota: '/estoque' },
+      { chave: 'pneus', label: 'Pneus', rota: '/pneus' },
+      { chave: 'manutencao', label: 'Manutencao (OS)', rota: '/manutencao' },
+      { chave: 'alertas', label: 'Alertas', rota: '/alertas' },
+      { chave: 'checklist', label: 'Checklist de Bordo', rota: '/checklist' },
+    ],
+  },
+  {
+    titulo: 'Cadastros',
+    itens: [
+      { chave: 'fornecedores', label: 'Fornecedores', rota: '/fornecedores' },
+      { chave: 'motoristas', label: 'Motoristas', rota: '/motoristas' },
+      { chave: 'veiculos', label: 'Veiculos e Frota', rota: '/veiculos' },
+      { chave: 'conjuntos', label: 'Composicoes', rota: '/conjuntos' },
     ],
   },
   {

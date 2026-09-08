@@ -87,4 +87,18 @@ router.delete('/:id', requerAcessoModulo('conjuntos', 'Gerenciar'), exigirEmpres
   res.status(204).send();
 }));
 
+router.post('/batch-delete', requerAcessoModulo('conjuntos', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || !ids.length) throw new ApiError(400, 'Informe a lista de ids a excluir.');
+  withTransaction(db, () => {
+    for (const id of ids) {
+      const antes = buscarConjuntoCompleto(id, req.empresaId);
+      if (!antes) continue;
+      db.prepare('DELETE FROM conjuntos WHERE id = ?').run(id);
+      registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'conjuntos', registroId: id, acao: 'DELETE', antes });
+    }
+  });
+  res.status(204).send();
+}));
+
 module.exports = router;

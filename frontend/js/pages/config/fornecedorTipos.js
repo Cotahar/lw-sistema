@@ -6,5 +6,5 @@ export const render = criarPaginaCrud({
   tituloItem: 'Tipo',
   somenteAdmin: true,
   campos: [{ nome: 'nome', label: 'Nome', tipo: 'texto', obrigatorio: true }],
-  colunas: [{ chave: 'nome', titulo: 'Nome' }],
+  colunas: [{ chave: 'nome', titulo: 'Nome', editavel: true }],
 });

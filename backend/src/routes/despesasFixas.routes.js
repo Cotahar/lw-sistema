@@ -134,4 +134,32 @@ router.delete('/:id', requerAcessoModulo('despesas_fixas', 'Gerenciar'), exigirE
   res.status(204).send();
 }));
 
+router.post('/batch-delete', requerAcessoModulo('despesas_fixas', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || !ids.length) throw new ApiError(400, 'Informe a lista de ids a excluir.');
+  const registros = ids.map((id) => {
+    const antes = buscarDespesaFixaCompleta(id, req.empresaId);
+    if (!antes) throw new ApiError(404, `Despesa fixa #${id} nao encontrada.`);
+    if (antes.qtd_parcelas) {
+      if (antes.parcelas.some((p) => p.status === 'Paga')) throw new ApiError(400, `A despesa fixa #${id} tem parcelas ja pagas e nao pode ser excluida em lote.`);
+    } else {
+      const contaPagar = db.prepare("SELECT * FROM contas_pagar WHERE origem_tipo = 'DespesaFixa' AND origem_id = ?").get(antes.id);
+      if (contaPagar && contaPagar.status !== 'Pendente') throw new ApiError(400, `A despesa fixa #${id} ja possui pagamento lancado e nao pode ser excluida em lote.`);
+    }
+    return antes;
+  });
+  withTransaction(db, () => {
+    for (const antes of registros) {
+      if (antes.qtd_parcelas) {
+        db.prepare("DELETE FROM contas_pagar WHERE origem_tipo = 'DespesaFixaParcela' AND origem_id IN (SELECT id FROM despesa_fixa_parcelas WHERE despesa_fixa_id = ?)").run(antes.id);
+      } else {
+        db.prepare("DELETE FROM contas_pagar WHERE origem_tipo = 'DespesaFixa' AND origem_id = ?").run(antes.id);
+      }
+      db.prepare('DELETE FROM despesas_fixas WHERE id = ?').run(antes.id);
+      registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'despesas_fixas', registroId: antes.id, acao: 'DELETE', antes });
+    }
+  });
+  res.status(204).send();
+}));
+
 module.exports = router;

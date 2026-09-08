@@ -4,3 +4,6 @@ data/*.db
 .claude/settings.local.json
 .claude/worktrees/
 backend/uploads/
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
