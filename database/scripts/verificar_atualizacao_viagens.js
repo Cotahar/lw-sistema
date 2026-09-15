@@ -13,8 +13,8 @@ db.prepare(`
   WHERE m.cpf IN ('60358718015', '69372284904')
 `).all().forEach((r) => console.log(r));
 
-console.log('\n=== movimentacoes_caixa total (deveria ser 0) ===');
-console.log(db.prepare('SELECT COUNT(*) c FROM movimentacoes_caixa').get());
+console.log('\n=== movimentacoes_caixa (detalhe, pra confirmar origem) ===');
+db.prepare('SELECT id, tipo, valor, data, descricao, origem_tipo, origem_id, criado_em FROM movimentacoes_caixa ORDER BY id').all().forEach((r) => console.log(r));
 
 console.log('\n=== contas_pagar por status ===');
 db.prepare('SELECT status, COUNT(*) c, SUM(valor) v FROM contas_pagar GROUP BY status').all()
