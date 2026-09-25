@@ -1,4 +1,4 @@
-import { attachMoedaMask, getMoedaValue, setMoedaValue, attachPesoMask, getPesoValue, attachDataMask, parseDataBrParaIso, attachCpfCnpjMask, apenasDigitos, validarCpfOuCnpj } from '../masks.js';
+import { attachMoedaMask, getMoedaValue, setMoedaValue, attachPesoMask, getPesoValue, attachDataMask, parseDataBrParaIso, attachCpfCnpjMask, apenasDigitos, validarCpfOuCnpj, attachUppercaseInput } from '../masks.js';
 import { criarSearchableSelect } from './searchableSelect.js';
 import { fecharModal } from './modal.js';
 
@@ -109,6 +109,7 @@ export function criarFormulario({ campos, valoresIniciais = {}, aoSalvar, textoS
       textarea.rows = 3;
       textarea.value = valoresIniciais[campo.nome] ?? '';
       bloco.appendChild(textarea);
+      attachUppercaseInput(textarea);
       if (campo.obrigatorio) {
         const marcar = criarBlocoErro(bloco, textarea);
         validaveis[campo.nome] = { valor: () => textarea.value, marcar };
@@ -126,7 +127,8 @@ export function criarFormulario({ campos, valoresIniciais = {}, aoSalvar, textoS
       else if (campo.tipo === 'peso') attachPesoMask(input, valoresIniciais[campo.nome]);
       else if (campo.tipo === 'data') attachDataMask(input, valoresIniciais[campo.nome]);
       else if (campo.tipo === 'cpf_cnpj') attachCpfCnpjMask(input, valoresIniciais[campo.nome]);
-      else input.value = valoresIniciais[campo.nome] ?? '';
+      else if (campo.tipo === 'numero') input.value = valoresIniciais[campo.nome] ?? '';
+      else { input.value = valoresIniciais[campo.nome] ?? ''; attachUppercaseInput(input); }
 
       // Validacao no blur: feedback assim que o usuario sai do campo, em vez
       // de descobrir um erro so depois de preencher o formulario inteiro e

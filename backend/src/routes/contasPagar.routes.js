@@ -40,7 +40,7 @@ const SELECT_LISTA = `
 
 router.get('/', requerAcessoModulo('contas_pagar', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const {
-    status, origem_tipo, categoria_id, veiculo_id, search, financiamento_id, despesa_fixa_id, os_id,
+    status, origem_tipo, categoria_id, veiculo_id, search, financiamento_id, despesa_fixa_id, os_id, acerto_id,
     data_cadastro_de, data_cadastro_ate, data_vencimento_de, data_vencimento_ate,
   } = req.query;
   const condicoes = ['cp.empresa_id = ?'];
@@ -68,6 +68,13 @@ router.get('/', requerAcessoModulo('contas_pagar', 'Visualizar'), exigirEmpresaE
   if (os_id) {
     condicoes.push(`cp.origem_tipo = 'OrdemServicoParcela' AND cp.origem_id IN (SELECT id FROM os_parcelas WHERE os_id = ?)`);
     params.push(os_id);
+  }
+  // Contas geradas ao fechar um Acerto (saldo a pagar ao motorista e/ou
+  // imposto - ver POST /acertos/viagem/:viagemId/fechar) apontam direto pro
+  // id do acerto, sem tabela de parcela intermediaria.
+  if (acerto_id) {
+    condicoes.push(`cp.origem_tipo = 'AcertoViagem' AND cp.origem_id = ?`);
+    params.push(acerto_id);
   }
   if (data_cadastro_de) { condicoes.push('date(cp.criado_em) >= ?'); params.push(data_cadastro_de); }
   if (data_cadastro_ate) { condicoes.push('date(cp.criado_em) <= ?'); params.push(data_cadastro_ate); }
@@ -242,9 +249,21 @@ router.post('/:id/baixar', requerAcessoModulo('contas_pagar', 'Gerenciar'), exig
       movimentacao = db.prepare('SELECT * FROM movimentacoes_caixa WHERE id = ?').get(movInfo.lastInsertRowid);
     }
 
-    if (contaPagar.origem_tipo === 'FinanciamentoParcela' && novoStatus === 'Pago') {
-      db.prepare("UPDATE financiamento_parcelas SET status = 'Paga', data_pagamento = COALESCE(?, date('now', '-3 hours')) WHERE id = ?")
-        .run(data_pagamento || null, contaPagar.origem_id);
+    // Sincroniza o status na tabela de origem tambem (financiamento/despesa
+    // fixa/OS parcelados) - sem isso a parcela ficava "Pendente" pra sempre
+    // nessas tabelas mesmo depois de paga aqui, por mais que a conta a pagar
+    // (a fonte de verdade pro financeiro) estivesse correta.
+    if (novoStatus === 'Pago') {
+      const tabelaParcelaPorOrigem = {
+        FinanciamentoParcela: 'financiamento_parcelas',
+        DespesaFixaParcela: 'despesa_fixa_parcelas',
+        OrdemServicoParcela: 'os_parcelas',
+      };
+      const tabelaParcela = tabelaParcelaPorOrigem[contaPagar.origem_tipo];
+      if (tabelaParcela) {
+        db.prepare(`UPDATE ${tabelaParcela} SET status = 'Paga', data_pagamento = COALESCE(?, date('now', '-3 hours')) WHERE id = ?`)
+          .run(data_pagamento || null, contaPagar.origem_id);
+      }
     }
 
     return {

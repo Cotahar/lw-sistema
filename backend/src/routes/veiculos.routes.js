@@ -20,6 +20,23 @@ function validarCarretaPadrao(tipo, carretaPadraoId, empresaId) {
   if (carreta.tipo !== 'Carreta') throw new ApiError(400, 'Carreta padrao deve ser um veiculo do tipo Carreta.');
 }
 
+// A tela de cadastro (form de edicao do Cavalo) precisa mostrar a PLACA da
+// carreta padrao ja salva, nao so o id cru guardado em carreta_padrao_id -
+// sem isso o campo de busca aparecia vazio toda vez que o cadastro era
+// reaberto (o valor continuava certo por baixo - "salva mas nao aparece o
+// registro salvo antes"). Busca em lote (1 query) em vez de por linha pra
+// nao virar N+1 numa lista com varios Cavalos.
+function comCarretaPadraoPlaca(veiculos, empresaId) {
+  const ids = [...new Set(veiculos.map((v) => v.carreta_padrao_id).filter(Boolean))];
+  const placaPorId = {};
+  if (ids.length) {
+    const placeholders = ids.map(() => '?').join(',');
+    db.prepare(`SELECT id, placa FROM veiculos WHERE id IN (${placeholders}) AND empresa_id = ?`).all(...ids, empresaId)
+      .forEach((c) => { placaPorId[c.id] = c.placa; });
+  }
+  return veiculos.map((v) => ({ ...v, carreta_padrao_placa: v.carreta_padrao_id ? placaPorId[v.carreta_padrao_id] || null : null }));
+}
+
 router.get('/', requerAcessoModulo('veiculos', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const { search, tipo } = req.query;
   const condicoes = [];
@@ -28,13 +45,14 @@ router.get('/', requerAcessoModulo('veiculos', 'Visualizar'), exigirEmpresaEspec
   if (search) { condicoes.push('(placa LIKE ? OR marca LIKE ? OR modelo LIKE ?)'); params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
   if (tipo) { condicoes.push('tipo = ?'); params.push(tipo); }
   const where = `WHERE ${condicoes.join(' AND ')}`;
-  res.json(db.prepare(`SELECT * FROM veiculos ${where} ORDER BY placa`).all(...params));
+  const veiculos = db.prepare(`SELECT * FROM veiculos ${where} ORDER BY placa`).all(...params);
+  res.json(comCarretaPadraoPlaca(veiculos, req.empresaId));
 }));
 
 router.get('/:id', requerAcessoModulo('veiculos', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const veiculo = db.prepare('SELECT * FROM veiculos WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
   if (!veiculo) throw new ApiError(404, 'Veiculo nao encontrado.');
-  res.json(veiculo);
+  res.json(comCarretaPadraoPlaca([veiculo], req.empresaId)[0]);
 }));
 
 router.post('/', requerAcessoModulo('veiculos', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
@@ -84,6 +102,44 @@ router.put('/:id', requerAcessoModulo('veiculos', 'Gerenciar'), exigirEmpresaEsp
   const depois = db.prepare('SELECT * FROM veiculos WHERE id = ?').get(req.params.id);
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'veiculos', registroId: depois.id, acao: 'UPDATE', antes, depois });
   res.json(depois);
+}));
+
+// Propaga a carreta padrao (recem-salva no cadastro do Cavalo) pras
+// composicoes existentes que usam esse Cavalo - so quando o usuario confirma
+// explicitamente (o frontend pergunta depois de salvar o cadastro, ver
+// veiculos.js). So troca em composicoes com EXATAMENTE uma Carreta: com zero
+// ou mais de uma, nao ha como adivinhar qual trocar, entao a composicao e
+// pulada (contada em "ignoradas").
+router.post('/:id/sincronizar-carreta-composicoes', requerAcessoModulo('veiculos', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const cavalo = db.prepare('SELECT * FROM veiculos WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
+  if (!cavalo) throw new ApiError(404, 'Veiculo nao encontrado.');
+  if (cavalo.tipo !== 'Cavalo' || !cavalo.carreta_padrao_id) {
+    throw new ApiError(400, 'Este veiculo nao tem uma carreta padrao definida.');
+  }
+
+  const conjuntosDoCavalo = db.prepare(`
+    SELECT DISTINCT ci.conjunto_id FROM conjunto_itens ci
+    JOIN conjuntos c ON c.id = ci.conjunto_id
+    WHERE ci.veiculo_id = ? AND c.empresa_id = ?
+  `).all(req.params.id, req.empresaId).map((r) => r.conjunto_id);
+
+  let atualizados = 0;
+  let ignorados = 0;
+  withTransaction(db, () => {
+    for (const conjuntoId of conjuntosDoCavalo) {
+      const carretasDoConjunto = db.prepare(`
+        SELECT ci.id AS item_id, v.id AS veiculo_id FROM conjunto_itens ci
+        JOIN veiculos v ON v.id = ci.veiculo_id
+        WHERE ci.conjunto_id = ? AND v.tipo = 'Carreta'
+      `).all(conjuntoId);
+      if (carretasDoConjunto.length !== 1) { ignorados++; continue; }
+      if (carretasDoConjunto[0].veiculo_id === cavalo.carreta_padrao_id) continue; // ja esta igual, nada a fazer
+      db.prepare('UPDATE conjunto_itens SET veiculo_id = ? WHERE id = ?').run(cavalo.carreta_padrao_id, carretasDoConjunto[0].item_id);
+      atualizados++;
+    }
+  });
+
+  res.json({ atualizados, ignorados });
 }));
 
 // Todo veiculo ganha um centro_custo automatico no POST (ver acima) - o DELETE
@@ -190,8 +246,12 @@ router.post('/:id/localizacao', requerAcessoModulo('veiculos', 'Gerenciar'), exi
       INSERT INTO localizacao_eventos (empresa_id, veiculo_id, cidade, uf, origem, usuario_id, observacao)
       VALUES (?, ?, ?, ?, 'Manual', ?, ?)
     `).run(req.empresaId, veiculo.id, cidade, uf.toUpperCase(), req.usuario.id, observacao || null);
+    // Lancamento manual so tem cidade/UF (nao tem como o usuario digitar
+    // coordenadas exatas) - zera lat/lng pra nao deixar um par de coordenadas
+    // antigo (de uma sincronizacao Onixsat anterior) associado a uma cidade
+    // diferente da que acabou de ser informada.
     db.prepare(`
-      UPDATE veiculos SET localizacao_cidade = ?, localizacao_uf = ?, localizacao_atualizado_em = datetime('now', '-3 hours') WHERE id = ?
+      UPDATE veiculos SET localizacao_cidade = ?, localizacao_uf = ?, localizacao_lat = NULL, localizacao_lng = NULL, localizacao_atualizado_em = datetime('now', '-3 hours') WHERE id = ?
     `).run(cidade, uf.toUpperCase(), veiculo.id);
     return db.prepare('SELECT * FROM localizacao_eventos WHERE id = ?').get(info.lastInsertRowid);
   });

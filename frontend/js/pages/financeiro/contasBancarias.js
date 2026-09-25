@@ -2,7 +2,7 @@ import { get, post, put, podeGerenciar } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { abrirModal, fecharModal } from '../../components/modal.js';
 import { mostrarToast, mostrarErro } from '../../components/toast.js';
-import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, formatarDataBr } from '../../masks.js';
+import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, formatarDataBr, attachUppercaseInput } from '../../masks.js';
 
 function montarFormulario(registro, aoSalvar) {
   const form = document.createElement('form');
@@ -22,6 +22,8 @@ function montarFormulario(registro, aoSalvar) {
   form.banco.value = registro?.banco || '';
   form.agencia.value = registro?.agencia || '';
   form.conta.value = registro?.conta || '';
+  attachUppercaseInput(form.nome);
+  attachUppercaseInput(form.banco);
   if (!registro) attachMoedaMaskReais(form.saldo_atual, 0);
   const erro = form.querySelector('[data-erro]');
   form.addEventListener('submit', async (ev) => {

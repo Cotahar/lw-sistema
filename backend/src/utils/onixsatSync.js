@@ -155,8 +155,8 @@ async function sincronizarEmpresa(empresaId, usuarioId = null) {
           VALUES (?, ?, ?, ?, ?, ?, 'Onixsat', ?)
         `).run(empresaId, veiculoId, msg.mun, String(msg.uf).toUpperCase(), latitude, longitude, dataHora);
         db.prepare(`
-          UPDATE veiculos SET localizacao_cidade = ?, localizacao_uf = ?, localizacao_atualizado_em = datetime('now', '-3 hours') WHERE id = ?
-        `).run(msg.mun, String(msg.uf).toUpperCase(), veiculoId);
+          UPDATE veiculos SET localizacao_cidade = ?, localizacao_uf = ?, localizacao_lat = ?, localizacao_lng = ?, localizacao_atualizado_em = datetime('now', '-3 hours') WHERE id = ?
+        `).run(msg.mun, String(msg.uf).toUpperCase(), latitude, longitude, veiculoId);
         localizacaoAtualizados++;
       }
     }

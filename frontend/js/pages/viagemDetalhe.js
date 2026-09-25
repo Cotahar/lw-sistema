@@ -59,7 +59,11 @@ async function buscarCentrosCusto(termo) {
 
 // ---- Fretes ----
 
-function montarFormularioFrete(aoSalvar) {
+// `frete` (opcional) preenche o formulario para edicao - sem ele, cadastra um
+// frete novo do zero. `transportadoraLabelInicial` e o nome ja resolvido do
+// fornecedor (o frete so guarda o id) - quem chama ja tem esse mapa em maos
+// (nomeFornecedoresPorId), evita buscar de novo aqui.
+function montarFormularioFrete(aoSalvar, frete, transportadoraLabelInicial) {
   const form = document.createElement('form');
   form.className = 'space-y-4';
   form.innerHTML = `
@@ -81,14 +85,26 @@ function montarFormularioFrete(aoSalvar) {
       <div><label class="label">Data prevista de recebimento</label><input type="text" name="data_prevista_recebimento" class="input" /></div>
     </div>
     <p class="hidden text-sm text-red-600" data-erro></p>
-    <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Cadastrar frete</button></div>
+    <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">${frete ? 'Salvar alteracoes' : 'Cadastrar frete'}</button></div>
   `;
-  const transportadoraSelect = criarSearchableSelect({ buscar: buscarFornecedores, placeholder: 'Pesquisar transportadora...', criarNovo: { label: 'Cadastrar novo fornecedor', abrir: criarNovoFornecedor } });
+  const transportadoraSelect = criarSearchableSelect({
+    buscar: buscarFornecedores,
+    placeholder: 'Pesquisar transportadora...',
+    criarNovo: { label: 'Cadastrar novo fornecedor', abrir: criarNovoFornecedor },
+    valorInicial: frete ? frete.transportadora_id : null,
+    labelInicial: transportadoraLabelInicial || '',
+  });
   form.querySelector('[data-transportadora]').appendChild(transportadoraSelect.el);
-  attachPesoMask(form.peso_carga_kg);
-  attachMoedaMaskReais(form.frete_bruto, 0);
-  attachDataMask(form.data_carregamento);
-  attachDataMask(form.data_prevista_recebimento);
+  attachPesoMask(form.peso_carga_kg, frete ? frete.peso_carga_kg : undefined);
+  attachMoedaMaskReais(form.frete_bruto, frete ? frete.frete_bruto : 0);
+  attachDataMask(form.data_carregamento, frete ? frete.data_carregamento : undefined);
+  attachDataMask(form.data_prevista_recebimento, frete ? frete.data_prevista_recebimento : undefined);
+  if (frete) {
+    form.origem_cidade.value = frete.origem_cidade;
+    form.origem_uf.value = frete.origem_uf;
+    form.destino_cidade.value = frete.destino_cidade;
+    form.destino_uf.value = frete.destino_uf;
+  }
   const erro = form.querySelector('[data-erro]');
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
@@ -121,6 +137,19 @@ async function abrirNovoFrete(viagemId, recarregar) {
     recarregar();
   });
   abrirModal({ titulo: 'Novo frete', conteudo: form, largura: 'max-w-lg' });
+}
+
+// PUT /viagens/fretes/:freteId ja existe no backend ha tempos (bloqueia so
+// alterar frete_bruto se ja houver baixas lancadas, e alterar qualquer campo
+// se a viagem ja estiver Finalizada) - so faltava o botao pra chegar nele.
+function abrirEditarFrete(frete, transportadoraLabelInicial, recarregar) {
+  const form = montarFormularioFrete(async (valores) => {
+    await put(`/viagens/fretes/${frete.id}`, valores);
+    fecharModal();
+    mostrarToast('Frete atualizado.');
+    recarregar();
+  }, frete, transportadoraLabelInicial);
+  abrirModal({ titulo: 'Editar frete', conteudo: form, largura: 'max-w-lg' });
 }
 
 async function abrirBaixasFrete(frete, recarregar, gerenciar) {
@@ -256,7 +285,7 @@ function recalcularTrio(formPreco, formLitragem, formValor, campoEditado) {
   }
 }
 
-async function abrirNovaDespesa(viagemId, recarregar) {
+async function abrirNovaDespesa(viagemId, recarregar, centroCustoPadrao) {
   const todasCategorias = await get('/categorias-despesa');
   const categorias = todasCategorias.filter((c) => !c.oculta_na_busca);
   const categoriaAbastecimentoId = todasCategorias.find((c) => c.nome.trim().toLowerCase() === 'abastecimento')?.id ?? null;
@@ -282,7 +311,7 @@ async function abrirNovaDespesa(viagemId, recarregar) {
     <div>
       <label class="label">Centro de custo</label>
       <div data-centro-custo-select></div>
-      <p class="mt-1 text-xs text-slate-400">Deixe em branco para usar o veiculo da viagem (padrao). Escolha "Base/Administrativo" se este gasto nao deve entrar no resultado do veiculo (ex.: aporte pessoal).</p>
+      <p class="mt-1 text-xs text-slate-400">Ja vem preenchido com o veiculo da viagem - altere se for o caso. Escolha "Base/Administrativo" se este gasto nao deve entrar no resultado do veiculo (ex.: aporte pessoal).</p>
     </div>
     <div class="rounded-lg border border-slate-200 p-3" data-bloco-abastecimento>
       <p class="mb-2 text-xs font-medium uppercase text-slate-500">Abastecimento</p>
@@ -331,9 +360,15 @@ async function abrirNovaDespesa(viagemId, recarregar) {
   const fornecedorSelect = criarSearchableSelect({
     buscar: (termo) => buscarFornecedoresFiltrado(termo, categoriaEhAbastecimento()),
     placeholder: 'Pesquisar fornecedor...',
+    criarNovo: { label: 'Cadastrar novo fornecedor', abrir: criarNovoFornecedor },
   });
   form.querySelector('[data-fornecedor-select]').appendChild(fornecedorSelect.el);
-  const centroCustoSelect = criarSearchableSelect({ buscar: buscarCentrosCusto, placeholder: 'Pesquisar centro de custo (opcional)...' });
+  const centroCustoSelect = criarSearchableSelect({
+    buscar: buscarCentrosCusto,
+    placeholder: 'Pesquisar centro de custo (opcional)...',
+    valorInicial: centroCustoPadrao ? centroCustoPadrao.id : null,
+    labelInicial: centroCustoPadrao ? centroCustoPadrao.nome : '',
+  });
   form.querySelector('[data-centro-custo-select]').appendChild(centroCustoSelect.el);
 
   function categoriaEhAbastecimento() {
@@ -583,6 +618,7 @@ function montarFormularioDespesaExistente({ despesa, arlaDespesa, categoriaNome,
     buscar: (termo) => buscarFornecedoresFiltrado(termo, true),
     valorInicial: despesa.posto_fornecedor_id,
     labelInicial: fornecedorLabelInicial || '',
+    criarNovo: { label: 'Cadastrar novo fornecedor', abrir: criarNovoFornecedor },
     placeholder: 'Pesquisar posto...',
   });
   form.querySelector('[data-posto-select]').appendChild(postoSelect.el);
@@ -720,6 +756,22 @@ function abrirEditarDespesa(despesa, arlaDespesa, categoriaNome, fornecedorLabel
     }
   });
   abrirModal({ titulo: 'Editar despesa', conteudo: form, largura: 'max-w-lg' });
+}
+
+// Viagem finalizada (ou usuario so-leitura) nao pode mais editar a despesa,
+// mas os campos que nao aparecem na tabela (preco/litro, litragem, KM, Arla,
+// valor pago em dinheiro, foto da nota) continuam importantes de conferir -
+// abre o mesmo formulario de sempre, so que travado (nenhum campo editavel,
+// sem submit de verdade).
+function abrirDetalhesDespesa(despesa, arlaDespesa, categoriaNome, fornecedorLabelInicial, centroCustoLabelInicial) {
+  const { form } = montarFormularioDespesaExistente({
+    despesa, arlaDespesa, categoriaNome, fornecedorLabelInicial, centroCustoLabelInicial,
+    incluirFormaPagamento: false, textoSubmit: 'Fechar',
+  });
+  form.querySelectorAll('input, select, textarea').forEach((el) => { el.disabled = true; });
+  form.querySelector('[data-erro]')?.remove();
+  form.addEventListener('submit', (ev) => { ev.preventDefault(); fecharModal(); });
+  abrirModal({ titulo: 'Detalhes da despesa', conteudo: form, largura: 'max-w-lg' });
 }
 
 // ---- Adiantamentos ao motorista ----
@@ -877,7 +929,25 @@ export async function render(container, params) {
     const nomeFornecedoresPorId = Object.fromEntries(fornecedores.map((f) => [f.id, f.nome]));
     const nomeCentrosCustoPorId = Object.fromEntries(centrosCusto.map((c) => [c.id, c.nome]));
 
+    // Despesas de Arla nascem vinculadas a sua abastecida (diesel) via
+    // despesa_arla_id (campo na despesa "mae" apontando pro id da Arla) - sao
+    // lancadas e editadas sempre junto, entao aparecem MERGEADAS na mesma
+    // linha da tabela em vez de como um registro proprio (ver coluna "Arla"
+    // abaixo). despesasArlaPorPaiId indexa pelo id da despesa de diesel.
+    const despesasPorId = new Map(despesas.map((d) => [d.id, d]));
+    const despesasArlaPorPaiId = new Map(
+      despesas.filter((d) => d.despesa_arla_id).map((d) => [d.id, despesasPorId.get(d.despesa_arla_id)]),
+    );
+    const idsArlaFilhas = new Set(despesas.filter((d) => d.despesa_arla_id).map((d) => d.despesa_arla_id));
+    const despesasPrincipais = despesas.filter((d) => !idsArlaFilhas.has(d.id));
+
     const tratora = conjunto.itens.find((i) => TIPOS_TRATORA.includes(i.tipo));
+    // Prefere lat/lng exatos (Onixsat) - so cai pra busca por cidade/UF (que o
+    // Google resolve pro centro da cidade, nao a posicao real) quando a
+    // localizacao foi lancada manualmente e nao tem coordenada.
+    const linkMapsTratora = tratora && tratora.localizacao_lat && tratora.localizacao_lng
+      ? `https://www.google.com/maps/search/?api=1&query=${tratora.localizacao_lat},${tratora.localizacao_lng}`
+      : tratora ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${tratora.localizacao_cidade}, ${tratora.localizacao_uf}`)}` : '';
     // hodometro_atual do veiculo so e uma leitura confiavel da posicao atual
     // da viagem se ja foi atualizado (manual ou Onixsat) alem do km_inicial -
     // um veiculo recem-cadastrado tem hodometro_atual=0, bem menor que o
@@ -891,6 +961,11 @@ export async function render(container, params) {
     const totalFaturado = (viagem.fretes || []).reduce((t, f) => t + f.frete_bruto, 0);
     const totalDespesas = despesas.reduce((t, d) => t + d.valor, 0);
     const lucroAteAgora = totalFaturado - totalDespesas;
+    // Soma so das despesas "principais" (despesasPrincipais ja exclui as
+    // linhas de Arla, que tem litragem propria em outra unidade/proposito -
+    // ver despesasArlaPorPaiId acima) - o litro que interessa aqui e so o de
+    // diesel mesmo.
+    const totalLitragemDiesel = despesasPrincipais.reduce((t, d) => t + (d.litragem || 0), 0);
     // HUD de viabilidade economica: metricas derivadas, so calculadas quando o
     // denominador faz sentido (km rodado > 0, faturado > 0) - senao ficam "-"
     // em vez de Infinity/NaN na tela.
@@ -940,7 +1015,7 @@ export async function render(container, params) {
               <summary class="inline cursor-pointer text-sm font-semibold text-slate-900">${tratora.localizacao_cidade}/${tratora.localizacao_uf}</summary>
               <div class="mt-1 text-xs text-slate-500">
                 Atualizado em ${formatarDataHoraBr(tratora.localizacao_atualizado_em)}<br />
-                <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${tratora.localizacao_cidade}, ${tratora.localizacao_uf}`)}" target="_blank" rel="noopener" class="text-gray-900 hover:underline">Google Maps</a>
+                <a href="${linkMapsTratora}" target="_blank" rel="noopener" class="text-gray-900 hover:underline">Google Maps</a>
               </div>
             </details>
           ` : '<p class="text-sm text-slate-400">Nao informada</p>'}
@@ -965,10 +1040,14 @@ export async function render(container, params) {
 
       <div class="card mb-6 p-4">
         <p class="mb-3 text-xs font-medium uppercase text-slate-500">Viabilidade economica ate agora</p>
-        <div class="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-7">
+        <div class="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-8">
           <div>
             <p class="text-xs font-medium uppercase text-slate-500">Faturado</p>
             <p class="text-sm font-semibold text-slate-900">${formatarMoeda(totalFaturado)}</p>
+          </div>
+          <div>
+            <p class="text-xs font-medium uppercase text-slate-500">Diesel abastecido</p>
+            <p class="text-sm font-semibold text-slate-900">${totalLitragemDiesel > 0 ? `${totalLitragemDiesel.toLocaleString('pt-BR')} L` : '-'}</p>
           </div>
           <div>
             <p class="text-xs font-medium uppercase text-slate-500">Despesas</p>
@@ -1005,7 +1084,14 @@ export async function render(container, params) {
       </details>
 
       <details class="mb-6" data-secao-despesas>
-        ${resumoSecao('Despesas', despesas.length, false)}
+        ${resumoSecao('Despesas', despesasPrincipais.length, false)}
+        <div class="mb-3 max-w-xs">
+          <label class="label">Filtrar por categoria</label>
+          <select class="input" data-filtro-categoria-despesa>
+            <option value="">Todas as categorias</option>
+            ${categorias.map((c) => `<option value="${c.id}">${c.nome}</option>`).join('')}
+          </select>
+        </div>
         <div data-tabela-despesas></div>
       </details>
 
@@ -1091,6 +1177,7 @@ export async function render(container, params) {
         }));
       },
       onNovo: podeEditar ? () => abrirNovoFrete(viagemId, recarregarPagina) : undefined,
+      onEditar: podeEditar ? (f) => abrirEditarFrete(f, f.transportadora_id ? nomeFornecedoresPorId[f.transportadora_id] : '', recarregarPagina) : undefined,
       tituloNovo: 'Frete',
       acoesExtras: () => [{ label: 'Recebivel/Baixas', onClick: (f) => abrirBaixasFrete(f, recarregarPagina, gerenciar) }],
       vazio: 'Nenhum frete cadastrado nesta viagem.',
@@ -1102,14 +1189,24 @@ export async function render(container, params) {
     // antes de considerar "processada" (e informar o vencimento real, se o
     // posto for faturar depois). A despesa de Arla (quando existe) e
     // validada junto da despesa de diesel que a referencia via
-    // despesa_arla_id - por isso nao ganha um botao "Validar" proprio, so o
-    // badge (evita tentar validar a mesma conta combinada duas vezes).
-    const idsArlaFilhas = new Set(despesas.map((d) => d.despesa_arla_id).filter(Boolean));
+    // despesa_arla_id - por isso nao ganha um botao "Validar" proprio nem
+    // linha na tabela, so mostra fundida na linha da abastecida (coluna Arla).
+    const selectFiltroCategoria = container.querySelector('[data-filtro-categoria-despesa]');
     const tabelaDespesas = criarDataTable({
       colunas: [
         { chave: 'data', titulo: 'Data', render: (d) => formatarDataBr(d.data) },
         { chave: 'categoria', titulo: 'Categoria', render: (d) => nomeCategoriasPorId[d.categoria_id] || d.categoria_id },
+        { chave: 'fornecedor', titulo: 'Fornecedor', render: (d) => (d.posto_fornecedor_id ? nomeFornecedoresPorId[d.posto_fornecedor_id] || `#${d.posto_fornecedor_id}` : '-') },
         { chave: 'valor', titulo: 'Valor', render: (d) => formatarMoeda(d.valor) },
+        { chave: 'litragem', titulo: 'Litragem (diesel)', render: (d) => (d.litragem ? `${d.litragem.toLocaleString('pt-BR')} L` : '-') },
+        {
+          chave: 'arla',
+          titulo: 'Arla',
+          render: (d) => {
+            const arla = despesasArlaPorPaiId.get(d.id);
+            return arla ? `${formatarMoeda(arla.valor)}${arla.litragem ? ` (${arla.litragem.toLocaleString('pt-BR')} L)` : ''}` : '-';
+          },
+        },
         { chave: 'pago_por', titulo: 'Pago por' },
         {
           chave: 'status_validacao',
@@ -1121,22 +1218,27 @@ export async function render(container, params) {
         { chave: 'vencimento', titulo: 'Vencimento', render: (d) => (d.data_vencimento ? formatarDataBr(d.data_vencimento) : '-') + (d.contas_pagar_id ? ' <a href="#/contas-pagar" class="text-xs text-gray-900 hover:underline">(ver conta)</a>' : '') },
       ],
       buscarDados: (termo) => {
-        if (!termo) return Promise.resolve(despesas);
-        const t = termo.toLowerCase();
-        return Promise.resolve(despesas.filter((d) => {
-          const categoria = (nomeCategoriasPorId[d.categoria_id] || '').toLowerCase();
-          return categoria.includes(t) || (d.pago_por || '').toLowerCase().includes(t);
-        }));
+        const categoriaFiltro = selectFiltroCategoria.value;
+        let filtradas = categoriaFiltro ? despesasPrincipais.filter((d) => String(d.categoria_id) === categoriaFiltro) : despesasPrincipais;
+        if (termo) {
+          const t = termo.toLowerCase();
+          filtradas = filtradas.filter((d) => {
+            const categoria = (nomeCategoriasPorId[d.categoria_id] || '').toLowerCase();
+            const fornecedor = (d.posto_fornecedor_id ? nomeFornecedoresPorId[d.posto_fornecedor_id] || '' : '').toLowerCase();
+            return categoria.includes(t) || fornecedor.includes(t) || (d.pago_por || '').toLowerCase().includes(t);
+          });
+        }
+        return Promise.resolve(filtradas);
       },
-      onNovo: podeEditar ? () => abrirNovaDespesa(viagemId, recarregarPagina) : undefined,
+      onNovo: podeEditar ? () => abrirNovaDespesa(viagemId, recarregarPagina, tratora ? centrosCusto.find((c) => c.veiculo_id === tratora.veiculo_id) : null) : undefined,
       tituloNovo: 'Despesa',
       acoesExtras: (d) => [
-        ...(gerenciar && !d.validado_em && !idsArlaFilhas.has(d.id)
+        ...(gerenciar && !d.validado_em
           ? [{
               label: 'Validar',
               onClick: () => abrirValidarDespesa(
                 d,
-                d.despesa_arla_id ? despesas.find((x) => x.id === d.despesa_arla_id) : null,
+                despesasArlaPorPaiId.get(d.id) || null,
                 nomeCategoriasPorId[d.categoria_id],
                 d.posto_fornecedor_id ? nomeFornecedoresPorId[d.posto_fornecedor_id] : '',
                 d.centro_custo_id ? nomeCentrosCustoPorId[d.centro_custo_id] : '',
@@ -1144,16 +1246,30 @@ export async function render(container, params) {
               ),
             }]
           : []),
-        ...(podeEditar && d.validado_em && !idsArlaFilhas.has(d.id)
+        ...(podeEditar && d.validado_em
           ? [{
               label: 'Editar',
               onClick: () => abrirEditarDespesa(
                 d,
-                d.despesa_arla_id ? despesas.find((x) => x.id === d.despesa_arla_id) : null,
+                despesasArlaPorPaiId.get(d.id) || null,
                 nomeCategoriasPorId[d.categoria_id],
                 d.posto_fornecedor_id ? nomeFornecedoresPorId[d.posto_fornecedor_id] : '',
                 d.centro_custo_id ? nomeCentrosCustoPorId[d.centro_custo_id] : '',
                 recarregarPagina,
+              ),
+            }]
+          : []),
+        // Viagem finalizada (ou usuario so-leitura) nao ganha "Editar" acima -
+        // "Detalhes" cobre esse vazio, mostrando os mesmos campos so-leitura.
+        ...(!podeEditar
+          ? [{
+              label: 'Detalhes',
+              onClick: () => abrirDetalhesDespesa(
+                d,
+                despesasArlaPorPaiId.get(d.id) || null,
+                nomeCategoriasPorId[d.categoria_id],
+                d.posto_fornecedor_id ? nomeFornecedoresPorId[d.posto_fornecedor_id] : '',
+                d.centro_custo_id ? nomeCentrosCustoPorId[d.centro_custo_id] : '',
               ),
             }]
           : []),
@@ -1161,6 +1277,7 @@ export async function render(container, params) {
       ],
       vazio: 'Nenhuma despesa lancada.',
     });
+    selectFiltroCategoria.addEventListener('change', () => tabelaDespesas.recarregar());
     container.querySelector('[data-tabela-despesas]').appendChild(tabelaDespesas.el);
   }
 

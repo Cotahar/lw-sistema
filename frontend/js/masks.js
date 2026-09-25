@@ -7,6 +7,20 @@ export function apenasDigitos(str) {
   return String(str || '').replace(/\D/g, '');
 }
 
+// ---- Caixa alta (padronizacao de cadastros - nome, placa, marca, cidade...) ----
+// Forca o VALOR digitado pra maiuscula (nao so a exibicao via CSS
+// text-transform, que deixaria o dado salvo em minuscula por baixo) mantendo
+// a posicao do cursor - sem isso, digitar no meio do texto jogava o cursor
+// pro final a cada tecla.
+export function attachUppercaseInput(input) {
+  input.addEventListener('input', () => {
+    const inicio = input.selectionStart;
+    const fim = input.selectionEnd;
+    input.value = input.value.toUpperCase();
+    if (inicio !== null) input.setSelectionRange(inicio, fim);
+  });
+}
+
 // ---- Moeda (centavos <-> "R$ 1.234,56") ----
 export function formatarMoeda(centavos) {
   const valor = (Number(centavos) || 0) / 100;

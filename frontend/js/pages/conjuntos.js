@@ -1,8 +1,9 @@
 import { get, post, put, del, podeGerenciar } from '../api.js';
 import { criarDataTable } from '../components/dataTable.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
-import { abrirModal, fecharModal } from '../components/modal.js';
-import { mostrarToast } from '../components/toast.js';
+import { abrirModal, fecharModal, confirmarAcao } from '../components/modal.js';
+import { mostrarToast, mostrarErro } from '../components/toast.js';
+import { attachUppercaseInput } from '../masks.js';
 
 async function buscarVeiculos(termo) {
   const veiculos = await get(`/veiculos${termo ? `?search=${encodeURIComponent(termo)}` : ''}`);
@@ -25,6 +26,7 @@ function montarFormulario(registro, aoSalvar) {
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">${registro ? 'Salvar alteracoes' : 'Cadastrar'}</button></div>
   `;
   form.nome.value = registro?.nome || '';
+  attachUppercaseInput(form.nome);
   const itensContainer = form.querySelector('[data-itens]');
   const linhas = [];
 
@@ -83,6 +85,34 @@ function montarFormulario(registro, aoSalvar) {
   return form;
 }
 
+// So faz sentido perguntar em composicoes com exatamente 1 Cavalo e 1
+// Carreta - com outras combinacoes (bitrem, dolly, mais de um cavalo etc.)
+// nao ha uma unica troca obvia a sugerir.
+async function sincronizarCarretaPadraoDoCavalo(itens) {
+  const todosVeiculos = await get('/veiculos');
+  const porId = Object.fromEntries(todosVeiculos.map((v) => [v.id, v]));
+  const cavalos = itens.map((i) => porId[i.veiculo_id]).filter((v) => v && v.tipo === 'Cavalo');
+  const carretas = itens.map((i) => porId[i.veiculo_id]).filter((v) => v && v.tipo === 'Carreta');
+  if (cavalos.length !== 1 || carretas.length !== 1) return;
+  const cavalo = cavalos[0];
+  const carreta = carretas[0];
+  if (cavalo.carreta_padrao_id === carreta.id) return;
+
+  const propagar = await confirmarAcao({
+    titulo: 'Atualizar carreta padrao do cavalo?',
+    mensagem: `A carreta desta composicao (${carreta.placa}) e diferente da carreta padrao cadastrada no cavalo ${cavalo.placa}${cavalo.carreta_padrao_placa ? ` (atual: ${cavalo.carreta_padrao_placa})` : ' (nenhuma cadastrada ainda)'}. Deseja atualizar o cadastro do cavalo para usar ${carreta.placa} como padrao?`,
+    textoConfirmar: 'Atualizar cadastro do cavalo',
+    perigo: false,
+  });
+  if (!propagar) return;
+  try {
+    await put(`/veiculos/${cavalo.id}`, { carreta_padrao_id: carreta.id });
+    mostrarToast('Carreta padrao do cavalo atualizada.');
+  } catch (err) {
+    mostrarErro(err);
+  }
+}
+
 async function abrirFormulario(registro, recarregar) {
   const form = montarFormulario(registro, async (valores) => {
     if (registro) await put(`/conjuntos/${registro.id}`, valores);
@@ -90,6 +120,7 @@ async function abrirFormulario(registro, recarregar) {
     fecharModal();
     mostrarToast(registro ? 'Composicao atualizada.' : 'Composicao cadastrada.');
     recarregar();
+    await sincronizarCarretaPadraoDoCavalo(valores.itens);
   });
   abrirModal({ titulo: registro ? 'Editar composicao' : 'Nova composicao', conteudo: form, largura: 'max-w-xl' });
 }

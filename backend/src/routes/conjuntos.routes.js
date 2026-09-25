@@ -15,7 +15,7 @@ function buscarConjuntoCompleto(id, empresaId) {
   if (!conjunto) return null;
   const itens = db.prepare(`
     SELECT ci.id, ci.ordem, v.id AS veiculo_id, v.placa, v.tipo, v.qtd_eixos, v.hodometro_atual,
-           v.localizacao_cidade, v.localizacao_uf, v.localizacao_atualizado_em
+           v.localizacao_cidade, v.localizacao_uf, v.localizacao_lat, v.localizacao_lng, v.localizacao_atualizado_em
     FROM conjunto_itens ci
     JOIN veiculos v ON v.id = ci.veiculo_id
     WHERE ci.conjunto_id = ?

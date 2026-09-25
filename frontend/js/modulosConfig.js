@@ -9,7 +9,6 @@ export const GRUPOS_MENU = [
     itens: [
       { chave: 'viagens', label: 'Viagens e Fretes', rota: '/viagens' },
       { chave: 'acertos', label: 'Acertos de Viagem', rota: '/acertos' },
-      { chave: 'viagens', label: 'Importar do Drivvo', rota: '/drivvo' },
       { chave: 'multas', label: 'Multas de Transito', rota: '/multas' },
       { chave: 'viagens', label: 'Calculo de Frete', rota: '/calculo-frete' },
     ],

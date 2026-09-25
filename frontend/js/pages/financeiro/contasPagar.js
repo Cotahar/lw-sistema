@@ -261,12 +261,15 @@ export async function render(container, params, query) {
   const financiamentoId = query && query.financiamento_id ? Number(query.financiamento_id) : null;
   const despesaFixaId = query && query.despesa_fixa_id ? Number(query.despesa_fixa_id) : null;
   const osId = query && query.os_id ? Number(query.os_id) : null;
+  const acertoId = query && query.acerto_id ? Number(query.acerto_id) : null;
   const origemFiltrada = financiamentoId
     ? { label: `financiamento #${financiamentoId}` }
     : despesaFixaId
     ? { label: `despesa fixa #${despesaFixaId}` }
     : osId
     ? { label: `OS #${osId}` }
+    : acertoId
+    ? { label: `acerto #${acertoId}` }
     : null;
   container.innerHTML = `
     <div class="mb-4 flex items-center justify-between">
@@ -282,7 +285,7 @@ export async function render(container, params, query) {
     <div class="card mb-4 grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
       <div>
         <label class="label">Status</label>
-        <select class="input" data-filtro-status>${STATUS_OPCOES.map((o) => `<option value="${o.value}" ${o.value === 'Pendente' ? 'selected' : ''}>${o.label}</option>`).join('')}</select>
+        <select class="input" data-filtro-status>${STATUS_OPCOES.map((o) => `<option value="${o.value}" ${o.value === (origemFiltrada ? '' : 'Pendente') ? 'selected' : ''}>${o.label}</option>`).join('')}</select>
       </div>
       <div><label class="label">Categoria</label><select class="input" data-filtro-categoria><option value="">Todas</option></select></div>
       <div><label class="label">Veiculo</label><div data-filtro-veiculo></div></div>
@@ -343,6 +346,7 @@ export async function render(container, params, query) {
       if (financiamentoId) params.set('financiamento_id', financiamentoId);
       if (despesaFixaId) params.set('despesa_fixa_id', despesaFixaId);
       if (osId) params.set('os_id', osId);
+      if (acertoId) params.set('acerto_id', acertoId);
       if (termo) params.set('search', termo);
       if (selectStatus.value) params.set('status', selectStatus.value);
       if (selectCategoria.value) params.set('categoria_id', selectCategoria.value);

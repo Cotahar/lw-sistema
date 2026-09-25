@@ -41,6 +41,8 @@ router.get('/', requerAcessoModulo('viagens', 'Visualizar'), exigirEmpresaEspeci
       placa_tratora: tratora ? tratora.placa : null,
       localizacao_cidade: tratora ? tratora.localizacao_cidade : null,
       localizacao_uf: tratora ? tratora.localizacao_uf : null,
+      localizacao_lat: tratora ? tratora.localizacao_lat : null,
+      localizacao_lng: tratora ? tratora.localizacao_lng : null,
       localizacao_atualizado_em: tratora ? tratora.localizacao_atualizado_em : null,
     };
   });

@@ -3,7 +3,7 @@ import { criarDataTable } from '../components/dataTable.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { abrirModal, fecharModal, confirmarAcao, modalAberto } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
-import { formatarDataBr, formatarDataHoraBr } from '../masks.js';
+import { formatarDataBr, formatarDataHoraBr, attachUppercaseInput } from '../masks.js';
 import { comCopiar } from '../components/copiar.js';
 import { criarBotaoSincronizarOnixsat } from '../components/onixsatSync.js';
 
@@ -68,6 +68,9 @@ function montarFormulario(registro, aoSalvar) {
   form.modelo.value = registro?.modelo || '';
   form.ano_fabricacao.value = registro?.ano_fabricacao ?? '';
   form.tipo_tracao.value = registro?.tipo_tracao || '';
+  attachUppercaseInput(form.placa);
+  attachUppercaseInput(form.marca);
+  attachUppercaseInput(form.modelo);
 
   const blocoCarreta = form.querySelector('[data-bloco-carreta]');
   const carretaSelect = criarSearchableSelect({
@@ -111,11 +114,34 @@ function montarFormulario(registro, aoSalvar) {
 
 async function abrirFormulario(registro, recarregar) {
   const form = montarFormulario(registro, async (valores) => {
+    const carretaMudou = registro && registro.tipo === 'Cavalo' && valores.carreta_padrao_id
+      && valores.carreta_padrao_id !== registro.carreta_padrao_id;
     if (registro) await put(`/veiculos/${registro.id}`, valores);
     else await post('/veiculos', valores);
     fecharModal();
     mostrarToast(registro ? 'Veiculo atualizado.' : 'Veiculo cadastrado.');
     recarregar();
+
+    // A carreta padrao e so uma sugestao pro futuro, mas as composicoes ja
+    // montadas com a carreta antiga nao mudam sozinhas - pergunta se e pra
+    // propagar tambem pra elas (pedido explicito: mudanca num lado deve
+    // perguntar se atualiza o outro).
+    if (carretaMudou) {
+      const propagar = await confirmarAcao({
+        titulo: 'Atualizar composicoes tambem?',
+        mensagem: 'A carreta padrao deste cavalo mudou. Deseja atualizar tambem as composicoes existentes que usam este cavalo (trocando a carreta atual delas pela nova padrao)? So composicoes com exatamente uma carreta sao atualizadas automaticamente.',
+        textoConfirmar: 'Atualizar composicoes',
+        perigo: false,
+      });
+      if (propagar) {
+        try {
+          const resultado = await post(`/veiculos/${registro.id}/sincronizar-carreta-composicoes`, {});
+          mostrarToast(`${resultado.atualizados} composicao(oes) atualizada(s)${resultado.ignorados ? `, ${resultado.ignorados} ignorada(s) (mais de uma carreta)` : ''}.`);
+        } catch (err) {
+          mostrarErro(err);
+        }
+      }
+    }
   });
   abrirModal({ titulo: registro ? `Editar veiculo ${registro.placa}` : 'Novo veiculo', conteudo: form });
 }

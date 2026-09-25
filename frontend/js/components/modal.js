@@ -1,14 +1,21 @@
-let overlayAtual = null;
-let aoFecharAtual = null;
+// Pilha de modais abertos (do mais antigo ao mais recente) - permite abrir um
+// modal por cima de outro (ex.: "+ Cadastrar novo fornecedor" a partir de um
+// formulario de despesa ja aberto) sem destruir o de baixo. Cada item:
+// { overlay, aoFechar }.
+const pilha = [];
 
-// Esc fecha o modal aberto - padrao que todo usuario de teclado/mouse espera,
-// e antes so dava pra fechar clicando no X ou no botao de cancelar/fora do
-// modal. Um so listener global (nao um por abertura de modal, senao
-// acumularia handler a cada abrirModal). searchableSelect.js para a
-// propagacao do proprio Escape quando so quer fechar a lista de sugestoes
-// (nao o formulario inteiro por cima) - ver comentario la.
+function topoAtual() {
+  return pilha[pilha.length - 1] || null;
+}
+
+// Esc fecha so o modal do topo - padrao que todo usuario de teclado/mouse
+// espera, e antes so dava pra fechar clicando no X ou no botao de
+// cancelar/fora do modal. Um so listener global (nao um por abertura de
+// modal, senao acumularia handler a cada abrirModal). searchableSelect.js
+// para a propagacao do proprio Escape quando so quer fechar a lista de
+// sugestoes (nao o formulario inteiro por cima) - ver comentario la.
 document.addEventListener('keydown', (ev) => {
-  if (ev.key === 'Escape' && overlayAtual) fecharModal();
+  if (ev.key === 'Escape' && topoAtual()) fecharModal();
 });
 
 // Duracao da saida (ms) - precisa bater com a animacao ".fechando" no CSS
@@ -16,18 +23,18 @@ document.addEventListener('keydown', (ev) => {
 // remover o elemento.
 const DURACAO_SAIDA = 120;
 
+// Fecha SO o modal do topo da pilha (o mais recente) - se houver outro
+// embaixo, ele continua aberto e intacto (nao recarrega, nao perde estado).
 export function fecharModal() {
-  if (!overlayAtual) return;
-  const overlay = overlayAtual;
-  const aoFechar = aoFecharAtual;
-  overlayAtual = null;
-  aoFecharAtual = null;
+  const item = pilha.pop();
+  if (!item) return;
+  const { overlay, aoFechar } = item;
   overlay.classList.add('fechando');
   overlay.querySelector(':scope > div')?.classList.add('fechando');
   setTimeout(() => overlay.remove(), DURACAO_SAIDA);
-  // Dispara DEPOIS de liberar overlayAtual/aoFecharAtual, pra quem escuta
-  // poder abrir outro modal na hora (ex.: um fluxo que encadeia modals) sem
-  // o fecharModal() do proximo achar que ainda ha um aberto.
+  // Dispara DEPOIS de tirar da pilha, pra quem escuta poder abrir outro modal
+  // na hora (ex.: um fluxo que encadeia modals) sem o fecharModal() do
+  // proximo achar que este ainda esta na pilha.
   if (aoFechar) aoFechar();
 }
 
@@ -35,13 +42,13 @@ export function fecharModal() {
 // Veiculos, Painel) pra nunca recarregar com um formulario aberto por cima -
 // perderia o que o usuario ja tinha preenchido no modal.
 export function modalAberto() {
-  return overlayAtual !== null;
+  return pilha.length > 0;
 }
 
-// Abre um modal generico. `conteudo` pode ser string HTML ou um Node.
-// Retorna o elemento raiz do modal, para quem chamou poder buscar campos etc.
+// Abre um modal generico por cima de qualquer outro ja aberto (empilha em vez
+// de substituir). `conteudo` pode ser string HTML ou um Node. Retorna o
+// elemento raiz do modal, para quem chamou poder buscar campos etc.
 export function abrirModal({ titulo, conteudo, largura = 'max-w-lg', aoFechar }) {
-  fecharModal();
   const overlay = document.createElement('div');
   overlay.className = 'fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-8 fade-in';
   overlay.innerHTML = `
@@ -59,14 +66,15 @@ export function abrirModal({ titulo, conteudo, largura = 'max-w-lg', aoFechar })
   if (typeof conteudo === 'string') corpo.innerHTML = conteudo;
   else corpo.appendChild(conteudo);
 
-  overlay.addEventListener('click', (ev) => {
-    if (ev.target === overlay) fecharModal();
-  });
+  // IMPORTANTE: nao fechar ao clicar fora (no overlay/background) - so pelo
+  // X, algum outro botao de fechar/cancelar do proprio formulario, ou Esc.
+  // Clique fora era facil demais de disparar sem querer (ex.: selecionando
+  // texto e soltando o mouse fora) e derrubava formularios longos ja
+  // preenchidos.
   overlay.querySelector('[data-fechar-modal]').addEventListener('click', fecharModal);
 
   document.body.appendChild(overlay);
-  overlayAtual = overlay;
-  aoFecharAtual = aoFechar || null;
+  pilha.push({ overlay, aoFechar: aoFechar || null });
   return overlay;
 }
 

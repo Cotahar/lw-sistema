@@ -24,7 +24,13 @@ router.get('/', requerAcessoModulo('contas_receber', 'Visualizar'), exigirEmpres
   const { status, data_cadastro_de, data_cadastro_ate, data_vencimento_de, data_vencimento_ate } = req.query;
   const condicoes = ['cr.empresa_id = ?'];
   const params = [req.empresaId];
-  if (status) { condicoes.push('cr.status = ?'); params.push(status); }
+  // "Pendente" tambem inclui "Parcial" - do ponto de vista de quem esta de
+  // olho no que falta receber, um saldo parcialmente pago (ex.: R$500 em
+  // aberto de um frete de R$5.000) e tao "pendente" quanto um sem nenhuma
+  // baixa ainda; sem isso o filtro padrao escondia justamente os saldos
+  // parciais, que sao os mais importantes de acompanhar.
+  if (status === 'Pendente') { condicoes.push("cr.status IN ('Pendente', 'Parcial')"); }
+  else if (status) { condicoes.push('cr.status = ?'); params.push(status); }
   if (data_cadastro_de) { condicoes.push('date(cr.criado_em) >= ?'); params.push(data_cadastro_de); }
   if (data_cadastro_ate) { condicoes.push('date(cr.criado_em) <= ?'); params.push(data_cadastro_ate); }
   if (data_vencimento_de) { condicoes.push('cr.data_prevista >= ?'); params.push(data_vencimento_de); }

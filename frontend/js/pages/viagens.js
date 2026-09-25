@@ -132,7 +132,12 @@ export async function render(container) {
         titulo: 'Localizacao Atual',
         render: (r) => {
           if (!r.localizacao_cidade) return '-';
-          const consulta = encodeURIComponent(`${r.localizacao_cidade}, ${r.localizacao_uf}`);
+          // Prefere lat/lng exatos (Onixsat) - so cai pra busca por cidade/UF
+          // (que o Google resolve pro centro da cidade, nao a posicao real)
+          // quando a localizacao foi lancada manualmente e nao tem coordenada.
+          const consulta = r.localizacao_lat && r.localizacao_lng
+            ? `${r.localizacao_lat},${r.localizacao_lng}`
+            : encodeURIComponent(`${r.localizacao_cidade}, ${r.localizacao_uf}`);
           return `
             <details>
               <summary class="inline cursor-pointer text-gray-900 hover:underline">${r.localizacao_cidade}/${r.localizacao_uf}</summary>

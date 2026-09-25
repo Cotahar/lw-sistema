@@ -3,7 +3,9 @@ import { criarDataTable } from '../../components/dataTable.js';
 import { abrirModal, fecharModal } from '../../components/modal.js';
 import { mostrarToast, mostrarErro } from '../../components/toast.js';
 import { renderizarAcessoNegado } from '../../components/acessoNegado.js';
-import { attachCpfCnpjMask, apenasDigitos, formatarCpfCnpj, validarCnpj } from '../../masks.js';
+import { attachCpfCnpjMask, apenasDigitos, formatarCpfCnpj, validarCnpj, attachUppercaseInput } from '../../masks.js';
+
+const CAMPOS_CAIXA_ALTA = ['razao_social', 'nome_fantasia', 'inscricao_estadual', 'endereco_logradouro', 'endereco_complemento', 'endereco_bairro', 'endereco_cidade', 'endereco_uf'];
 import { comCopiar } from '../../components/copiar.js';
 
 function abrirFormEmpresa(registro, recarregar) {
@@ -74,6 +76,7 @@ function abrirFormEmpresa(registro, recarregar) {
     if (registro && registro[nome] != null) form.elements[nome].value = registro[nome];
   }
   attachCpfCnpjMask(form.cnpj, registro ? registro.cnpj : '');
+  for (const nome of CAMPOS_CAIXA_ALTA) attachUppercaseInput(form.elements[nome]);
 
   const erro = form.querySelector('[data-erro]');
   const erroCnpj = form.querySelector('[data-erro-cnpj]');

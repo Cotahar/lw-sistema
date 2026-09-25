@@ -239,6 +239,47 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
   }
 }
 
+const STATUS_BADGE_PAGAMENTO = { Pendente: 'badge-atencao', Parcial: 'badge-atencao', Pago: 'badge-sucesso' };
+
+// A pergunta mais comum depois de fechar um acerto e "como eu baixo isso?" -
+// o saldo final (e o imposto, se houver) viram Contas a Pagar normais (ver
+// POST /acertos/viagem/:viagemId/fechar), a baixa e feita LA (Contas a Pagar
+// -> Baixar), nao aqui. Sem este bloco a tela do acerto fechado nunca
+// refletia se aquele pagamento ja tinha sido baixado ou nao - ficava
+// parecendo "pendente para sempre" mesmo depois de pago, so porque o rotulo
+// "(a pagar)" no resumo acima e fixo (baseado so no sinal do saldo).
+async function renderSituacaoPagamento(el, acerto) {
+  el.innerHTML = '<p class="text-sm text-slate-400">Carregando situacao do pagamento...</p>';
+  try {
+    const contas = await get(`/contas-pagar?acerto_id=${acerto.id}`);
+    if (!contas.length) {
+      el.innerHTML = `
+        <h2 class="mb-1 font-semibold text-slate-900">Situacao do pagamento</h2>
+        <p class="text-sm text-slate-500">Este acerto nao gerou nenhuma conta a pagar (saldo final ficou so na conta corrente do motorista, sem valor a desembolsar agora).</p>
+      `;
+      return;
+    }
+    el.innerHTML = `
+      <h2 class="mb-2 font-semibold text-slate-900">Situacao do pagamento</h2>
+      <p class="mb-3 text-sm text-slate-500">A baixa e feita na tela de Contas a Pagar (botao "Baixar" na linha da conta), nao aqui no acerto.</p>
+      <div class="space-y-2">
+        ${contas.map((c) => `
+          <div class="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
+            <span>${c.descricao}</span>
+            <span class="flex items-center gap-2">
+              <span class="font-medium">${formatarMoeda(c.valor)}</span>
+              <span class="${STATUS_BADGE_PAGAMENTO[c.status] || 'badge-neutro'}">${c.status}</span>
+            </span>
+          </div>
+        `).join('')}
+      </div>
+      <a href="#/contas-pagar?acerto_id=${acerto.id}" class="mt-3 inline-block text-sm text-gray-900 hover:underline">Ir para Contas a Pagar &rarr;</a>
+    `;
+  } catch (err) {
+    el.innerHTML = '<p class="text-sm text-red-600">Erro ao carregar a situacao do pagamento.</p>';
+  }
+}
+
 async function renderFechado(container, viagem, motorista, acerto, gerenciar) {
   container.innerHTML = `
     <div class="mb-4 flex items-center justify-between">
@@ -253,12 +294,14 @@ async function renderFechado(container, viagem, motorista, acerto, gerenciar) {
       </div>
     </div>
     <div class="card max-w-3xl p-4" data-resumo></div>
+    <div class="card mt-6 max-w-3xl p-4" data-pagamento></div>
     ${ehAdmin() ? '<div class="card mt-6 max-w-3xl p-4" data-secao-auditoria><h2 class="mb-3 font-semibold text-slate-900">Historico (auditoria)</h2><div data-timeline-auditoria></div></div>' : ''}
     <div class="card mt-6 max-w-3xl p-4" data-ocorrencias></div>
   `;
   container.querySelector('[data-ocorrencias]').appendChild(
     criarOcorrencias({ entidadeTipo: 'AcertoViagem', entidadeId: viagem.id, podeGerenciar: gerenciar }).el,
   );
+  await renderSituacaoPagamento(container.querySelector('[data-pagamento]'), acerto);
   if (ehAdmin()) {
     container.querySelector('[data-timeline-auditoria]').appendChild(
       criarTimelineAuditoria({ tabela: 'acertos_viagem', registroId: acerto.id }).el,

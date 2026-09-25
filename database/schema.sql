@@ -203,6 +203,8 @@ CREATE TABLE veiculos (
     -- ver localizacao_eventos para o historico completo e a origem (Onixsat/Manual).
     localizacao_cidade      TEXT,
     localizacao_uf          TEXT,
+    localizacao_lat         REAL,  -- coordenadas exatas (Onixsat); NULL em localizacao lancada manualmente (so cidade/UF)
+    localizacao_lng         REAL,
     localizacao_atualizado_em TEXT,
     -- Cache do nivel de combustivel mais recente (campo "lt" da Onixsat),
     -- mesmo padrao do hodometro_atual - ver hodometro_eventos.nivel_tanque_litros

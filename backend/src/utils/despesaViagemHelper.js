@@ -73,8 +73,8 @@ function resolverContaPagarAposEdicao({ contaPagarId, novoValor, despesaId }) {
 //
 // precisaValidacao: true so quando o lancamento vem do app do motorista -
 // despesa nasce com validado_em/validado_por NULL (pendente, ver
-// PATCH /viagens/despesas/:id/validar). Despesas do escritorio (e da
-// importacao Drivvo, ver drivvo.routes.js) ja nascem validadas.
+// PATCH /viagens/despesas/:id/validar). Despesas lancadas pelo escritorio ja
+// nascem validadas.
 function criarDespesaViagem({
   empresaId, viagem, freteId, centroCustoId, categoriaId, valor, data, pagoPor, pagoPorUsuarioId,
   postoFornecedorId, precoLitro, litragem, kmAbastecimento, dataVencimento, descricao, arla, usuarioId,

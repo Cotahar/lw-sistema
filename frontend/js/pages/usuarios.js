@@ -4,6 +4,7 @@ import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { abrirModal, fecharModal } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
 import { renderizarAcessoNegado } from '../components/acessoNegado.js';
+import { attachUppercaseInput } from '../masks.js';
 
 const PERFIS = ['Admin', 'Comum', 'Visualizacao', 'Motorista'];
 const NIVEIS = ['Nenhum', 'Visualizar', 'Gerenciar'];
@@ -29,6 +30,7 @@ function montarFormularioUsuario(registro, aoSalvar) {
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">${registro ? 'Salvar alteracoes' : 'Cadastrar'}</button></div>
   `;
   form.nome.value = registro?.nome || '';
+  attachUppercaseInput(form.nome);
   form.email.value = registro?.email || '';
   form.username.value = registro?.username || '';
   form.perfil.value = registro?.perfil || 'Comum';
