@@ -23,7 +23,7 @@ function montarFormulario(aoSalvar) {
   form.innerHTML = `
     <div class="grid grid-cols-2 gap-3">
       <div><label class="label">Data</label><input type="text" name="data" class="input" /></div>
-      <div><label class="label">Hodometro *</label><input type="number" name="hodometro" class="input" required /></div>
+      <div><label class="label">Hodometro</label><input type="number" name="hodometro" class="input" /></div>
     </div>
     <div><label class="label">Veiculo *</label><div data-veiculo></div></div>
     <div class="grid grid-cols-2 gap-3">
@@ -38,7 +38,7 @@ function montarFormulario(aoSalvar) {
       <p class="mb-2 text-xs text-slate-500">Parcelar o total (pecas + mao de obra) ao fornecedor? Preencha qtd. de parcelas ou valor da parcela - o outro calcula sozinho.</p>
       <p class="mb-2 text-sm font-medium text-slate-700">Total a parcelar: <span data-total-parcelar>R$ 0,00</span></p>
       <div class="grid grid-cols-2 gap-3">
-        <div><label class="label">Qtd. parcelas</label><input type="number" name="qtd_parcelas" class="input" min="2" /></div>
+        <div><label class="label">Qtd. parcelas</label><input type="number" name="qtd_parcelas" class="input" min="1" /></div>
         <div><label class="label">Valor da parcela</label><input type="text" name="valor_parcela" class="input" /></div>
       </div>
       <div class="mt-3 max-w-[10rem]"><label class="label">1a parcela vence em</label><input type="text" name="primeira_parcela_vencimento" class="input" /></div>
@@ -77,7 +77,7 @@ function montarFormulario(aoSalvar) {
     if (total > 0 && qtdParcelas > 0 && valorParcela === 0) {
       setMoedaValue(form.valor_parcela, Math.round(total / qtdParcelas));
     } else if (total > 0 && valorParcela > 0 && qtdParcelas === 0) {
-      form.qtd_parcelas.value = Math.max(2, Math.round(total / valorParcela));
+      form.qtd_parcelas.value = Math.max(1, Math.round(total / valorParcela));
     }
   }
   form.valor_pecas.addEventListener('input', recalcularParcelas);
@@ -133,7 +133,7 @@ function montarFormulario(aoSalvar) {
       await aoSalvar({
         data: form.data.value ? parseDataBrParaIso(form.data.value) : null,
         veiculo_id,
-        hodometro: Number(form.hodometro.value),
+        hodometro: form.hodometro.value ? Number(form.hodometro.value) : null,
         tipo: form.tipo.value,
         fornecedor_id: fornecedorSelect.getValue(),
         valor_pecas: getMoedaValue(form.valor_pecas),
@@ -169,7 +169,7 @@ async function verDetalhes(os) {
     corpo.innerHTML = `
       <div class="mb-3 grid grid-cols-2 gap-2 text-sm">
         <p><span class="font-medium">Data:</span> ${formatarDataBr(completa.data)}</p>
-        <p><span class="font-medium">Hodometro:</span> ${completa.hodometro.toLocaleString('pt-BR')} km</p>
+        <p><span class="font-medium">Hodometro:</span> ${completa.hodometro != null ? `${completa.hodometro.toLocaleString('pt-BR')} km` : '-'}</p>
         <p><span class="font-medium">Pecas:</span> ${formatarMoeda(completa.valor_pecas)}</p>
         <p><span class="font-medium">Mao de obra:</span> ${formatarMoeda(completa.valor_mao_obra)}</p>
       </div>
@@ -204,7 +204,7 @@ export async function render(container) {
       { chave: 'data', titulo: 'Data', render: (r) => formatarDataBr(r.data) },
       { chave: 'placa', titulo: 'Veiculo' },
       { chave: 'tipo', titulo: 'Tipo' },
-      { chave: 'hodometro', titulo: 'Hodometro', render: (r) => `${r.hodometro.toLocaleString('pt-BR')} km` },
+      { chave: 'hodometro', titulo: 'Hodometro', render: (r) => (r.hodometro != null ? `${r.hodometro.toLocaleString('pt-BR')} km` : '-') },
       { chave: 'total', titulo: 'Valor Total', render: (r) => formatarMoeda(r.valor_pecas + r.valor_mao_obra) },
       { chave: 'qtd_parcelas', titulo: 'Parcelas', render: (r) => (r.qtd_parcelas ? `${r.qtd_parcelas}x` : '-') },
     ],

@@ -57,7 +57,7 @@ router.post('/', requerAcessoModulo('despesas_fixas', 'Gerenciar'), exigirEmpres
     const categoria = db.prepare('SELECT nome FROM categorias_despesa WHERE id = ?').get(categoria_id);
     const nomeBase = `${categoria ? categoria.nome : 'Despesa fixa'} - ${centroCusto.nome}`;
 
-    if (qtd_parcelas && qtd_parcelas > 1) {
+    if (qtd_parcelas) {
       // Parcelada: mesmo padrao de financiamentos - uma parcela por mes,
       // rateio com resto ajustado na ultima, uma conta_pagar por parcela.
       const primeiroVencimento = primeira_parcela_vencimento || data || hojeIsoBrasilia();

@@ -359,7 +359,7 @@ CREATE TABLE ordens_servico (
     empresa_id      INTEGER NOT NULL REFERENCES empresas(id),
     data            TEXT NOT NULL DEFAULT (date('now', '-3 hours')),
     veiculo_id      INTEGER NOT NULL REFERENCES veiculos(id),
-    hodometro       INTEGER NOT NULL,
+    hodometro       INTEGER,  -- opcional (nem sempre se sabe o km exato na hora do lancamento)
     tipo            TEXT NOT NULL CHECK (tipo IN ('Preventiva', 'Corretiva')),
     fornecedor_id   INTEGER REFERENCES fornecedores(id),  -- oficina
     valor_pecas     INTEGER NOT NULL DEFAULT 0,   -- centavos (totalizador rapido)

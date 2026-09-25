@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const { requerAcessoModulo } = require('../middleware/auth');
+const { calcularMediasConsumo, buscarCategoriaAbastecimentoId } = require('../utils/mediaConsumoHelper');
 
 const router = express.Router();
 
@@ -51,11 +52,12 @@ router.get('/resumo', requerAcessoModulo('dre', 'Visualizar'), asyncHandler(asyn
 
   // Cards de veiculos em viagem: um card por viagem EmAndamento, com o
   // "Cavalo" do conjunto (hodometro/localizacao sao sempre do cavalo, nao
-  // das carretas). KM rodado e media de consumo usam o hodometro_atual (que
-  // vem do Onixsat ou de lancamento manual) - ainda nao ha telemetria de
-  // consumo de combustivel disponivel na integracao atual, entao a media
-  // usa o mesmo calculo do Acerto (km rodado / litros abastecidos), so que
-  // com a viagem ainda aberta.
+  // das carretas). KM rodado usa o hodometro_atual (que vem do Onixsat ou de
+  // lancamento manual); media de consumo usa a MESMA formula "tanque cheio a
+  // tanque cheio" do Acerto/DRE/painel do motorista (mediaConsumoHelper.js) -
+  // antes este card calculava um jeito diferente (km rodado total / litros
+  // abastecidos total, sem exigir tanque completo), o que dava um numero
+  // divergente do resto do sistema pro mesmo veiculo/viagem.
   const viagensAtivas = db.prepare(`
     SELECT vg.id AS viagem_id, vg.data_inicio, vg.km_inicial, vg.empresa_id,
            e.razao_social AS empresa_razao_social, mo.nome AS motorista_nome,
@@ -83,12 +85,24 @@ router.get('/resumo', requerAcessoModulo('dre', 'Visualizar'), asyncHandler(asyn
       FROM fretes WHERE viagem_id IN (${placeholders}) GROUP BY viagem_id
     `).all(...viagemIds).map((r) => [r.viagem_id, r]));
 
+    const categoriaAbastecimentoId = buscarCategoriaAbastecimentoId();
+    const todasDespesas = db.prepare(`
+      SELECT viagem_id, categoria_id, km_abastecimento, litragem, tanque_completo
+      FROM despesas_viagem WHERE viagem_id IN (${placeholders})
+    `).all(...viagemIds);
+    const despesasPorViagem = new Map();
+    for (const d of todasDespesas) {
+      if (!despesasPorViagem.has(d.viagem_id)) despesasPorViagem.set(d.viagem_id, []);
+      despesasPorViagem.get(d.viagem_id).push(d);
+    }
+
     for (const v of viagensAtivas) {
       const desp = agregadosDespesas.get(v.viagem_id) || { litros_total: 0, despesas_total: 0 };
       const fat = agregadosFretes.get(v.viagem_id) || { faturamento_total: 0 };
+      const { mediaViagemKmL } = calcularMediasConsumo(despesasPorViagem.get(v.viagem_id) || [], categoriaAbastecimentoId);
       v.km_rodado = Math.max(0, (v.hodometro_atual || 0) - v.km_inicial);
       v.litros_total = desp.litros_total;
-      v.media_consumo_atual = desp.litros_total > 0 ? v.km_rodado / desp.litros_total : null;
+      v.media_consumo_atual = mediaViagemKmL;
       v.despesas_total = desp.despesas_total;
       v.faturamento_total = fat.faturamento_total;
     }

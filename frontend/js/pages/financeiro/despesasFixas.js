@@ -32,7 +32,7 @@ async function montarFormulario(registro, aoSalvar) {
       <div class="rounded-lg border border-slate-200 p-3" data-bloco-parcelamento>
         <p class="mb-2 text-xs text-slate-500">Parcelar? Preencha 2 dos 3 campos - o terceiro calcula sozinho.</p>
         <div class="grid grid-cols-2 gap-3">
-          <div><label class="label">Qtd. parcelas</label><input type="number" name="qtd_parcelas" class="input" min="2" /></div>
+          <div><label class="label">Qtd. parcelas</label><input type="number" name="qtd_parcelas" class="input" min="1" /></div>
           <div><label class="label">Valor da parcela</label><input type="text" name="valor_parcela" class="input" /></div>
         </div>
         <div class="mt-3"><label class="label">1a parcela vence em</label><input type="text" name="primeira_parcela_vencimento" class="input max-w-[10rem]" /></div>
@@ -65,7 +65,7 @@ async function montarFormulario(registro, aoSalvar) {
       if (valorTotal > 0 && qtdParcelas > 0 && valorParcela === 0) {
         setMoedaValue(form.valor_parcela, Math.round(valorTotal / qtdParcelas));
       } else if (valorTotal > 0 && valorParcela > 0 && qtdParcelas === 0) {
-        form.qtd_parcelas.value = Math.max(2, Math.round(valorTotal / valorParcela));
+        form.qtd_parcelas.value = Math.max(1, Math.round(valorTotal / valorParcela));
       } else if (qtdParcelas > 0 && valorParcela > 0 && valorTotal === 0) {
         setMoedaValue(form.valor, qtdParcelas * valorParcela);
       }

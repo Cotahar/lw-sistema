@@ -49,7 +49,7 @@ router.post('/', requerAcessoModulo('manutencao', 'Gerenciar'), exigirEmpresaEsp
     data, veiculo_id, hodometro, tipo, fornecedor_id, valor_pecas, valor_mao_obra, descricao, itens,
     qtd_parcelas, primeira_parcela_vencimento,
   } = req.body;
-  if (!veiculo_id || hodometro === undefined || !tipo) throw new ApiError(400, 'Preencha veiculo_id, hodometro e tipo.');
+  if (!veiculo_id || !tipo) throw new ApiError(400, 'Preencha veiculo_id e tipo.');
   if (!TIPOS.includes(tipo)) throw new ApiError(400, `Tipo invalido. Use um de: ${TIPOS.join(', ')}`);
 
   const os = withTransaction(db, () => {
@@ -59,7 +59,7 @@ router.post('/', requerAcessoModulo('manutencao', 'Gerenciar'), exigirEmpresaEsp
     const info = db.prepare(`
       INSERT INTO ordens_servico (empresa_id, data, veiculo_id, hodometro, tipo, fornecedor_id, valor_pecas, valor_mao_obra, qtd_parcelas, descricao, criado_por)
       VALUES (?, COALESCE(?, date('now', '-3 hours')), ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(req.empresaId, data || null, veiculo_id, hodometro, tipo, fornecedor_id || null, valor_pecas || 0, valor_mao_obra || 0, qtd_parcelas || null, descricao || null, req.usuario.id);
+    `).run(req.empresaId, data || null, veiculo_id, hodometro === undefined || hodometro === null || hodometro === '' ? null : hodometro, tipo, fornecedor_id || null, valor_pecas || 0, valor_mao_obra || 0, qtd_parcelas || null, descricao || null, req.usuario.id);
     const osId = info.lastInsertRowid;
 
     for (const item of itens || []) {
@@ -88,7 +88,7 @@ router.post('/', requerAcessoModulo('manutencao', 'Gerenciar'), exigirEmpresaEsp
 
     const valorTotal = Math.round((valor_pecas || 0) + (valor_mao_obra || 0));
     if (valorTotal > 0) {
-      if (qtd_parcelas && qtd_parcelas > 1) {
+      if (qtd_parcelas) {
         // Parcelada: mesmo padrao de financiamentos/despesas fixas - uma
         // parcela por mes, rateio com resto ajustado na ultima, uma
         // conta_pagar por parcela (a peca/mao de obra sai como um bloco so).
