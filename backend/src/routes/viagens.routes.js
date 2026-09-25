@@ -284,8 +284,14 @@ router.put('/fretes/:freteId', requerAcessoModulo('viagens', 'Gerenciar'), exigi
   }
   if (!sets.length) throw new ApiError(400, 'Nenhum campo valido informado.');
 
+  // O formulario de edicao sempre reenvia TODOS os campos (nao so os que
+  // mudaram) - reprovar toda edicao so porque frete_bruto veio no corpo,
+  // mesmo repetindo o valor atual, bloqueava ate corrigir origem/destino num
+  // frete que ja tinha baixa. So bloqueia quando o valor de fato MUDOU.
+  const freteBrutoMudou = req.body.frete_bruto !== undefined && req.body.frete_bruto !== antes.frete_bruto;
+
   const depois = withTransaction(db, () => {
-    if (req.body.frete_bruto !== undefined) {
+    if (freteBrutoMudou) {
       const receber = db.prepare('SELECT * FROM contas_receber WHERE frete_id = ?').get(req.params.freteId);
       if (receber && (receber.valor_recebido > 0 || receber.valor_descontado > 0)) {
         throw new ApiError(400, 'Este frete ja possui baixas lancadas: nao e possivel alterar o frete_bruto (exclua as baixas primeiro).');
@@ -293,7 +299,7 @@ router.put('/fretes/:freteId', requerAcessoModulo('viagens', 'Gerenciar'), exigi
     }
     db.prepare(`UPDATE fretes SET ${sets.join(', ')} WHERE id = ?`).run(...valores, req.params.freteId);
     const freteAtualizado = db.prepare('SELECT * FROM fretes WHERE id = ?').get(req.params.freteId);
-    if (req.body.frete_bruto !== undefined) {
+    if (freteBrutoMudou) {
       db.prepare('UPDATE contas_receber SET valor = ? WHERE frete_id = ?').run(freteAtualizado.frete_bruto, req.params.freteId);
     }
     return freteAtualizado;

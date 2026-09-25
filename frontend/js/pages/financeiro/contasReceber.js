@@ -1,9 +1,9 @@
 import { get, podeGerenciar } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { abrirModal } from '../../components/modal.js';
-import { mostrarErro } from '../../components/toast.js';
 import { formatarMoeda, formatarDataBr, hojeIsoLocal, attachDataMask, parseDataBrParaIso } from '../../masks.js';
 import { criarOcorrencias } from '../../components/ocorrencias.js';
+import { abrirBaixasFrete } from '../../components/baixasFrete.js';
 
 const STATUS_BADGE = { Pendente: 'badge-atencao', Parcial: 'badge-atencao', Recebido: 'badge-sucesso', Atrasado: 'badge-critico' };
 const STATUS_OPCOES = [
@@ -32,23 +32,20 @@ function badgePrazo(r) {
   return `<span class="${cor} ml-1">${texto}</span>`;
 }
 
-async function verBaixas(conta) {
-  try {
-    const baixas = await get(`/contas-receber/${conta.id}/baixas`);
-    const corpo = document.createElement('div');
-    corpo.innerHTML = `
-      <p class="mb-3 text-sm text-slate-500">As baixas deste recebivel sao lancadas na tela da Viagem (Fretes &rarr; Recebivel/Baixas).</p>
-      <table class="w-full text-sm">
-        <thead><tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500"><th class="py-1">Data</th><th class="py-1">Tipo</th><th class="py-1 text-right">Valor</th></tr></thead>
-        <tbody>
-          ${baixas.map((b) => `<tr class="border-b border-slate-100"><td class="py-1">${formatarDataBr(b.data)}</td><td class="py-1">${b.tipo}</td><td class="py-1 text-right">${formatarMoeda(b.valor)}</td></tr>`).join('') || '<tr><td colspan="3" class="py-3 text-center text-slate-400">Nenhuma baixa lancada.</td></tr>'}
-        </tbody>
-      </table>
-    `;
-    abrirModal({ titulo: `Baixas - Frete #${conta.frete_id}`, conteudo: corpo, largura: 'max-w-lg' });
-  } catch (err) {
-    mostrarErro(err);
-  }
+// Reaproveita o mesmo modal de "Recebivel/Baixas" da tela da Viagem (ver
+// components/baixasFrete.js) - antes esta tela so tinha uma listagem
+// read-only ("as baixas sao lancadas na tela da Viagem"), por pedido
+// explicito do usuario precisava dar pra lancar/remover baixa direto daqui
+// tambem, sem ter que navegar ate a viagem.
+function abrirRecebivelBaixas(conta, recarregar, gerenciar) {
+  const freteComoObjeto = {
+    id: conta.frete_id,
+    origem_cidade: conta.origem_cidade,
+    origem_uf: conta.origem_uf,
+    destino_cidade: conta.destino_cidade,
+    destino_uf: conta.destino_uf,
+  };
+  abrirBaixasFrete(freteComoObjeto, recarregar, gerenciar);
 }
 
 function abrirOcorrencias(conta, gerenciar) {
@@ -95,6 +92,8 @@ export async function render(container) {
     colunas: [
       { chave: 'frete_id', titulo: 'Frete', render: (r) => `<a href="#/viagens/${r.viagem_id}" class="text-gray-900 hover:underline">#${r.frete_id} (viagem #${r.viagem_id})</a>`, exportar: (r) => `#${r.frete_id} (viagem #${r.viagem_id})` },
       { chave: 'rota', titulo: 'Rota', render: (r) => `${r.origem_cidade}/${r.origem_uf} &rarr; ${r.destino_cidade}/${r.destino_uf}`, exportar: (r) => `${r.origem_cidade}/${r.origem_uf} -> ${r.destino_cidade}/${r.destino_uf}` },
+      { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => r.veiculo_placa || '-' },
+      { chave: 'motorista_nome', titulo: 'Motorista', render: (r) => r.motorista_nome || '-' },
       { chave: 'transportadora_nome', titulo: 'Transportadora', render: (r) => r.transportadora_nome || '-' },
       { chave: 'valor', titulo: 'Valor', render: (r) => formatarMoeda(r.valor), exportar: (r) => r.valor / 100 },
       { chave: 'saldo', titulo: 'Saldo em Aberto', render: (r) => `<span class="${saldoEmAberto(r) > 0 ? 'font-semibold text-amber-400' : ''}">${formatarMoeda(saldoEmAberto(r))}</span>`, exportar: (r) => saldoEmAberto(r) / 100 },
@@ -123,7 +122,10 @@ export async function render(container) {
       `;
       return dados;
     },
-    acoesExtras: (r) => [{ label: 'Ver baixas', onClick: verBaixas }, { label: 'Ocorrencias', onClick: (c) => abrirOcorrencias(c, gerenciar) }],
+    acoesExtras: (r) => [
+      { label: 'Recebivel/Baixas', onClick: (c) => abrirRecebivelBaixas(c, tabela.recarregar, gerenciar) },
+      { label: 'Ocorrencias', onClick: (c) => abrirOcorrencias(c, gerenciar) },
+    ],
     vazio: 'Nenhuma conta a receber registrada.',
   });
   container.querySelector('[data-tabela]').appendChild(tabela.el);

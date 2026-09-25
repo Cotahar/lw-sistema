@@ -5,20 +5,35 @@ const ApiError = require('../utils/ApiError');
 const { requerAcessoModulo } = require('../middleware/auth');
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { registrarAuditoria } = require('../utils/audit');
+const { buscarUnidadeTratora } = require('../utils/conjuntoHelper');
 
 const router = express.Router();
 
-// Join com fretes/viagens/transportadora - a tela de gestao de saldos precisa
-// de contexto (rota, viagem, transportadora) alem do id do frete pra o
-// usuario identificar do que se trata sem precisar abrir a viagem.
+// Join com fretes/viagens/motorista/transportadora - a tela de gestao de
+// saldos precisa de contexto (rota, viagem, motorista, veiculo,
+// transportadora) alem do id do frete pra o usuario identificar do que se
+// trata sem precisar abrir a viagem. O veiculo (placa da unidade tratora) e
+// resolvido a parte (buscarUnidadeTratora) porque depende de conjunto_itens,
+// nao da pra trazer com um LEFT JOIN direto sem duplicar linha por item da
+// composicao.
 const SELECT_LISTA = `
   SELECT cr.*,
          f.origem_cidade, f.origem_uf, f.destino_cidade, f.destino_uf, f.viagem_id,
-         t.nome AS transportadora_nome
+         t.nome AS transportadora_nome,
+         vg.conjunto_id, mo.nome AS motorista_nome
   FROM contas_receber cr
   JOIN fretes f ON f.id = cr.frete_id
   LEFT JOIN fornecedores t ON t.id = f.transportadora_id
+  JOIN viagens vg ON vg.id = f.viagem_id
+  JOIN motoristas mo ON mo.id = vg.motorista_id
 `;
+
+function comVeiculoPlaca(linhas) {
+  return linhas.map((r) => {
+    const tratora = r.conjunto_id ? buscarUnidadeTratora(r.conjunto_id) : null;
+    return { ...r, veiculo_placa: tratora ? tratora.placa : null };
+  });
+}
 
 router.get('/', requerAcessoModulo('contas_receber', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const { status, data_cadastro_de, data_cadastro_ate, data_vencimento_de, data_vencimento_ate } = req.query;
@@ -36,7 +51,7 @@ router.get('/', requerAcessoModulo('contas_receber', 'Visualizar'), exigirEmpres
   if (data_vencimento_de) { condicoes.push('cr.data_prevista >= ?'); params.push(data_vencimento_de); }
   if (data_vencimento_ate) { condicoes.push('cr.data_prevista <= ?'); params.push(data_vencimento_ate); }
   const rows = db.prepare(`${SELECT_LISTA} WHERE ${condicoes.join(' AND ')} ORDER BY cr.data_prevista`).all(...params);
-  res.json(rows);
+  res.json(comVeiculoPlaca(rows));
 }));
 
 router.get('/:id', requerAcessoModulo('contas_receber', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
