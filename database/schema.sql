@@ -981,6 +981,25 @@ CREATE TABLE ocorrencias (
 );
 CREATE INDEX idx_ocorrencias_entidade ON ocorrencias(entidade_tipo, entidade_id);
 
+-- Anexos (1-2 arquivos por lancamento, tipicamente) das receitas e despesas
+-- de viagem - mesmo padrao polimorfico de ocorrencias acima (entidade_tipo +
+-- entidade_id), so escopado as duas entidades pedidas por enquanto. Arquivo
+-- de verdade fica em disco (uploads/anexos/nome_arquivo, servido pelo
+-- /uploads estatico ja existente); aqui so o metadado.
+CREATE TABLE anexos (
+    id              INTEGER PRIMARY KEY,
+    empresa_id      INTEGER NOT NULL REFERENCES empresas(id),
+    entidade_tipo   TEXT NOT NULL CHECK (entidade_tipo IN ('Frete', 'DespesaViagem')),
+    entidade_id     INTEGER NOT NULL,
+    nome_arquivo    TEXT NOT NULL,   -- nome unico salvo em disco
+    nome_original   TEXT NOT NULL,   -- nome original do arquivo (exibicao/download)
+    tipo_mime       TEXT,
+    tamanho_bytes   INTEGER,
+    criado_por      INTEGER REFERENCES usuarios(id),
+    criado_em       TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
+);
+CREATE INDEX idx_anexos_entidade ON anexos(entidade_tipo, entidade_id);
+
 -- =====================================================================
 -- 10. IMPORTACAO DRIVVO
 -- =====================================================================

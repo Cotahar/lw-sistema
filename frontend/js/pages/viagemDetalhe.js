@@ -5,6 +5,7 @@ import { criarNovoFornecedor } from '../components/fornecedorQuickCreate.js';
 import { abrirModal, fecharModal, confirmarAcao, modalAberto } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
 import { criarOcorrencias } from '../components/ocorrencias.js';
+import { criarAnexos } from '../components/anexos.js';
 import { formatarMoeda, attachMoedaMask, attachMoedaMaskReais, getMoedaValue, setMoedaValue, attachPesoMask, getPesoValue, attachDataMask, parseDataBrParaIso, formatarDataBr, formatarDataHoraBr, hojeIsoLocal } from '../masks.js';
 import { navegar } from '../router.js';
 import { criarBotaoSincronizarOnixsat } from '../components/onixsatSync.js';
@@ -156,6 +157,7 @@ async function abrirBaixasFrete(frete, recarregar, gerenciar) {
   try {
     const { contaReceber, baixas } = await get(`/viagens/fretes/${frete.id}/baixas`);
     const ocorrencias = criarOcorrencias({ entidadeTipo: 'Frete', entidadeId: frete.id, podeGerenciar: gerenciar });
+    const anexos = criarAnexos({ entidadeTipo: 'Frete', entidadeId: frete.id, podeGerenciar: gerenciar });
 
     function montarConteudo(cr, listaBaixas) {
       const saldoEmAberto = cr.valor - cr.valor_recebido - cr.valor_descontado;
@@ -195,8 +197,10 @@ async function abrirBaixasFrete(frete, recarregar, gerenciar) {
             <div class="flex justify-end"><button type="submit" class="btn-primary btn-sm">Lancar baixa</button></div>
           </form>
         ` : ''}
+        <div data-anexos class="mt-4 border-t border-slate-200 pt-4"></div>
         <div data-ocorrencias class="mt-4 border-t border-slate-200 pt-4"></div>
       `;
+      wrapper.querySelector('[data-anexos]').appendChild(anexos.el);
       wrapper.querySelector('[data-ocorrencias]').appendChild(ocorrencias.el);
       return wrapper;
     }
@@ -520,6 +524,11 @@ async function abrirNovaDespesa(viagemId, recarregar, centroCustoPadrao) {
 function abrirOcorrenciasDespesa(despesa, gerenciar) {
   const ocorrencias = criarOcorrencias({ entidadeTipo: 'DespesaViagem', entidadeId: despesa.id, podeGerenciar: gerenciar });
   abrirModal({ titulo: 'Ocorrencias da despesa', conteudo: ocorrencias.el, largura: 'max-w-lg' });
+}
+
+function abrirAnexosDespesa(despesa, gerenciar) {
+  const anexos = criarAnexos({ entidadeTipo: 'DespesaViagem', entidadeId: despesa.id, podeGerenciar: gerenciar });
+  abrirModal({ titulo: 'Anexos da despesa', conteudo: anexos.el, largura: 'max-w-lg' });
 }
 
 // Monta o formulario compartilhado por "Validar" (despesa pendente, vinda do
@@ -1197,7 +1206,7 @@ export async function render(container, params) {
         { chave: 'data', titulo: 'Data', render: (d) => formatarDataBr(d.data) },
         { chave: 'categoria', titulo: 'Categoria', render: (d) => nomeCategoriasPorId[d.categoria_id] || d.categoria_id },
         { chave: 'fornecedor', titulo: 'Fornecedor', render: (d) => (d.posto_fornecedor_id ? nomeFornecedoresPorId[d.posto_fornecedor_id] || `#${d.posto_fornecedor_id}` : '-') },
-        { chave: 'valor', titulo: 'Valor', render: (d) => formatarMoeda(d.valor) },
+        { chave: 'valor', titulo: 'Valor (diesel)', render: (d) => formatarMoeda(d.valor) },
         { chave: 'litragem', titulo: 'Litragem (diesel)', render: (d) => (d.litragem ? `${d.litragem.toLocaleString('pt-BR')} L` : '-') },
         {
           chave: 'arla',
@@ -1205,6 +1214,21 @@ export async function render(container, params) {
           render: (d) => {
             const arla = despesasArlaPorPaiId.get(d.id);
             return arla ? `${formatarMoeda(arla.valor)}${arla.litragem ? ` (${arla.litragem.toLocaleString('pt-BR')} L)` : ''}` : '-';
+          },
+        },
+        {
+          // BUG CRITICO reportado pelo usuario: a divisao em colunas Valor/Arla
+          // acima (pra mostrar cada um separado, como pedido) deixava parecer
+          // que so o diesel seria baixado - o valor de verdade da conta a
+          // pagar gerada (ver criarContaPagarCombinada) sempre foi a SOMA dos
+          // dois, isso nunca mudou; so faltava uma coluna deixando essa soma
+          // explicita pra tirar a duvida na hora de "baixar".
+          chave: 'total_a_pagar',
+          titulo: 'Total (a pagar)',
+          render: (d) => {
+            const arla = despesasArlaPorPaiId.get(d.id);
+            const total = d.valor + (arla ? arla.valor : 0);
+            return `<span class="font-semibold">${formatarMoeda(total)}</span>`;
           },
         },
         { chave: 'pago_por', titulo: 'Pago por' },
@@ -1273,6 +1297,7 @@ export async function render(container, params) {
               ),
             }]
           : []),
+        { label: 'Anexos', onClick: () => abrirAnexosDespesa(d, gerenciar) },
         { label: 'Ocorrencias', onClick: () => abrirOcorrenciasDespesa(d, gerenciar) },
       ],
       vazio: 'Nenhuma despesa lancada.',
