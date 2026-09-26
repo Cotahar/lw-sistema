@@ -10,7 +10,7 @@ const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 const { criarDespesaViagem } = require('../utils/despesaViagemHelper');
 const { registrarAuditoria } = require('../utils/audit');
-const { calcularMediasConsumo, buscarCategoriaAbastecimentoId: buscarCategoriaAbastecimentoIdGlobal } = require('../utils/mediaConsumoHelper');
+const { calcularMediasConsumo, buscarCategoriaAbastecimentoId: buscarCategoriaAbastecimentoIdGlobal, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
 
 const router = express.Router();
 router.use(requerMotorista, exigirEmpresaEspecifica);
@@ -57,11 +57,16 @@ function resolverPercentualComissao(mediaKmL, marca) {
 
 // Mesma formula "tanque cheio a tanque cheio" do Acerto (mediaConsumoHelper.js)
 // - a unica usada pra estimar a comissao, pra nunca mostrar ao motorista um
-// numero que o Acerto real vai contrariar depois.
-function calcularMediaAbastecimentos(viagemId) {
-  const despesas = db.prepare('SELECT categoria_id, km_abastecimento, litragem, tanque_completo FROM despesas_viagem WHERE viagem_id = ?').all(viagemId);
+// numero que o Acerto real vai contrariar depois. Olha pro historico do
+// VEICULO a partir do km_inicial (nao so desta viagem) - ver
+// mediaConsumoHelper.js/buscarAbastecimentosDoVeiculo.
+function calcularMediaAbastecimentos(viagem, tratora) {
   const categoriaAbastecimentoId = buscarCategoriaAbastecimentoIdGlobal();
-  return calcularMediasConsumo(despesas, categoriaAbastecimentoId);
+  const centroCusto = tratora ? buscarCentroCustoDoVeiculo(tratora.id) : null;
+  const abastecimentosVeiculo = centroCusto
+    ? buscarAbastecimentosDoVeiculo(centroCusto.id, viagem.km_inicial, viagem.km_final)
+    : [];
+  return calcularMediasConsumo(abastecimentosVeiculo, categoriaAbastecimentoId);
 }
 
 function montarFreteResumo(frete, percentualImposto) {
@@ -109,7 +114,7 @@ router.get('/viagem-atual', asyncHandler(async (req, res) => {
   const adiantamentos = db.prepare('SELECT valor FROM viagem_adiantamentos WHERE viagem_id = ?').all(viagem.id);
   const adiantamentosTotal = somar(adiantamentos.map((a) => a.valor));
 
-  const { mediaViagemKmL, mediaUltimaAbastecidaKmL } = calcularMediaAbastecimentos(viagem.id);
+  const { mediaViagemKmL, mediaUltimaAbastecidaKmL } = calcularMediaAbastecimentos(viagem, tratora);
   const percentualComissao = resolverPercentualComissao(mediaViagemKmL, tratora ? tratora.marca : null);
   const comissaoEstimada = percentualComissao !== null
     ? Math.round(faturamentoLiquido * (percentualComissao / 100)) - adiantamentosTotal

@@ -4,9 +4,9 @@ const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const { requerAcessoModulo } = require('../middleware/auth');
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
-const { buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
+const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 const { hojeIsoBrasilia } = require('../utils/dataHora');
-const { calcularMediasConsumo, buscarCategoriaAbastecimentoId } = require('../utils/mediaConsumoHelper');
+const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
 
 const router = express.Router();
 
@@ -98,7 +98,14 @@ router.get('/viagem/:viagemId', requerAcessoModulo('dre', 'Visualizar'), exigirE
   const litrosTotal = somar(abastecimentos.map((d) => d.litragem));
   const gastoCombustivelTotal = somar(abastecimentos.map((d) => Math.round((d.preco_litro || 0) * (d.litragem || 0) / 100)));
   const precoMedioDiesel = litrosTotal > 0 ? Math.round(somar(abastecimentos.map((d) => (d.preco_litro || 0) * (d.litragem || 0))) / litrosTotal) : null;
-  const { mediaViagemKmL, mediaUltimaAbastecidaKmL } = calcularMediasConsumo(despesas, categoriaAbastecimentoId);
+  // Olha pro historico do VEICULO a partir do km_inicial (nao so desta
+  // viagem) - ver mediaConsumoHelper.js/buscarAbastecimentosDoVeiculo.
+  const tratoraDre = buscarUnidadeTratora(viagem.conjunto_id);
+  const centroCustoDre = tratoraDre ? buscarCentroCustoDoVeiculo(tratoraDre.id) : null;
+  const abastecimentosVeiculoDre = centroCustoDre
+    ? buscarAbastecimentosDoVeiculo(centroCustoDre.id, viagem.km_inicial, viagem.km_final)
+    : [];
+  const { mediaViagemKmL, mediaUltimaAbastecidaKmL } = calcularMediasConsumo(abastecimentosVeiculoDre, categoriaAbastecimentoId);
 
   res.json({
     viagem, receita, custosVariaveis, resultadoOperacional,

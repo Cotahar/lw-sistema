@@ -2,7 +2,7 @@ const express = require('express');
 const db = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const { requerAcessoModulo } = require('../middleware/auth');
-const { calcularMediasConsumo, buscarCategoriaAbastecimentoId } = require('../utils/mediaConsumoHelper');
+const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
 
 const router = express.Router();
 
@@ -61,12 +61,14 @@ router.get('/resumo', requerAcessoModulo('dre', 'Visualizar'), asyncHandler(asyn
   const viagensAtivas = db.prepare(`
     SELECT vg.id AS viagem_id, vg.data_inicio, vg.km_inicial, vg.empresa_id,
            e.razao_social AS empresa_razao_social, mo.nome AS motorista_nome,
-           vc.placa, vc.hodometro_atual, vc.localizacao_cidade, vc.localizacao_uf, vc.localizacao_atualizado_em
+           vc.placa, vc.hodometro_atual, vc.localizacao_cidade, vc.localizacao_uf, vc.localizacao_atualizado_em,
+           cc.id AS centro_custo_id
     FROM viagens vg
     JOIN empresas e ON e.id = vg.empresa_id
     JOIN motoristas mo ON mo.id = vg.motorista_id
     JOIN conjunto_itens ci ON ci.conjunto_id = vg.conjunto_id
     JOIN veiculos vc ON vc.id = ci.veiculo_id AND vc.tipo = 'Cavalo'
+    LEFT JOIN centros_custo cc ON cc.veiculo_id = vc.id
     WHERE vg.status = 'EmAndamento' ${req.empresaId ? 'AND vg.empresa_id = ?' : ''}
     ORDER BY vg.data_inicio
   `).all(...paramsEmpresa);
@@ -86,20 +88,18 @@ router.get('/resumo', requerAcessoModulo('dre', 'Visualizar'), asyncHandler(asyn
     `).all(...viagemIds).map((r) => [r.viagem_id, r]));
 
     const categoriaAbastecimentoId = buscarCategoriaAbastecimentoId();
-    const todasDespesas = db.prepare(`
-      SELECT viagem_id, categoria_id, km_abastecimento, litragem, tanque_completo
-      FROM despesas_viagem WHERE viagem_id IN (${placeholders})
-    `).all(...viagemIds);
-    const despesasPorViagem = new Map();
-    for (const d of todasDespesas) {
-      if (!despesasPorViagem.has(d.viagem_id)) despesasPorViagem.set(d.viagem_id, []);
-      despesasPorViagem.get(d.viagem_id).push(d);
-    }
 
     for (const v of viagensAtivas) {
       const desp = agregadosDespesas.get(v.viagem_id) || { litros_total: 0, despesas_total: 0 };
       const fat = agregadosFretes.get(v.viagem_id) || { faturamento_total: 0 };
-      const { mediaViagemKmL } = calcularMediasConsumo(despesasPorViagem.get(v.viagem_id) || [], categoriaAbastecimentoId);
+      // Media "tanque cheio a tanque cheio" olha pro historico do VEICULO (nao
+      // so desta viagem) a partir do km_inicial - ver comentario em
+      // mediaConsumoHelper.js/buscarAbastecimentosDoVeiculo. Viagem em
+      // andamento nunca precisa de teto (e sempre a atividade mais recente).
+      const abastecimentosVeiculo = v.centro_custo_id
+        ? buscarAbastecimentosDoVeiculo(v.centro_custo_id, v.km_inicial)
+        : [];
+      const { mediaViagemKmL } = calcularMediasConsumo(abastecimentosVeiculo, categoriaAbastecimentoId);
       v.km_rodado = Math.max(0, (v.hodometro_atual || 0) - v.km_inicial);
       v.litros_total = desp.litros_total;
       v.media_consumo_atual = mediaViagemKmL;

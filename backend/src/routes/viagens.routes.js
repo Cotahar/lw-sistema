@@ -11,7 +11,7 @@ const { verificarAlertasDoVeiculo } = require('../utils/alertaEngine');
 const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 const { hojeIsoBrasilia, agoraDataHoraIsoBrasilia } = require('../utils/dataHora');
 const { criarDespesaViagem, criarContaPagarCombinada, resolverContaPagarAposEdicao } = require('../utils/despesaViagemHelper');
-const { calcularMediasConsumo, buscarCategoriaAbastecimentoId } = require('../utils/mediaConsumoHelper');
+const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
 
 const router = express.Router();
 
@@ -53,9 +53,32 @@ router.get('/:id', requerAcessoModulo('viagens', 'Visualizar'), exigirEmpresaEsp
   const viagem = db.prepare('SELECT * FROM viagens WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
   if (!viagem) throw new ApiError(404, 'Viagem nao encontrada.');
   const fretes = db.prepare('SELECT * FROM fretes WHERE viagem_id = ?').all(req.params.id);
-  const despesas = db.prepare('SELECT categoria_id, km_abastecimento, litragem, tanque_completo FROM despesas_viagem WHERE viagem_id = ?').all(req.params.id);
-  const { mediaViagemKmL, mediaUltimaAbastecidaKmL } = calcularMediasConsumo(despesas, buscarCategoriaAbastecimentoId());
-  res.json({ ...viagem, fretes, media_consumo_km_l: mediaViagemKmL, media_ultima_abastecida_km_l: mediaUltimaAbastecidaKmL });
+  const tratora = buscarUnidadeTratora(viagem.conjunto_id);
+  const centroCusto = tratora ? buscarCentroCustoDoVeiculo(tratora.id) : null;
+  // Media "tanque cheio a tanque cheio" olha pro historico do VEICULO (nao so
+  // desta viagem) a partir do km_inicial - ver comentario em
+  // mediaConsumoHelper.js/buscarAbastecimentosDoVeiculo.
+  const abastecimentosVeiculo = centroCusto
+    ? buscarAbastecimentosDoVeiculo(centroCusto.id, viagem.km_inicial, viagem.km_final)
+    : [];
+  const { mediaViagemKmL, mediaUltimaAbastecidaKmL } = calcularMediasConsumo(abastecimentosVeiculo, buscarCategoriaAbastecimentoId());
+
+  // Aviso pro cabecalho: se o km_inicial desta viagem nao bate com o km do
+  // ultimo abastecimento do veiculo ANTES dela, a media pode ficar sem base
+  // pra fechar a primeira janela (e o km_inicial pode estar digitado errado).
+  let avisoKmInicial = null;
+  if (centroCusto) {
+    const ultimoAntes = db.prepare(`
+      SELECT km_abastecimento FROM despesas_viagem
+      WHERE centro_custo_id = ? AND km_abastecimento IS NOT NULL AND km_abastecimento <= ?
+      ORDER BY km_abastecimento DESC LIMIT 1
+    `).get(centroCusto.id, viagem.km_inicial);
+    if (ultimoAntes && ultimoAntes.km_abastecimento !== viagem.km_inicial) {
+      avisoKmInicial = `Diverge do ultimo abastecimento do veiculo (${ultimoAntes.km_abastecimento.toLocaleString('pt-BR')} km).`;
+    }
+  }
+
+  res.json({ ...viagem, fretes, media_consumo_km_l: mediaViagemKmL, media_ultima_abastecida_km_l: mediaUltimaAbastecidaKmL, aviso_km_inicial: avisoKmInicial });
 }));
 
 // Sugere o km_inicial a partir da ultima viagem finalizada da mesma unidade

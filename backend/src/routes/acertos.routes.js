@@ -7,8 +7,8 @@ const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { condicaoEmpresa } = require('../utils/empresaScope');
 const { registrarAuditoria } = require('../utils/audit');
 const { withTransaction } = require('../utils/transaction');
-const { buscarUnidadeTratora } = require('../utils/conjuntoHelper');
-const { calcularMediasConsumo, buscarCategoriaAbastecimentoId } = require('../utils/mediaConsumoHelper');
+const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
+const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
 
 const router = express.Router();
 
@@ -53,9 +53,17 @@ function calcularAcerto(viagemId, empresaId, overrides = {}) {
   const kmTotal = viagem.km_final - viagem.km_inicial;
   // Media "tanque cheio a tanque cheio" (ver mediaConsumoHelper.js) - unica
   // forma confiavel de saber litros/km real quando existem abastecimentos
-  // parciais no meio (ex.: so pra chegar a um posto mais em conta).
+  // parciais no meio (ex.: so pra chegar a um posto mais em conta). Olha pro
+  // historico do VEICULO a partir do km_inicial (nao so desta viagem), senao
+  // a primeira abastecida de uma viagem nova nunca fecha janela nenhuma - ver
+  // mediaConsumoHelper.js/buscarAbastecimentosDoVeiculo.
   const categoriaAbastecimentoId = buscarCategoriaAbastecimentoId();
-  const { mediaViagemKmL, mediaUltimaAbastecidaKmL } = calcularMediasConsumo(despesas, categoriaAbastecimentoId);
+  const tratoraAcerto = buscarUnidadeTratora(viagem.conjunto_id);
+  const centroCustoAcerto = tratoraAcerto ? buscarCentroCustoDoVeiculo(tratoraAcerto.id) : null;
+  const abastecimentosVeiculoAcerto = centroCustoAcerto
+    ? buscarAbastecimentosDoVeiculo(centroCustoAcerto.id, viagem.km_inicial, viagem.km_final)
+    : [];
+  const { mediaViagemKmL, mediaUltimaAbastecidaKmL } = calcularMediasConsumo(abastecimentosVeiculoAcerto, categoriaAbastecimentoId);
   const mediaConsumoKmL = mediaViagemKmL;
   const litrosTotal = somar(
     despesas.filter((d) => d.categoria_id === categoriaAbastecimentoId).map((d) => d.litragem)
@@ -67,8 +75,7 @@ function calcularAcerto(viagemId, empresaId, overrides = {}) {
   // tem prioridade quando ambas cobririam a mesma media de consumo.
   let percentualSugerido = null;
   if (mediaConsumoKmL !== null) {
-    const tratora = buscarUnidadeTratora(viagem.conjunto_id);
-    const marcaTratora = tratora ? tratora.marca : null;
+    const marcaTratora = tratoraAcerto ? tratoraAcerto.marca : null;
     const faixa = db.prepare(`
       SELECT * FROM comissao_faixas
       WHERE ativo = 1 AND km_l_de <= ? AND km_l_ate >= ? AND (marca = ? OR marca IS NULL)

@@ -56,4 +56,32 @@ function buscarCategoriaAbastecimentoId() {
   return categoria ? categoria.id : null;
 }
 
-module.exports = { calcularMediasConsumo, buscarCategoriaAbastecimentoId };
+// Abastecimentos do VEICULO (via centro de custo), nao so os da viagem
+// sendo consultada - o tanque nao esvazia entre viagens, entao o "tanque
+// completo" que fecha uma viagem e o mesmo que abre a media da proxima. Sem
+// isso, a primeira abastecida de uma viagem nova nunca fecha janela nenhuma
+// (so tem 1 evento "tanque completo" olhando so pra ela mesma) e a media
+// fica sempre null ate a SEGUNDA abastecida - bug relatado pelo usuario.
+//
+// kmMinimo: normalmente o km_inicial da viagem sendo consultada (o "tanque
+// completo" de fechamento da viagem anterior tem km_abastecimento igual ou
+// bem proximo a isso). kmMaximo (opcional): o km_final da viagem sendo
+// consultada, pra NAO misturar abastecimentos de uma viagem POSTERIOR
+// quando a consulta for sobre uma viagem ja fechada (viagem em andamento
+// nao precisa disso - e sempre a atividade mais recente do veiculo).
+function buscarAbastecimentosDoVeiculo(centroCustoId, kmMinimo, kmMaximo) {
+  const condicoes = ['centro_custo_id = ?', 'km_abastecimento IS NOT NULL', 'km_abastecimento >= ?'];
+  const params = [centroCustoId, kmMinimo];
+  if (kmMaximo !== null && kmMaximo !== undefined) {
+    condicoes.push('km_abastecimento <= ?');
+    params.push(kmMaximo);
+  }
+  return db.prepare(`
+    SELECT categoria_id, km_abastecimento, litragem, tanque_completo
+    FROM despesas_viagem
+    WHERE ${condicoes.join(' AND ')}
+    ORDER BY km_abastecimento
+  `).all(...params);
+}
+
+module.exports = { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimentosDoVeiculo };

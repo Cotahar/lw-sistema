@@ -950,6 +950,7 @@ export async function render(container, params) {
             ${viagem.km_inicial.toLocaleString('pt-BR')} km
             ${getUsuario()?.perfil === 'Admin' ? '<button type="button" class="ml-1 text-xs font-normal text-gray-900 hover:underline" data-editar-km-inicial>Editar</button>' : ''}
           </p>
+          ${viagem.aviso_km_inicial ? `<p class="mt-1 text-xs text-amber-500" title="${viagem.aviso_km_inicial}">&#9888; ${viagem.aviso_km_inicial}</p>` : ''}
         </div>
         <div>
           <p class="text-xs font-medium uppercase text-slate-500">Localizacao atual</p>
