@@ -6,6 +6,7 @@ import { mostrarToast, mostrarErro } from '../components/toast.js';
 import { formatarDataBr, formatarDataHoraBr, attachUppercaseInput } from '../masks.js';
 import { comCopiar } from '../components/copiar.js';
 import { criarBotaoSincronizarOnixsat } from '../components/onixsatSync.js';
+import { criarCidadeUfInput } from '../components/cidadeUfSelect.js';
 
 const TIPOS = ['Cavalo', 'Carreta', 'Dolly', 'Truck', 'Toco'];
 
@@ -195,8 +196,7 @@ export async function abrirLocalizacao(veiculo, recarregar) {
     const corpo = document.createElement('div');
     corpo.innerHTML = `
       <div class="mb-4 flex items-end gap-2">
-        <div><label class="label">Cidade *</label><input type="text" class="input" data-cidade /></div>
-        <div><label class="label">UF *</label><input type="text" class="input w-16" maxlength="2" data-uf /></div>
+        <div class="flex-1" data-cidade-uf></div>
         <button type="button" class="btn-primary" data-registrar>Registrar</button>
       </div>
       <p class="hidden text-sm text-red-600" data-erro-loc></p>
@@ -211,12 +211,14 @@ export async function abrirLocalizacao(veiculo, recarregar) {
     `;
     const veiculoAtual = veiculo.localizacao_cidade ? `${veiculo.localizacao_cidade}/${veiculo.localizacao_uf}` : 'nao informada';
     const overlay = abrirModal({ titulo: `Localizacao - ${veiculo.placa} (atual: ${veiculoAtual})`, conteudo: corpo, largura: 'max-w-lg' });
+    const cidadeUf = criarCidadeUfInput({ nomeCidade: 'cidade', nomeUf: 'uf', placeholder: 'Cidade *' });
+    overlay.querySelector('[data-cidade-uf]').appendChild(cidadeUf.el);
     overlay.querySelector('[data-registrar]').addEventListener('click', async () => {
       const erroEl = overlay.querySelector('[data-erro-loc]');
       erroEl.classList.add('hidden');
-      const cidade = overlay.querySelector('[data-cidade]').value.trim();
-      const uf = overlay.querySelector('[data-uf]').value.trim();
-      if (!cidade || !uf) { erroEl.textContent = 'Preencha cidade e UF.'; erroEl.classList.remove('hidden'); return; }
+      const cidade = cidadeUf.getCidade();
+      const uf = cidadeUf.getUf();
+      if (!cidade || !uf) { erroEl.textContent = 'Selecione a cidade a partir da lista de sugestoes.'; erroEl.classList.remove('hidden'); return; }
       try {
         await post(`/veiculos/${veiculo.id}/localizacao`, { cidade, uf });
         fecharModal();

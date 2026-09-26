@@ -3,7 +3,7 @@ import { criarDataTable } from '../components/dataTable.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { abrirModal, fecharModal, confirmarAcao } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
-import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr } from '../masks.js';
+import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr, attachUppercaseInput } from '../masks.js';
 
 import { ICONE_SUCESSO, ICONE_ATENCAO, ICONE_CRITICO, ICONE_NEUTRO } from '../components/statusIcons.js';
 
@@ -80,6 +80,10 @@ async function montarFormulario(registro, aoSalvar) {
   attachMoedaMaskReais(form.valor_original, registro?.valor_original || 0);
   attachDataMask(form.data_infracao, registro?.data_infracao);
   attachDataMask(form.data_notificacao, registro?.data_notificacao);
+  attachUppercaseInput(form.orgao_autuador);
+  attachUppercaseInput(form.numero_ait);
+  attachUppercaseInput(form.descricao);
+  attachUppercaseInput(form.observacoes);
   if (registro) {
     form.orgao_autuador.value = registro.orgao_autuador || '';
     form.numero_ait.value = registro.numero_ait || '';

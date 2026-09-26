@@ -5,7 +5,7 @@ import { criarNovoFornecedor } from '../../components/fornecedorQuickCreate.js';
 import { abrirModal, fecharModal, confirmarAcao } from '../../components/modal.js';
 import { mostrarToast, mostrarErro } from '../../components/toast.js';
 import { criarOcorrencias } from '../../components/ocorrencias.js';
-import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr, hojeIsoLocal } from '../../masks.js';
+import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr, hojeIsoLocal, attachUppercaseInput } from '../../masks.js';
 
 const STATUS_BADGE = { Pendente: 'badge-atencao', Parcial: 'badge-atencao', Pago: 'badge-sucesso', Atrasado: 'badge-critico' };
 const STATUS_OPCOES = [
@@ -57,6 +57,7 @@ async function abrirNovaConta(recarregar) {
   `;
   attachMoedaMaskReais(form.valor, 0);
   attachDataMask(form.data_vencimento);
+  attachUppercaseInput(form.descricao);
   const fornecedorSelect = criarSearchableSelect({ buscar: buscarFornecedores, placeholder: 'Pesquisar fornecedor...', criarNovo: { label: 'Cadastrar novo fornecedor', abrir: criarNovoFornecedor } });
   form.querySelector('[data-fornecedor]').appendChild(fornecedorSelect.el);
   const centroSelect = criarSearchableSelect({ buscar: buscarCentrosCusto, placeholder: 'Pesquisar centro de custo...' });
@@ -173,6 +174,7 @@ async function abrirConsolidarFatura(recarregar) {
   `;
   attachMoedaMaskReais(form.valor_boleto, 0);
   attachDataMask(form.data_vencimento);
+  attachUppercaseInput(form.descricao);
 
   const listaContas = form.querySelector('[data-lista-contas]');
   const somaEl = form.querySelector('[data-soma-selecionada]');

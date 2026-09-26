@@ -2,7 +2,7 @@ import { get, post, authHeaders } from '../../api.js';
 import { navegar } from '../../router.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { mostrarToast, mostrarErro } from '../../components/toast.js';
-import { attachMoedaMask, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso, hojeIsoLocal } from '../../masks.js';
+import { attachMoedaMask, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso, hojeIsoLocal, attachUppercaseInput } from '../../masks.js';
 import { comprimirImagem } from '../../imageCompress.js';
 import { adicionarPendente, registrarSyncBackground, iconeFilaHtml, atualizarIndicadorFila } from './offlineQueue.js';
 
@@ -148,6 +148,8 @@ export async function render(appEl) {
   const inputNovoPostoNome = form.querySelector('[data-novo-posto-nome]');
   const inputNovoPostoLocalizacao = form.querySelector('[data-novo-posto-localizacao]');
   const erroNovoPosto = form.querySelector('[data-erro-novo-posto]');
+  attachUppercaseInput(inputNovoPostoNome);
+  attachUppercaseInput(inputNovoPostoLocalizacao);
 
   form.querySelector('[data-abrir-novo-posto]').addEventListener('click', () => {
     inputNovoPostoNome.value = postoSelect.el.querySelector('input').value.trim();

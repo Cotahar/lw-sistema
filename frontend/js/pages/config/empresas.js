@@ -4,8 +4,9 @@ import { abrirModal, fecharModal } from '../../components/modal.js';
 import { mostrarToast, mostrarErro } from '../../components/toast.js';
 import { renderizarAcessoNegado } from '../../components/acessoNegado.js';
 import { attachCpfCnpjMask, apenasDigitos, formatarCpfCnpj, validarCnpj, attachUppercaseInput } from '../../masks.js';
+import { criarCidadeUfInput } from '../../components/cidadeUfSelect.js';
 
-const CAMPOS_CAIXA_ALTA = ['razao_social', 'nome_fantasia', 'inscricao_estadual', 'endereco_logradouro', 'endereco_complemento', 'endereco_bairro', 'endereco_cidade', 'endereco_uf'];
+const CAMPOS_CAIXA_ALTA = ['razao_social', 'nome_fantasia', 'inscricao_estadual', 'endereco_logradouro', 'endereco_complemento', 'endereco_bairro'];
 import { comCopiar } from '../../components/copiar.js';
 
 function abrirFormEmpresa(registro, recarregar) {
@@ -37,8 +38,7 @@ function abrirFormEmpresa(registro, recarregar) {
     </div>
     <div class="grid grid-cols-3 gap-3">
       <div><label class="label">CEP</label><input type="text" name="endereco_cep" class="input" /></div>
-      <div><label class="label">Cidade</label><input type="text" name="endereco_cidade" class="input" /></div>
-      <div><label class="label">UF</label><input type="text" name="endereco_uf" class="input" maxlength="2" /></div>
+      <div class="col-span-2"><label class="label">Cidade</label><div data-cidade-uf></div></div>
     </div>
     <div class="border-t border-slate-200 pt-3">
       <h3 class="mb-1 text-sm font-semibold text-slate-900">Integração Onixsat</h3>
@@ -69,7 +69,7 @@ function abrirFormEmpresa(registro, recarregar) {
 
   const campos = [
     'razao_social', 'nome_fantasia', 'cnpj', 'inscricao_estadual',
-    'endereco_logradouro', 'endereco_numero', 'endereco_complemento', 'endereco_bairro', 'endereco_cidade', 'endereco_uf', 'endereco_cep',
+    'endereco_logradouro', 'endereco_numero', 'endereco_complemento', 'endereco_bairro', 'endereco_cep',
     'telefone', 'email', 'onixsat_usuario', 'onixsat_senha', 'onixsat_poll_minutos', 'percentual_desconto_geral',
   ];
   for (const nome of campos) {
@@ -77,6 +77,11 @@ function abrirFormEmpresa(registro, recarregar) {
   }
   attachCpfCnpjMask(form.cnpj, registro ? registro.cnpj : '');
   for (const nome of CAMPOS_CAIXA_ALTA) attachUppercaseInput(form.elements[nome]);
+  const cidadeUf = criarCidadeUfInput({
+    nomeCidade: 'endereco_cidade', nomeUf: 'endereco_uf', obrigatorio: false,
+    cidadeInicial: registro?.endereco_cidade || '', ufInicial: registro?.endereco_uf || '',
+  });
+  form.querySelector('[data-cidade-uf]').appendChild(cidadeUf.el);
 
   const erro = form.querySelector('[data-erro]');
   const erroCnpj = form.querySelector('[data-erro-cnpj]');
@@ -99,10 +104,11 @@ function abrirFormEmpresa(registro, recarregar) {
     btn.textContent = 'Buscando...';
     try {
       const dados = await get(`/cnpj/${digitos}`);
-      for (const campo of ['razao_social', 'nome_fantasia', 'endereco_logradouro', 'endereco_numero', 'endereco_complemento', 'endereco_bairro', 'endereco_cidade', 'endereco_uf', 'endereco_cep', 'telefone', 'email']) {
+      for (const campo of ['razao_social', 'nome_fantasia', 'endereco_logradouro', 'endereco_numero', 'endereco_complemento', 'endereco_bairro', 'endereco_cep', 'telefone', 'email']) {
         if (dados[campo]) form.elements[campo].value = dados[campo];
       }
-      mostrarToast('Dados preenchidos - confira antes de salvar.');
+      if (dados.endereco_cidade && dados.endereco_uf) cidadeUf.setValor(dados.endereco_cidade, dados.endereco_uf);
+      mostrarToast('Dados preenchidos - confira antes de salvar (a cidade preenchida automaticamente pode nao bater com a grafia oficial do IBGE - reselecione na lista se precisar).');
     } catch (err) {
       erroCnpj.textContent = err.message;
       erroCnpj.classList.remove('hidden');
@@ -123,6 +129,8 @@ function abrirFormEmpresa(registro, recarregar) {
     }
     const valores = { ativo: form.querySelector('#empresa-ativo').checked ? 1 : 0 };
     for (const nome of campos) valores[nome] = form.elements[nome].value || null;
+    valores.endereco_cidade = cidadeUf.getCidade() || null;
+    valores.endereco_uf = cidadeUf.getUf() || null;
     valores.cnpj = cnpjDigitos;
     valores.percentual_desconto_geral = form.percentual_desconto_geral.value ? Number(form.percentual_desconto_geral.value) : null;
     valores.onixsat_poll_minutos = form.onixsat_poll_minutos.value ? Number(form.onixsat_poll_minutos.value) : null;

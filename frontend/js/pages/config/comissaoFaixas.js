@@ -1,6 +1,7 @@
 import { get, post, put, del, ehAdmin } from '../../api.js';
 import { renderizarAcessoNegado } from '../../components/acessoNegado.js';
 import { mostrarToast, mostrarErro } from '../../components/toast.js';
+import { attachUppercaseInput } from '../../masks.js';
 
 // Tela de linhas editaveis (nao o CRUD generico em modal) - o cadastro de
 // faixas e feito em sequencia (uma faixa emenda na outra), entao editar uma
@@ -79,6 +80,7 @@ export async function render(container) {
   }
 
   function ligarLinha(tr) {
+    attachUppercaseInput(tr.querySelector('[data-campo="marca"]'));
     tr.querySelector('[data-salvar]').addEventListener('click', async () => {
       limparErroLinha(tr);
       const valores = lerLinha(tr);

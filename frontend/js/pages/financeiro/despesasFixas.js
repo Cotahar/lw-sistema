@@ -3,7 +3,7 @@ import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { abrirModal, fecharModal } from '../../components/modal.js';
 import { mostrarToast } from '../../components/toast.js';
-import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr } from '../../masks.js';
+import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr, attachUppercaseInput } from '../../masks.js';
 import { navegar } from '../../router.js';
 
 async function buscarCentrosCusto(termo) {
@@ -49,6 +49,7 @@ async function montarFormulario(registro, aoSalvar) {
   form.querySelector('[data-ir-categorias]')?.addEventListener('click', () => fecharModal());
   attachMoedaMaskReais(form.valor, registro?.valor || 0);
   attachDataMask(form.data, registro?.data);
+  attachUppercaseInput(form.descricao);
   if (registro) {
     form.categoria_id.value = registro.categoria_id;
     form.recorrente.checked = Boolean(registro.recorrente);

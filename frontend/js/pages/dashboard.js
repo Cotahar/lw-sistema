@@ -10,6 +10,7 @@ function cartaoVeiculoViagem(v) {
   const localizacao = v.localizacao_cidade
     ? `${v.localizacao_cidade}/${v.localizacao_uf} <span class="text-slate-400">(${formatarDataHoraBr(v.localizacao_atualizado_em)})</span>`
     : '-';
+  const diasEmViagem = Math.max(1, Math.round((new Date(`${hojeIsoLocal()}T00:00:00Z`) - new Date(`${v.data_inicio}T00:00:00Z`)) / 86400000));
   return `
     <a href="#/viagens/${v.viagem_id}" class="card block p-4 hover:border-brand-yellow hover:shadow-sm">
       <div class="mb-2 flex items-center justify-between">
@@ -18,6 +19,7 @@ function cartaoVeiculoViagem(v) {
       </div>
       <dl class="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
         <dt class="text-slate-500">Inicio da viagem</dt><dd class="text-right text-slate-900">${formatarDataBr(v.data_inicio)}</dd>
+        <dt class="text-slate-500">Dias em viagem</dt><dd class="text-right text-slate-900">${diasEmViagem}</dd>
         <dt class="text-slate-500">Km rodado</dt><dd class="text-right text-slate-900">${v.km_rodado.toLocaleString('pt-BR')} km</dd>
         <dt class="text-slate-500">Media de consumo</dt><dd class="text-right text-slate-900">${consumo}</dd>
         <dt class="text-slate-500">Faturamento</dt><dd class="text-right font-medium text-emerald-400">${formatarMoeda(v.faturamento_total)}</dd>

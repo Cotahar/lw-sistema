@@ -81,6 +81,7 @@ async function abrirExtrato(conta, gerenciar, recarregar) {
     const formAjuste = overlay.querySelector('[data-form-ajuste]');
     if (formAjuste) {
       attachMoedaMaskReais(formAjuste.valor, 0);
+      attachUppercaseInput(formAjuste.descricao);
       formAjuste.addEventListener('submit', async (ev) => {
         ev.preventDefault();
         const erroEl = formAjuste.querySelector('[data-erro-ajuste]');

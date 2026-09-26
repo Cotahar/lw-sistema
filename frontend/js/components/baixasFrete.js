@@ -4,7 +4,7 @@ import { mostrarToast, mostrarErro } from './toast.js';
 import { criarSearchableSelect } from './searchableSelect.js';
 import { criarOcorrencias } from './ocorrencias.js';
 import { criarAnexos } from './anexos.js';
-import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, formatarDataBr } from '../masks.js';
+import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, formatarDataBr, attachUppercaseInput } from '../masks.js';
 
 const TIPOS_BAIXA = ['Adiantamento', 'Pedagio', 'Saldo', 'Desconto', 'Outro'];
 
@@ -101,6 +101,7 @@ export async function abrirBaixasFrete(frete, recarregar, gerenciar) {
       const contaSelect = criarSearchableSelect({ buscar: buscarContasBancarias, placeholder: 'Pesquisar conta (opcional)...' });
       formBaixa.querySelector('[data-conta-select]').appendChild(contaSelect.el);
       attachMoedaMaskReais(formBaixa.valor, 0);
+      attachUppercaseInput(formBaixa.descricao);
       formBaixa.tipo.addEventListener('change', () => {
         formBaixa.querySelector('[data-bloco-conta]').classList.toggle('hidden', formBaixa.tipo.value === 'Desconto');
       });

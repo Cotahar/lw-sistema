@@ -4,7 +4,7 @@ import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { criarNovoFornecedor } from '../../components/fornecedorQuickCreate.js';
 import { abrirModal, fecharModal } from '../../components/modal.js';
 import { mostrarToast, mostrarErro } from '../../components/toast.js';
-import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso } from '../../masks.js';
+import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso, attachUppercaseInput } from '../../masks.js';
 import { navegar } from '../../router.js';
 
 async function buscarCentrosCusto(termo) {
@@ -38,6 +38,7 @@ async function abrirNovoFinanciamento(recarregar) {
   attachMoedaMaskReais(form.valor_parcela, 0);
   attachDataMask(form.data_contrato);
   attachDataMask(form.primeira_parcela_vencimento);
+  attachUppercaseInput(form.descricao);
   const centroSelect = criarSearchableSelect({ buscar: buscarCentrosCusto, placeholder: 'Pesquisar centro de custo...' });
   form.querySelector('[data-centro]').appendChild(centroSelect.el);
   const credorSelect = criarSearchableSelect({ buscar: buscarFornecedores, placeholder: 'Pesquisar credor...', criarNovo: { label: 'Cadastrar novo fornecedor', abrir: criarNovoFornecedor } });

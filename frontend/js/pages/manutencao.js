@@ -4,7 +4,7 @@ import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { criarNovoFornecedor } from '../components/fornecedorQuickCreate.js';
 import { abrirModal, fecharModal } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
-import { formatarMoeda, attachMoedaMask, attachMoedaMaskReais, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr } from '../masks.js';
+import { formatarMoeda, attachMoedaMask, attachMoedaMaskReais, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr, attachUppercaseInput } from '../masks.js';
 import { navegar } from '../router.js';
 
 async function buscarVeiculos(termo) {
@@ -59,6 +59,7 @@ function montarFormulario(aoSalvar) {
   attachMoedaMaskReais(form.valor_mao_obra, 0);
   attachMoedaMaskReais(form.valor_parcela, 0);
   attachDataMask(form.primeira_parcela_vencimento);
+  attachUppercaseInput(form.descricao);
 
   // O total a parcelar e sempre pecas + mao de obra (nao e um campo proprio) -
   // qtd_parcelas e valor_parcela se autocalculam um a partir do outro usando
@@ -104,6 +105,7 @@ function montarFormulario(aoSalvar) {
     `;
     const itemSelect = criarSearchableSelect({ buscar: buscarItensEstoque, placeholder: 'Item do estoque (opcional)' });
     linha.querySelector('[data-item-select]').appendChild(itemSelect.el);
+    attachUppercaseInput(linha.querySelector('[data-descricao]'));
     attachMoedaMask(linha.querySelector('[data-valor]'), 0);
     linha.querySelector('[data-remover]').addEventListener('click', () => {
       linha.remove();

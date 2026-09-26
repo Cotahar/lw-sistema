@@ -1,7 +1,7 @@
 import { get, post, podeGerenciar, ehAdmin } from '../api.js';
 import { abrirModal } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
-import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, setMoedaValue, formatarDataBr } from '../masks.js';
+import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, setMoedaValue, formatarDataBr, attachUppercaseInput } from '../masks.js';
 import { navegar } from '../router.js';
 import { criarOcorrencias } from '../components/ocorrencias.js';
 import { esqueletoPagina } from '../components/skeleton.js';
@@ -153,6 +153,7 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
   attachMoedaMaskReais(form.reembolsos, inicial.valorReembolsos || 0);
   setMoedaValue(form.descontos, inicial.valorDescontosSugerido || 0);
   attachMoedaMaskReais(form.descontos, inicial.valorDescontosSugerido || 0);
+  attachUppercaseInput(form.observacoes);
 
   // Rascunho automatico (localStorage): esta tela e conferida ao vivo com o
   // motorista, com bastante coisa lancada/editada a mao - perder isso por um

@@ -2,7 +2,7 @@ import { get, post, put, del, authHeaders, podeGerenciar } from '../api.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { abrirModal, confirmarAcao } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
-import { formatarDataBr, hojeIsoLocal } from '../masks.js';
+import { formatarDataBr, hojeIsoLocal, attachUppercaseInput } from '../masks.js';
 import { comprimirImagem } from '../imageCompress.js';
 
 async function buscarConjuntos(termo) {
@@ -109,6 +109,7 @@ async function carregarItensVistoria(vistoriaId, container, gerenciar, recarrega
             presente: tr.querySelector('[data-presente]').checked,
             observacao: tr.querySelector('[data-observacao]').value || null,
           });
+          attachUppercaseInput(tr.querySelector('[data-observacao]'));
           tr.querySelector('[data-presente]').addEventListener('change', salvar);
           tr.querySelector('[data-observacao]').addEventListener('blur', salvar);
         });

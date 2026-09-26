@@ -3,7 +3,7 @@ import { criarDataTable } from '../components/dataTable.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { abrirModal, fecharModal, confirmarAcao } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
-import { formatarDataBr, hojeIsoLocal } from '../masks.js';
+import { formatarDataBr, hojeIsoLocal, attachUppercaseInput } from '../masks.js';
 import { ICONE_ATENCAO, ICONE_CRITICO } from '../components/statusIcons.js';
 
 // Alerta pendente ha mais de 7 dias pesa mais (risco de esquecer de verdade)
@@ -32,6 +32,7 @@ async function abrirNovaRegra(recarregar) {
   `;
   const veiculoSelect = criarSearchableSelect({ buscar: buscarVeiculos, placeholder: 'Pesquisar placa...' });
   form.querySelector('[data-veiculo]').appendChild(veiculoSelect.el);
+  attachUppercaseInput(form.descricao);
   const erro = form.querySelector('[data-erro]');
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();

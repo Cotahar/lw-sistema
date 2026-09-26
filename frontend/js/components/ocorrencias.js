@@ -1,5 +1,5 @@
 import { get, post } from '../api.js';
-import { formatarDataHoraBr } from '../masks.js';
+import { formatarDataHoraBr, attachUppercaseInput } from '../masks.js';
 import { mostrarErro } from './toast.js';
 import { esqueletoLinhas } from './skeleton.js';
 
@@ -63,6 +63,7 @@ export function criarOcorrencias({ entidadeTipo, entidadeId, podeGerenciar, resu
 
   const form = el.querySelector('[data-form]');
   if (form) {
+    attachUppercaseInput(form.texto);
     form.addEventListener('submit', async (ev) => {
       ev.preventDefault();
       const texto = form.texto.value.trim();

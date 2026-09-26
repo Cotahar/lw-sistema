@@ -1,5 +1,6 @@
 import { get, post } from '../api.js';
 import { abrirModal, fecharModal } from './modal.js';
+import { attachUppercaseInput } from '../masks.js';
 
 // Quick-create de fornecedor a partir do "+ Cadastrar novo" do
 // searchableSelect (so telas do escritorio - ver criarNovo em
@@ -20,6 +21,7 @@ export function criarNovoFornecedor() {
       <p class="hidden text-sm text-red-600" data-erro></p>
       <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Cadastrar</button></div>
     `;
+    attachUppercaseInput(form.nome);
     const selectTipo = form.querySelector('[data-tipo]');
     get('/fornecedor-tipos').then((tipos) => {
       selectTipo.innerHTML = tipos.map((t) => `<option value="${t.id}">${t.nome}</option>`).join('');

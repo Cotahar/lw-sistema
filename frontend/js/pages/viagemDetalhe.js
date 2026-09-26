@@ -6,8 +6,9 @@ import { abrirModal, fecharModal, confirmarAcao, modalAberto } from '../componen
 import { mostrarToast, mostrarErro } from '../components/toast.js';
 import { criarOcorrencias } from '../components/ocorrencias.js';
 import { criarAnexos } from '../components/anexos.js';
+import { criarCidadeUfInput } from '../components/cidadeUfSelect.js';
 import { abrirBaixasFrete, buscarContasBancarias } from '../components/baixasFrete.js';
-import { formatarMoeda, attachMoedaMask, attachMoedaMaskReais, getMoedaValue, setMoedaValue, attachPesoMask, getPesoValue, attachDataMask, parseDataBrParaIso, formatarDataBr, formatarDataHoraBr, hojeIsoLocal } from '../masks.js';
+import { formatarMoeda, attachMoedaMask, attachMoedaMaskReais, getMoedaValue, setMoedaValue, attachPesoMask, getPesoValue, attachDataMask, parseDataBrParaIso, formatarDataBr, formatarDataHoraBr, hojeIsoLocal, attachUppercaseInput } from '../masks.js';
 import { navegar } from '../router.js';
 import { criarBotaoSincronizarOnixsat } from '../components/onixsatSync.js';
 import { esqueletoPagina } from '../components/skeleton.js';
@@ -65,12 +66,8 @@ function montarFormularioFrete(aoSalvar, frete, transportadoraLabelInicial) {
   form.innerHTML = `
     <div><label class="label">Transportadora</label><div data-transportadora></div></div>
     <div class="grid grid-cols-2 gap-3">
-      <div><label class="label">Origem (cidade) *</label><input type="text" name="origem_cidade" class="input" required /></div>
-      <div><label class="label">UF *</label><input type="text" name="origem_uf" class="input" maxlength="2" required /></div>
-    </div>
-    <div class="grid grid-cols-2 gap-3">
-      <div><label class="label">Destino (cidade) *</label><input type="text" name="destino_cidade" class="input" required /></div>
-      <div><label class="label">UF *</label><input type="text" name="destino_uf" class="input" maxlength="2" required /></div>
+      <div><label class="label">Origem (cidade) *</label><div data-origem></div></div>
+      <div><label class="label">Destino (cidade) *</label><div data-destino></div></div>
     </div>
     <div class="grid grid-cols-2 gap-3">
       <div><label class="label">Peso da carga</label><input type="text" name="peso_carga_kg" class="input" /></div>
@@ -91,27 +88,30 @@ function montarFormularioFrete(aoSalvar, frete, transportadoraLabelInicial) {
     labelInicial: transportadoraLabelInicial || '',
   });
   form.querySelector('[data-transportadora]').appendChild(transportadoraSelect.el);
+  const origemInput = criarCidadeUfInput({ nomeCidade: 'origem_cidade', nomeUf: 'origem_uf', cidadeInicial: frete?.origem_cidade || '', ufInicial: frete?.origem_uf || '' });
+  const destinoInput = criarCidadeUfInput({ nomeCidade: 'destino_cidade', nomeUf: 'destino_uf', cidadeInicial: frete?.destino_cidade || '', ufInicial: frete?.destino_uf || '' });
+  form.querySelector('[data-origem]').appendChild(origemInput.el);
+  form.querySelector('[data-destino]').appendChild(destinoInput.el);
   attachPesoMask(form.peso_carga_kg, frete ? frete.peso_carga_kg : undefined);
   attachMoedaMaskReais(form.frete_bruto, frete ? frete.frete_bruto : 0);
   attachDataMask(form.data_carregamento, frete ? frete.data_carregamento : undefined);
   attachDataMask(form.data_prevista_recebimento, frete ? frete.data_prevista_recebimento : undefined);
-  if (frete) {
-    form.origem_cidade.value = frete.origem_cidade;
-    form.origem_uf.value = frete.origem_uf;
-    form.destino_cidade.value = frete.destino_cidade;
-    form.destino_uf.value = frete.destino_uf;
-  }
   const erro = form.querySelector('[data-erro]');
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     erro.classList.add('hidden');
+    if (!origemInput.valido() || !destinoInput.valido()) {
+      erro.textContent = 'Selecione a cidade de origem e destino a partir da lista de sugestoes.';
+      erro.classList.remove('hidden');
+      return;
+    }
     try {
       await aoSalvar({
         transportadora_id: transportadoraSelect.getValue(),
-        origem_cidade: form.origem_cidade.value,
-        origem_uf: form.origem_uf.value.toUpperCase(),
-        destino_cidade: form.destino_cidade.value,
-        destino_uf: form.destino_uf.value.toUpperCase(),
+        origem_cidade: origemInput.getCidade(),
+        origem_uf: origemInput.getUf(),
+        destino_cidade: destinoInput.getCidade(),
+        destino_uf: destinoInput.getUf(),
         peso_carga_kg: getPesoValue(form.peso_carga_kg) || null,
         frete_bruto: getMoedaValue(form.frete_bruto),
         data_carregamento: form.data_carregamento.value ? parseDataBrParaIso(form.data_carregamento.value) : null,
@@ -243,6 +243,7 @@ async function abrirNovaDespesa(viagemId, recarregar, centroCustoPadrao) {
   attachMoedaMask(form.preco_litro, 0);
   attachMoedaMask(form.arla_preco, 0);
   attachMoedaMask(form.arla_valor, 0);
+  attachUppercaseInput(form.observacao);
   const usuarioSelect = criarSearchableSelect({ buscar: buscarUsuarios, placeholder: 'Pesquisar usuario...' });
   form.querySelector('[data-usuario-select]').appendChild(usuarioSelect.el);
   const fornecedorSelect = criarSearchableSelect({
@@ -682,6 +683,7 @@ async function abrirNovoAdiantamento(viagemId, recarregar) {
   `;
   attachMoedaMaskReais(form.valor, 0);
   attachDataMask(form.data);
+  attachUppercaseInput(form.descricao);
   const contaSelect = criarSearchableSelect({ buscar: buscarContasBancarias, placeholder: 'Pesquisar conta (opcional)...' });
   form.querySelector('[data-conta-select]').appendChild(contaSelect.el);
   const erro = form.querySelector('[data-erro]');
@@ -889,7 +891,7 @@ export async function render(container, params) {
         <div>
           <button type="button" class="mb-2 text-sm text-gray-900 hover:underline" data-voltar>&larr; Voltar para Viagens</button>
           <h1 class="text-xl font-bold text-slate-900">Viagem #${viagem.id} - ${motorista.nome}</h1>
-          <p class="text-sm text-slate-500">${conjunto.itens.map((i) => i.placa).join(' + ')} · ${formatarDataBr(viagem.data_inicio)}${viagem.data_fim ? ` a ${formatarDataBr(viagem.data_fim)}` : ''}</p>
+          <p class="text-sm text-slate-500">${conjunto.itens.map((i) => i.placa).join(' + ')} · ${formatarDataBr(viagem.data_inicio)}${viagem.data_fim ? ` a ${formatarDataBr(viagem.data_fim)}` : ''} · ${diasDecorridos} dia${diasDecorridos === 1 ? '' : 's'}</p>
         </div>
         <div class="flex items-center gap-2">
           <span class="${viagem.status === 'EmAndamento' ? 'badge-sucesso' : viagem.status === 'AguardandoAcerto' ? 'badge-atencao' : 'badge-neutro'}">${STATUS_LABEL[viagem.status]}</span>

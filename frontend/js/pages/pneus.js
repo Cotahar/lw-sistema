@@ -4,7 +4,7 @@ import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { criarNovoFornecedor } from '../components/fornecedorQuickCreate.js';
 import { abrirModal, fecharModal, confirmarAcao } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
-import { formatarMoeda, attachMoedaMask, getMoedaValue, formatarDataBr } from '../masks.js';
+import { formatarMoeda, attachMoedaMask, getMoedaValue, formatarDataBr, attachUppercaseInput } from '../masks.js';
 import { ICONE_SUCESSO, ICONE_ATENCAO, ICONE_CRITICO, ICONE_NEUTRO } from '../components/statusIcons.js';
 
 const STATUS_BADGE = {
@@ -47,6 +47,10 @@ async function abrirFormularioAquisicao(recarregar) {
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Cadastrar</button></div>
   `;
   attachMoedaMask(form.custo_unitario, 0);
+  attachUppercaseInput(form.numero_fogo);
+  attachUppercaseInput(form.marca);
+  attachUppercaseInput(form.modelo);
+  attachUppercaseInput(form.medida);
   const fornecedorSelect = criarSearchableSelect({ buscar: buscarFornecedores, placeholder: 'Pesquisar fornecedor...', criarNovo: { label: 'Cadastrar novo fornecedor', abrir: criarNovoFornecedor } });
   form.querySelector('[data-fornecedor]').appendChild(fornecedorSelect.el);
   const erro = form.querySelector('[data-erro]');

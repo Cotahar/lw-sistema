@@ -4,7 +4,7 @@ import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { criarNovoFornecedor } from '../components/fornecedorQuickCreate.js';
 import { abrirModal, fecharModal } from '../components/modal.js';
 import { mostrarToast } from '../components/toast.js';
-import { formatarMoeda, attachMoedaMask, getMoedaValue, formatarDataBr } from '../masks.js';
+import { formatarMoeda, attachMoedaMask, getMoedaValue, formatarDataBr, attachUppercaseInput } from '../masks.js';
 
 const CATEGORIAS = ['Peca', 'Acessorio', 'EPI', 'Utensilio'];
 
@@ -25,6 +25,8 @@ function montarFormularioItem(registro, aoSalvar) {
   form.categoria.value = registro?.categoria || CATEGORIAS[0];
   form.unidade_medida.value = registro?.unidade_medida || '';
   form.estoque_minimo.value = registro?.estoque_minimo ?? '';
+  attachUppercaseInput(form.nome);
+  attachUppercaseInput(form.unidade_medida);
   const erro = form.querySelector('[data-erro]');
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
@@ -91,6 +93,7 @@ function abrirFormularioMovimentacao(recarregarTudo) {
   });
   form.querySelector('[data-veiculo-select]').appendChild(veiculoSelect.el);
   attachMoedaMask(form.custo_unitario, 0);
+  attachUppercaseInput(form.observacao);
 
   const blocoFornecedor = form.querySelector('[data-bloco-fornecedor]');
   const blocoVeiculo = form.querySelector('[data-bloco-veiculo]');
