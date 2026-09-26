@@ -2,7 +2,7 @@ const express = require('express');
 const db = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
-const { requerAcessoModulo } = require('../middleware/auth');
+const { requerAcessoModulo, requerAdmin } = require('../middleware/auth');
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { registrarAuditoria } = require('../utils/audit');
 const { withTransaction } = require('../utils/transaction');
@@ -12,6 +12,15 @@ const router = express.Router();
 function formatarMoeda(centavos) {
   return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
+
+// Parcela de origem cujo status precisa ficar em sincronia com a conta a
+// pagar (financiamento/despesa fixa/OS parcelados) - usado tanto ao baixar
+// (marca Paga) quanto ao estornar (volta pra Pendente).
+const TABELA_PARCELA_POR_ORIGEM = {
+  FinanciamentoParcela: 'financiamento_parcelas',
+  DespesaFixaParcela: 'despesa_fixa_parcelas',
+  OrdemServicoParcela: 'os_parcelas',
+};
 
 // Join usado tanto na listagem quanto na busca por :id - traz o nome da
 // categoria e o veiculo/viagem de origem (quando a conta veio de uma despesa
@@ -254,12 +263,7 @@ router.post('/:id/baixar', requerAcessoModulo('contas_pagar', 'Gerenciar'), exig
     // nessas tabelas mesmo depois de paga aqui, por mais que a conta a pagar
     // (a fonte de verdade pro financeiro) estivesse correta.
     if (novoStatus === 'Pago') {
-      const tabelaParcelaPorOrigem = {
-        FinanciamentoParcela: 'financiamento_parcelas',
-        DespesaFixaParcela: 'despesa_fixa_parcelas',
-        OrdemServicoParcela: 'os_parcelas',
-      };
-      const tabelaParcela = tabelaParcelaPorOrigem[contaPagar.origem_tipo];
+      const tabelaParcela = TABELA_PARCELA_POR_ORIGEM[contaPagar.origem_tipo];
       if (tabelaParcela) {
         db.prepare(`UPDATE ${tabelaParcela} SET status = 'Paga', data_pagamento = COALESCE(?, date('now', '-3 hours')) WHERE id = ?`)
           .run(data_pagamento || null, contaPagar.origem_id);
@@ -275,6 +279,67 @@ router.post('/:id/baixar', requerAcessoModulo('contas_pagar', 'Gerenciar'), exig
 
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'contas_pagar', registroId: resultado.contaPagar.id, acao: 'UPDATE', antes: resultado.antes, depois: resultado.contaPagar });
   res.json(resultado);
+}));
+
+// Historico de baixas desta conta (uma linha por chamada a POST /:id/baixar
+// que efetivamente moveu dinheiro - baixa 100% em desconto nao gera linha
+// aqui, so abate o saldo da conta, ver POST /:id/baixar). Usado pela tela de
+// Detalhes da conta.
+router.get('/:id/movimentacoes', requerAcessoModulo('contas_pagar', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const conta = db.prepare('SELECT id FROM contas_pagar WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
+  if (!conta) throw new ApiError(404, 'Conta a pagar nao encontrada.');
+  const movimentacoes = db.prepare(`
+    SELECT mc.*, cb.nome AS conta_bancaria_nome
+    FROM movimentacoes_caixa mc
+    LEFT JOIN contas_bancarias cb ON cb.id = mc.conta_bancaria_id
+    WHERE mc.origem_tipo = 'ContaPagar' AND mc.origem_id = ?
+    ORDER BY mc.data DESC, mc.id DESC
+  `).all(req.params.id);
+  res.json(movimentacoes);
+}));
+
+// Estorno de baixa (Admin apenas): desfaz TODAS as baixas/descontos ja
+// lancados nesta conta de uma vez, devolvendo a conta a pagar pra Pendente -
+// nao existe um historico granular de "baixa 1, baixa 2..." com desconto
+// proprio de cada uma (valor_pago/valor_descontado sao totais acumulados na
+// propria linha, ver POST /:id/baixar), entao desfazer so a ultima baixa e
+// deixar as anteriores de pe nao daria pra reconstruir com seguranca. Cada
+// movimentacao de caixa gerada pelas baixas (podem ser varias, se a conta foi
+// paga em partes) e revertida individualmente, devolvendo o valor pro saldo
+// da conta bancaria de origem de cada uma.
+// Observacao: se alguma baixa usou "ajustarValorConta" (valor da conta
+// aumentado pra cobrir uma baixa maior que o restante, ex.: juros), o campo
+// `valor` NAO e revertido ao original - fica com o valor ja ajustado. Isso e
+// raro (so ocorre com confirmacao explicita na hora da baixa) e corrigir
+// isso exigiria reconstruir o valor original a partir do log de auditoria;
+// se acontecer, ajuste o valor manualmente depois do estorno (PUT /:id).
+router.post('/:id/estornar-baixa', requerAdmin, exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const antes = db.prepare('SELECT * FROM contas_pagar WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
+  if (!antes) throw new ApiError(404, 'Conta a pagar nao encontrada.');
+  if (antes.valor_pago === 0 && antes.valor_descontado === 0) throw new ApiError(400, 'Esta conta nao tem nenhuma baixa lancada.');
+
+  const depois = withTransaction(db, () => {
+    const movimentacoes = db.prepare("SELECT * FROM movimentacoes_caixa WHERE origem_tipo = 'ContaPagar' AND origem_id = ?").all(antes.id);
+    for (const mov of movimentacoes) {
+      db.prepare('UPDATE contas_bancarias SET saldo_atual = saldo_atual + ? WHERE id = ?').run(mov.valor, mov.conta_bancaria_id);
+      db.prepare('DELETE FROM movimentacoes_caixa WHERE id = ?').run(mov.id);
+    }
+
+    db.prepare(`
+      UPDATE contas_pagar SET valor_pago = 0, valor_descontado = 0, status = 'Pendente', data_pagamento = NULL, conta_bancaria_id = NULL
+      WHERE id = ?
+    `).run(antes.id);
+
+    const tabelaParcela = TABELA_PARCELA_POR_ORIGEM[antes.origem_tipo];
+    if (tabelaParcela) {
+      db.prepare(`UPDATE ${tabelaParcela} SET status = 'Pendente', data_pagamento = NULL WHERE id = ?`).run(antes.origem_id);
+    }
+
+    return db.prepare('SELECT * FROM contas_pagar WHERE id = ?').get(antes.id);
+  });
+
+  registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'contas_pagar', registroId: depois.id, acao: 'UPDATE', antes, depois });
+  res.json(depois);
 }));
 
 router.delete('/:id', requerAcessoModulo('contas_pagar', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {

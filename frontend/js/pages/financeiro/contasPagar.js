@@ -1,4 +1,4 @@
-import { get, post, podeGerenciar } from '../../api.js';
+import { get, post, podeGerenciar, getUsuario } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { criarNovoFornecedor } from '../../components/fornecedorQuickCreate.js';
@@ -142,6 +142,67 @@ async function abrirBaixa(conta, recarregar) {
     }, recarregar, erro);
   });
   abrirModal({ titulo: `Baixar - ${conta.descricao}`, conteudo: form });
+}
+
+// Mostra o extrato de baixas da conta (cada movimentacao de caixa gerada por
+// POST /:id/baixar) e, so pra Admin e so quando ha algo pago/descontado, o
+// botao de estorno - desfaz TUDO que foi baixado nesta conta de uma vez
+// (nao ha como desfazer so uma baixa parcial isoladamente, ver comentario no
+// backend em POST /:id/estornar-baixa).
+async function abrirDetalhes(conta, recarregar, gerenciar) {
+  try {
+    const [contaAtual, movimentacoes] = await Promise.all([
+      get(`/contas-pagar/${conta.id}`),
+      get(`/contas-pagar/${conta.id}/movimentacoes`),
+    ]);
+    const restante = contaAtual.valor - contaAtual.valor_pago - contaAtual.valor_descontado;
+    const podeEstornar = getUsuario()?.perfil === 'Admin' && (contaAtual.valor_pago > 0 || contaAtual.valor_descontado > 0);
+    const corpo = document.createElement('div');
+    corpo.innerHTML = `
+      <div class="mb-4 grid grid-cols-2 gap-2 text-sm">
+        <p><span class="font-medium">Status:</span> <span class="${STATUS_BADGE[contaAtual.status]}">${contaAtual.status}</span></p>
+        <p><span class="font-medium">Vencimento:</span> ${formatarDataBr(contaAtual.data_vencimento)}</p>
+        <p><span class="font-medium">Valor:</span> ${formatarMoeda(contaAtual.valor)}</p>
+        <p><span class="font-medium">Pago + desconto:</span> ${formatarMoeda(contaAtual.valor_pago + contaAtual.valor_descontado)}</p>
+        <p><span class="font-medium">Restante:</span> ${formatarMoeda(restante)}</p>
+        ${contaAtual.data_pagamento ? `<p><span class="font-medium">Ultimo pagamento:</span> ${formatarDataBr(contaAtual.data_pagamento)}</p>` : ''}
+      </div>
+      <p class="mb-2 text-sm font-semibold text-slate-900">Historico de baixas</p>
+      <table class="w-full text-sm">
+        <thead><tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500"><th class="py-1">Data</th><th class="py-1">Conta bancaria</th><th class="py-1 text-right">Valor</th></tr></thead>
+        <tbody>
+          ${movimentacoes.map((m) => `<tr class="border-b border-slate-100"><td class="py-1">${formatarDataBr(m.data)}</td><td class="py-1">${m.conta_bancaria_nome || '-'}</td><td class="py-1 text-right">${formatarMoeda(m.valor)}</td></tr>`).join('') || '<tr><td colspan="3" class="py-3 text-center text-slate-400">Nenhuma baixa em dinheiro lancada.</td></tr>'}
+        </tbody>
+      </table>
+      ${contaAtual.valor_descontado > 0 ? `<p class="mt-2 text-xs text-slate-500">+ ${formatarMoeda(contaAtual.valor_descontado)} em desconto (nao movimenta caixa).</p>` : ''}
+      <p class="mt-3 hidden text-sm text-red-600" data-erro></p>
+      ${podeEstornar ? '<div class="mt-4 flex justify-end"><button type="button" class="btn-danger btn-sm" data-estornar>Estornar baixa</button></div>' : ''}
+    `;
+    const btnEstornar = corpo.querySelector('[data-estornar]');
+    if (btnEstornar) {
+      btnEstornar.addEventListener('click', async () => {
+        const ok = await confirmarAcao({
+          titulo: 'Estornar baixa',
+          mensagem: `Isso desfaz TODO o pagamento/desconto ja lancado nesta conta (${formatarMoeda(contaAtual.valor_pago + contaAtual.valor_descontado)}), devolve o valor pago pro saldo da(s) conta(s) bancaria(s) usada(s) e volta o status para Pendente. Tem certeza?`,
+          textoConfirmar: 'Estornar',
+        });
+        if (!ok) return;
+        try {
+          await post(`/contas-pagar/${conta.id}/estornar-baixa`);
+          fecharModal();
+          mostrarToast('Baixa estornada.');
+          recarregar();
+        } catch (err) {
+          const erroEl = corpo.querySelector('[data-erro]');
+          erroEl.textContent = err.message;
+          erroEl.classList.remove('hidden');
+        }
+      });
+    }
+    abrirModal({ titulo: `Detalhes - ${conta.descricao}`, conteudo: corpo, largura: 'max-w-lg' });
+  } catch (err) {
+    mostrarErro(err);
+  }
 }
 
 function abrirOcorrencias(conta, gerenciar) {
@@ -365,7 +426,10 @@ export async function render(container, params, query) {
     },
     onNovo: gerenciar ? () => abrirNovaConta(tabela.recarregar) : undefined,
     acoesExtras: (r) => {
-      const acoes = [{ label: 'Ocorrencias', onClick: (c) => abrirOcorrencias(c, gerenciar) }];
+      const acoes = [
+        { label: 'Detalhes', onClick: (c) => abrirDetalhes(c, tabela.recarregar, gerenciar) },
+        { label: 'Ocorrencias', onClick: (c) => abrirOcorrencias(c, gerenciar) },
+      ];
       if (gerenciar && (r.status === 'Pendente' || r.status === 'Parcial')) acoes.push({ label: 'Baixar', onClick: (c) => abrirBaixa(c, tabela.recarregar) });
       return acoes;
     },
