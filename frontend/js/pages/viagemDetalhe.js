@@ -786,6 +786,35 @@ async function reabrirViagem(viagem, recarregarPagina) {
   }
 }
 
+// KM inicial alimenta km rodado, media de consumo e todo o financeiro da
+// viagem - so Admin pode corrigir (bloqueado no backend tambem, nao so
+// escondido aqui), por pedido explicito do usuario.
+async function abrirEditarKmInicial(viagem, recarregarPagina) {
+  const form = document.createElement('form');
+  form.className = 'space-y-4';
+  form.innerHTML = `
+    <div><label class="label">KM Inicial *</label><input type="number" name="km_inicial" class="input" required min="0" /></div>
+    <p class="hidden text-sm text-red-600" data-erro></p>
+    <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Salvar</button></div>
+  `;
+  form.km_inicial.value = viagem.km_inicial;
+  const erro = form.querySelector('[data-erro]');
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    erro.classList.add('hidden');
+    try {
+      await put(`/viagens/${viagem.id}`, { km_inicial: Number(form.km_inicial.value) });
+      fecharModal();
+      mostrarToast('KM inicial atualizado.');
+      recarregarPagina();
+    } catch (err) {
+      erro.textContent = err.message;
+      erro.classList.remove('hidden');
+    }
+  });
+  abrirModal({ titulo: 'Editar KM inicial', conteudo: form, largura: 'max-w-sm' });
+}
+
 // Cabecalho de secao expansivel (Fretes/Despesas/Adiantamentos) - sem isso,
 // list-none (que tira a seta nativa do <summary> pra controlar o layout)
 // deixa a secao sem NENHUMA pista visual de que e clicavel/expande-e-recolhe.
@@ -914,7 +943,14 @@ export async function render(container, params) {
       </div>
 
       <div class="mb-2 flex justify-end" data-onixsat-botao></div>
-      <div class="card mb-4 grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 lg:grid-cols-6">
+      <div class="card mb-4 grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 lg:grid-cols-7">
+        <div>
+          <p class="text-xs font-medium uppercase text-slate-500">KM Inicial</p>
+          <p class="text-sm font-semibold text-slate-900">
+            ${viagem.km_inicial.toLocaleString('pt-BR')} km
+            ${getUsuario()?.perfil === 'Admin' ? '<button type="button" class="ml-1 text-xs font-normal text-gray-900 hover:underline" data-editar-km-inicial>Editar</button>' : ''}
+          </p>
+        </div>
         <div>
           <p class="text-xs font-medium uppercase text-slate-500">Localizacao atual</p>
           ${tratora && tratora.localizacao_cidade ? `
@@ -1058,6 +1094,8 @@ export async function render(container, params) {
     if (btnFinalizar) btnFinalizar.addEventListener('click', () => abrirFinalizar(viagem, recarregarPagina));
     const btnReabrir = container.querySelector('[data-reabrir]');
     if (btnReabrir) btnReabrir.addEventListener('click', () => reabrirViagem(viagem, recarregarPagina));
+    const btnEditarKmInicial = container.querySelector('[data-editar-km-inicial]');
+    if (btnEditarKmInicial) btnEditarKmInicial.addEventListener('click', () => abrirEditarKmInicial(viagem, recarregarPagina));
     if (gerenciar) {
       container.querySelector('[data-onixsat-botao]').appendChild(criarBotaoSincronizarOnixsat({ onAtualizar: recarregarSeSeguro }));
     }

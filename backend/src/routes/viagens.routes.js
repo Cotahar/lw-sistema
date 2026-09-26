@@ -110,6 +110,13 @@ router.put('/:id', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmpresaEspe
   const antes = db.prepare('SELECT * FROM viagens WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
   if (!antes) throw new ApiError(404, 'Viagem nao encontrada.');
   if (antes.status === 'Finalizada') throw new ApiError(400, 'Viagem ja finalizada (acerto fechado) nao pode mais ser editada.');
+  // KM inicial afeta km rodado, media de consumo e todo o financeiro da
+  // viagem retroativamente - so Admin pode corrigir, por pedido explicito
+  // do usuario (as demais alteracoes desta rota continuam liberadas pra
+  // qualquer usuario com Gerenciar em viagens).
+  if (req.body.km_inicial !== undefined && req.usuario.perfil !== 'Admin') {
+    throw new ApiError(403, 'Alterar o KM inicial e restrito ao perfil Admin.');
+  }
 
   const campos = ['data_inicio', 'conjunto_id', 'motorista_id', 'km_inicial'];
   const sets = [];
