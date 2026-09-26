@@ -878,6 +878,7 @@ export async function render(container, params) {
     const faturamentoPorDia = totalFaturado / diasDecorridos;
     const custoPorDia = totalDespesas / diasDecorridos;
     const despesaPorKm = kmPercorrido > 0 ? totalDespesas / kmPercorrido : null;
+    const faturamentoPorKm = kmPercorrido > 0 ? totalFaturado / kmPercorrido : null;
     const margemPercentual = totalFaturado > 0 ? (lucroAteAgora / totalFaturado) * 100 : null;
 
     // Controle de caixa em dinheiro do motorista (escopo desta viagem):
@@ -913,7 +914,7 @@ export async function render(container, params) {
       </div>
 
       <div class="mb-2 flex justify-end" data-onixsat-botao></div>
-      <div class="card mb-4 grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 lg:grid-cols-5">
+      <div class="card mb-4 grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 lg:grid-cols-6">
         <div>
           <p class="text-xs font-medium uppercase text-slate-500">Localizacao atual</p>
           ${tratora && tratora.localizacao_cidade ? `
@@ -931,6 +932,10 @@ export async function render(container, params) {
           <p class="text-sm font-semibold text-slate-900">${tratora ? `${tratora.hodometro_atual.toLocaleString('pt-BR')} km` : '-'}</p>
         </div>
         <div>
+          <p class="text-xs font-medium uppercase text-slate-500">Distancia percorrida</p>
+          <p class="text-sm font-semibold text-slate-900">${kmPercorrido !== null ? `${kmPercorrido.toLocaleString('pt-BR')} km` : '-'}</p>
+        </div>
+        <div>
           <p class="text-xs font-medium uppercase text-slate-500">Distancia diaria</p>
           <p class="text-sm font-semibold text-slate-900">${distanciaDiaria !== null ? `${distanciaDiaria.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} km/dia` : '-'}</p>
         </div>
@@ -946,7 +951,7 @@ export async function render(container, params) {
 
       <div class="card mb-6 p-4">
         <p class="mb-3 text-xs font-medium uppercase text-slate-500">Viabilidade economica ate agora</p>
-        <div class="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-8">
+        <div class="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-9">
           <div>
             <p class="text-xs font-medium uppercase text-slate-500">Faturado</p>
             <p class="text-sm font-semibold text-slate-900">${formatarMoeda(totalFaturado)}</p>
@@ -974,6 +979,10 @@ export async function render(container, params) {
           <div>
             <p class="text-xs font-medium uppercase text-slate-500">Custo/dia</p>
             <p class="text-sm font-semibold text-slate-900">${formatarMoeda(Math.round(custoPorDia))}</p>
+          </div>
+          <div>
+            <p class="text-xs font-medium uppercase text-slate-500">Faturamento/km</p>
+            <p class="text-sm font-semibold text-slate-900">${faturamentoPorKm !== null ? formatarMoeda(Math.round(faturamentoPorKm)) : '-'}</p>
           </div>
           <div>
             <p class="text-xs font-medium uppercase text-slate-500">Despesas/km</p>
