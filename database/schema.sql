@@ -989,7 +989,7 @@ CREATE INDEX idx_ocorrencias_entidade ON ocorrencias(entidade_tipo, entidade_id)
 CREATE TABLE anexos (
     id              INTEGER PRIMARY KEY,
     empresa_id      INTEGER NOT NULL REFERENCES empresas(id),
-    entidade_tipo   TEXT NOT NULL CHECK (entidade_tipo IN ('Frete', 'DespesaViagem')),
+    entidade_tipo   TEXT NOT NULL CHECK (entidade_tipo IN ('Frete', 'DespesaViagem', 'OrdemServico')),
     entidade_id     INTEGER NOT NULL,
     nome_arquivo    TEXT NOT NULL,   -- nome unico salvo em disco
     nome_original   TEXT NOT NULL,   -- nome original do arquivo (exibicao/download)

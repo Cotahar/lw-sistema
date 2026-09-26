@@ -51,11 +51,11 @@ router.post('/', requerAcessoModulo('despesas_fixas', 'Gerenciar'), exigirEmpres
     const info = db.prepare(`
       INSERT INTO despesas_fixas (empresa_id, centro_custo_id, categoria_id, valor, data, recorrente, qtd_parcelas, descricao, criado_por)
       VALUES (?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), ?, ?, ?, ?)
-    `).run(req.empresaId, centro_custo_id, categoria_id, valor, data || null, recorrente ? 1 : 0, qtd_parcelas || null, descricao || null, req.usuario.id);
+    `).run(req.empresaId, centro_custo_id, categoria_id, valor, data || null, recorrente ? 1 : 0, qtd_parcelas || null, descricao ? descricao.toUpperCase() : null, req.usuario.id);
     const nova = db.prepare('SELECT * FROM despesas_fixas WHERE id = ?').get(info.lastInsertRowid);
 
     const categoria = db.prepare('SELECT nome FROM categorias_despesa WHERE id = ?').get(categoria_id);
-    const nomeBase = `${categoria ? categoria.nome : 'Despesa fixa'} - ${centroCusto.nome}`;
+    const nomeBase = `${categoria ? categoria.nome : 'Despesa fixa'} - ${centroCusto.nome}`.toUpperCase();
 
     if (qtd_parcelas) {
       // Parcelada: mesmo padrao de financiamentos - uma parcela por mes,
@@ -73,7 +73,7 @@ router.post('/', requerAcessoModulo('despesas_fixas', 'Gerenciar'), exigirEmpres
         db.prepare(`
           INSERT INTO contas_pagar (empresa_id, centro_custo_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
           VALUES (?, ?, ?, ?, ?, 'Pendente', 'DespesaFixaParcela', ?)
-        `).run(req.empresaId, centro_custo_id, `${nomeBase} - parcela ${numero}/${qtd_parcelas}`, valorParcela, vencimento, parcelaInfo.lastInsertRowid);
+        `).run(req.empresaId, centro_custo_id, `${nomeBase} - PARCELA ${numero}/${qtd_parcelas}`, valorParcela, vencimento, parcelaInfo.lastInsertRowid);
       }
     } else {
       db.prepare(`
@@ -102,7 +102,7 @@ router.put('/:id', requerAcessoModulo('despesas_fixas', 'Gerenciar'), exigirEmpr
   const sets = [];
   const valores = [];
   for (const campo of campos) {
-    if (req.body[campo] !== undefined) { sets.push(`${campo} = ?`); valores.push(req.body[campo]); }
+    if (req.body[campo] !== undefined) { sets.push(`${campo} = ?`); valores.push(campo === 'descricao' && req.body[campo] ? String(req.body[campo]).toUpperCase() : req.body[campo]); }
   }
   if (!sets.length) throw new ApiError(400, 'Nenhum campo valido informado.');
   db.prepare(`UPDATE despesas_fixas SET ${sets.join(', ')} WHERE id = ?`).run(...valores, req.params.id);

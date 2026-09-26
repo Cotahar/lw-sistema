@@ -13,6 +13,13 @@ const COLUMNS = [
   'endereco_logradouro', 'endereco_numero', 'endereco_complemento', 'endereco_bairro', 'endereco_cidade', 'endereco_uf', 'endereco_cep',
   'telefone', 'email', 'onixsat_usuario', 'onixsat_senha', 'onixsat_poll_minutos', 'percentual_desconto_geral', 'ativo',
 ];
+// Texto livre de cadastro (mesmo padrao de attachUppercaseInput no
+// frontend) - endereco_cidade ja chega maiusculo do componente de
+// autocomplete (cidadeUfSelect.js), mas reforca aqui tambem por seguranca.
+const UPPERCASE_FIELDS = ['razao_social', 'nome_fantasia', 'inscricao_estadual', 'endereco_logradouro', 'endereco_complemento', 'endereco_bairro', 'endereco_cidade'];
+function valorFinal(campo, valor) {
+  return UPPERCASE_FIELDS.includes(campo) && typeof valor === 'string' ? valor.toUpperCase() : valor;
+}
 
 const router = express.Router();
 
@@ -28,10 +35,10 @@ router.post('/', requerPerfilMinimo('Admin'), asyncHandler(async (req, res) => {
   const fields = COLUMNS.filter((c) => req.body[c] !== undefined);
   const empresa = withTransaction(db, () => {
     const placeholders = fields.map(() => '?').join(', ');
-    const values = fields.map((f) => req.body[f]);
+    const values = fields.map((f) => valorFinal(f, req.body[f]));
     const info = db.prepare(`INSERT INTO empresas (${fields.join(', ')}) VALUES (${placeholders})`).run(...values);
     const nova = db.prepare('SELECT * FROM empresas WHERE id = ?').get(info.lastInsertRowid);
-    db.prepare(`INSERT INTO centros_custo (empresa_id, tipo, veiculo_id, nome) VALUES (?, 'Base', NULL, 'Base/Administrativo')`).run(nova.id);
+    db.prepare(`INSERT INTO centros_custo (empresa_id, tipo, veiculo_id, nome) VALUES (?, 'Base', NULL, 'BASE/ADMINISTRATIVO')`).run(nova.id);
     return nova;
   });
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: empresa.id, tabela: 'empresas', registroId: empresa.id, acao: 'INSERT', depois: empresa });
@@ -55,6 +62,7 @@ router.use('/', createCrudRouter({
   searchFields: ['razao_social', 'nome_fantasia', 'cnpj'],
   readMinRole: 'Admin',  // a tabela guarda credenciais do Onixsat - nao expor nem para leitura fora do Admin
   writeMinRole: 'Admin', // cadastro da propria empresa - configuracao do sistema
+  uppercaseFields: UPPERCASE_FIELDS,
 }));
 
 module.exports = router;

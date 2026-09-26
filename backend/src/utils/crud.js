@@ -30,6 +30,12 @@ const { withTransaction } = require('./transaction');
 //                 negocio (fornecedores, motoristas...) usam true; taxonomias
 //                 globais (fornecedor_tipos, categorias_despesa, comissao_faixas,
 //                 checklist_itens_catalogo) ficam false, compartilhadas entre empresas.
+//   uppercaseFields subconjunto de `columns` que e texto livre de cadastro
+//                 (nome, descricao...) e deve ser salvo em caixa alta - mesmo
+//                 padrao forcado no frontend (masks.js:attachUppercaseInput),
+//                 aplicado aqui tambem pra garantir mesmo se o cliente nao
+//                 mandar ja maiusculo. NUNCA inclua email/senha/cnpj/telefone/
+//                 campos tecnicos aqui.
 function createCrudRouter({
   table,
   columns,
@@ -40,7 +46,11 @@ function createCrudRouter({
   readMinRole = 'Visualizacao',
   writeMinRole = 'Comum',
   empresaScoped = false,
+  uppercaseFields = [],
 }) {
+  function valorFinal(campo, valor) {
+    return uppercaseFields.includes(campo) && typeof valor === 'string' ? valor.toUpperCase() : valor;
+  }
   const router = express.Router();
   const order = orderBy || searchFields[0] || 'id';
   const podeLer = modulo ? requerAcessoModulo(modulo, 'Visualizar') : requerPerfilMinimo(readMinRole);
@@ -79,7 +89,9 @@ function createCrudRouter({
     const fields = columns.filter((c) => req.body[c] !== undefined);
     if (!fields.length) throw new ApiError(400, 'Nenhum campo valido informado.');
     const colunasFinais = empresaScoped ? ['empresa_id', ...fields] : fields;
-    const valoresFinais = empresaScoped ? [req.empresaId, ...fields.map((f) => req.body[f])] : fields.map((f) => req.body[f]);
+    const valoresFinais = empresaScoped
+      ? [req.empresaId, ...fields.map((f) => valorFinal(f, req.body[f]))]
+      : fields.map((f) => valorFinal(f, req.body[f]));
     const placeholders = colunasFinais.map(() => '?').join(', ');
     const info = db
       .prepare(`INSERT INTO ${table} (${colunasFinais.join(', ')}) VALUES (${placeholders})`)
@@ -97,7 +109,7 @@ function createCrudRouter({
     const fields = columns.filter((c) => req.body[c] !== undefined);
     if (!fields.length) throw new ApiError(400, 'Nenhum campo valido informado.');
     const setClause = fields.map((f) => `${f} = ?`).join(', ');
-    const values = fields.map((f) => req.body[f]);
+    const values = fields.map((f) => valorFinal(f, req.body[f]));
     db.prepare(`UPDATE ${table} SET ${setClause} WHERE id = ?`).run(...values, req.params.id);
     const depois = db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(req.params.id);
     registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: table, registroId: depois.id, acao: 'UPDATE', antes, depois });
@@ -136,7 +148,7 @@ function createCrudRouter({
     const fields = columns.filter((c) => changes && changes[c] !== undefined);
     if (!fields.length) throw new ApiError(400, 'Nenhuma alteracao valida informada.');
     const setClause = fields.map((f) => `${f} = ?`).join(', ');
-    const values = fields.map((f) => changes[f]);
+    const values = fields.map((f) => valorFinal(f, changes[f]));
     withTransaction(db, () => {
       for (const id of ids) {
         const antes = empresaScoped

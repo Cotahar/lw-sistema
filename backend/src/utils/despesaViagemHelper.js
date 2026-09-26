@@ -17,9 +17,9 @@ function criarContaPagarCombinada({ empresaId, viagemId, despesa, arlaDespesa, c
     ? db.prepare('SELECT nome FROM usuarios WHERE id = ?').get(pagoPorUsuarioId)
     : null;
   const nomeDespesa = `${categoria ? categoria.nome : 'Despesa'}${arlaDespesa ? ' + Arla' : ''}`;
-  const descricaoConta = pagoPor === 'AdminOutros'
+  const descricaoConta = (pagoPor === 'AdminOutros'
     ? `Reembolso a ${quemDesembolsou ? quemDesembolsou.nome : 'usuario'} - ${nomeDespesa} (viagem #${viagemId})`
-    : `${nomeDespesa} - viagem #${viagemId}`;
+    : `${nomeDespesa} - viagem #${viagemId}`).toUpperCase();
   // Parte paga em dinheiro (adiantamento em especie que o motorista ja tinha
   // em maos) nao vira conta a pagar - so o restante (se sobrar algo) precisa
   // ser cobrado do posto/fornecedor depois.

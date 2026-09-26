@@ -47,7 +47,7 @@ test('veiculos motorista-do-periodo: acha o motorista da viagem que cobre a data
   const dentroPeriodo = await cliente().get(`/api/veiculos/${veiculoId}/motorista-do-periodo?data=2026-02-05`);
   assert.equal(dentroPeriodo.status, 200);
   assert.equal(dentroPeriodo.body.motorista_id, motorista.id);
-  assert.equal(dentroPeriodo.body.motorista_nome, 'Joao da Silva');
+  assert.equal(dentroPeriodo.body.motorista_nome, 'JOAO DA SILVA');
 
   const foraPeriodo = await cliente().get(`/api/veiculos/${veiculoId}/motorista-do-periodo?data=2026-03-01`);
   assert.equal(foraPeriodo.status, 200);

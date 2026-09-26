@@ -64,7 +64,7 @@ router.post('/', asyncHandler(async (req, res) => {
   if (!entidade) throw new ApiError(404, 'Registro referenciado nao encontrado nesta empresa.');
   const info = db.prepare(`
     INSERT INTO ocorrencias (empresa_id, entidade_tipo, entidade_id, texto, criado_por) VALUES (?, ?, ?, ?, ?)
-  `).run(req.empresaId, entidade_tipo, entidade_id, texto, req.usuario.id);
+  `).run(req.empresaId, entidade_tipo, entidade_id, texto.toUpperCase(), req.usuario.id);
   const ocorrencia = db.prepare(`
     SELECT o.*, u.nome AS criado_por_nome FROM ocorrencias o LEFT JOIN usuarios u ON u.id = o.criado_por WHERE o.id = ?
   `).get(info.lastInsertRowid);

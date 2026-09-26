@@ -13,6 +13,7 @@ const router = createCrudRouter({
   searchFields: ['nome', 'cpf'],
   modulo: 'motoristas',
   empresaScoped: true,
+  uppercaseFields: ['nome'],
 });
 
 router.get('/:id/conta-corrente', requerAcessoModulo('motoristas', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {

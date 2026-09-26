@@ -59,7 +59,7 @@ router.post('/', requerAcessoModulo('manutencao', 'Gerenciar'), exigirEmpresaEsp
     const info = db.prepare(`
       INSERT INTO ordens_servico (empresa_id, data, veiculo_id, hodometro, tipo, fornecedor_id, valor_pecas, valor_mao_obra, qtd_parcelas, descricao, criado_por)
       VALUES (?, COALESCE(?, date('now', '-3 hours')), ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(req.empresaId, data || null, veiculo_id, hodometro === undefined || hodometro === null || hodometro === '' ? null : hodometro, tipo, fornecedor_id || null, valor_pecas || 0, valor_mao_obra || 0, qtd_parcelas || null, descricao || null, req.usuario.id);
+    `).run(req.empresaId, data || null, veiculo_id, hodometro === undefined || hodometro === null || hodometro === '' ? null : hodometro, tipo, fornecedor_id || null, valor_pecas || 0, valor_mao_obra || 0, qtd_parcelas || null, descricao ? descricao.toUpperCase() : null, req.usuario.id);
     const osId = info.lastInsertRowid;
 
     for (const item of itens || []) {
@@ -69,7 +69,7 @@ router.post('/', requerAcessoModulo('manutencao', 'Gerenciar'), exigirEmpresaEsp
       db.prepare(`
         INSERT INTO os_itens (empresa_id, os_id, estoque_item_id, pneu_id, descricao, quantidade, valor_unitario)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(req.empresaId, osId, item.estoque_item_id || null, item.pneu_id || null, item.descricao, item.quantidade, item.valor_unitario);
+      `).run(req.empresaId, osId, item.estoque_item_id || null, item.pneu_id || null, item.descricao.toUpperCase(), item.quantidade, item.valor_unitario);
 
       if (item.estoque_item_id) {
         const estoqueItem = db.prepare('SELECT * FROM estoque_itens WHERE id = ? AND empresa_id = ?').get(item.estoque_item_id, req.empresaId);
@@ -105,13 +105,13 @@ router.post('/', requerAcessoModulo('manutencao', 'Gerenciar'), exigirEmpresaEsp
           db.prepare(`
             INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
             VALUES (?, ?, ?, ?, ?, 'Pendente', 'OrdemServicoParcela', ?)
-          `).run(req.empresaId, fornecedor_id || null, `Ordem de servico #${osId} - parcela ${numero}/${qtd_parcelas}`, valorParcela, vencimento, parcelaInfo.lastInsertRowid);
+          `).run(req.empresaId, fornecedor_id || null, `ORDEM DE SERVICO #${osId} - PARCELA ${numero}/${qtd_parcelas}`, valorParcela, vencimento, parcelaInfo.lastInsertRowid);
         }
       } else {
         db.prepare(`
           INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
           VALUES (?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), 'Pendente', 'OrdemServico', ?)
-        `).run(req.empresaId, fornecedor_id || null, `Ordem de servico #${osId}`, valorTotal, data || null, osId);
+        `).run(req.empresaId, fornecedor_id || null, `ORDEM DE SERVICO #${osId}`, valorTotal, data || null, osId);
       }
     }
 
@@ -125,16 +125,74 @@ router.post('/', requerAcessoModulo('manutencao', 'Gerenciar'), exigirEmpresaEsp
 router.put('/:id', requerAcessoModulo('manutencao', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const antes = buscarOsCompleta(req.params.id, req.empresaId);
   if (!antes) throw new ApiError(404, 'Ordem de servico nao encontrada.');
+
+  // So pode editar enquanto nada foi pago ainda - mesma regra do DELETE
+  // abaixo. Sem isso, mudar valor_pecas/valor_mao_obra/qtd_parcelas depois de
+  // um pagamento real ja lancado deixaria a OS e o financeiro dessincronizados.
+  if (antes.qtd_parcelas) {
+    if (antes.parcelas.some((p) => p.status === 'Paga')) throw new ApiError(400, 'Esta ordem de servico ja tem parcela paga e nao pode mais ser editada.');
+  } else {
+    const contaPagarAtual = db.prepare("SELECT * FROM contas_pagar WHERE origem_tipo = 'OrdemServico' AND origem_id = ?").get(antes.id);
+    if (contaPagarAtual && contaPagarAtual.status !== 'Pendente') throw new ApiError(400, 'Esta ordem de servico ja possui pagamento lancado e nao pode ser editada.');
+  }
+
   // So o cabecalho e editavel; itens sao historico permanente (ligados a baixas de estoque ja feitas).
-  const campos = ['data', 'hodometro', 'tipo', 'fornecedor_id', 'valor_pecas', 'valor_mao_obra', 'descricao'];
+  const campos = ['data', 'hodometro', 'tipo', 'fornecedor_id', 'valor_pecas', 'valor_mao_obra', 'descricao', 'qtd_parcelas'];
   const sets = [];
   const valores = [];
   for (const campo of campos) {
-    if (req.body[campo] !== undefined) { sets.push(`${campo} = ?`); valores.push(req.body[campo]); }
+    if (req.body[campo] !== undefined) { sets.push(`${campo} = ?`); valores.push(campo === 'descricao' && req.body[campo] ? String(req.body[campo]).toUpperCase() : req.body[campo]); }
   }
   if (!sets.length) throw new ApiError(400, 'Nenhum campo valido informado.');
-  db.prepare(`UPDATE ordens_servico SET ${sets.join(', ')} WHERE id = ?`).run(...valores, req.params.id);
-  const depois = buscarOsCompleta(req.params.id, req.empresaId);
+
+  const depois = withTransaction(db, () => {
+    db.prepare(`UPDATE ordens_servico SET ${sets.join(', ')} WHERE id = ?`).run(...valores, req.params.id);
+    const osAtualizada = db.prepare('SELECT * FROM ordens_servico WHERE id = ?').get(req.params.id);
+    const totalAntes = antes.valor_pecas + antes.valor_mao_obra;
+    const totalDepois = osAtualizada.valor_pecas + osAtualizada.valor_mao_obra;
+    const precisaResincronizar = totalAntes !== totalDepois
+      || antes.qtd_parcelas !== osAtualizada.qtd_parcelas
+      || antes.fornecedor_id !== osAtualizada.fornecedor_id
+      || req.body.primeira_parcela_vencimento !== undefined;
+
+    // Nada disso tem pagamento ainda (bloqueado acima) - seguro apagar e
+    // recriar do zero com o mesmo algoritmo do POST, em vez de tentar
+    // "remendar" parcelas/conta existentes.
+    if (precisaResincronizar) {
+      db.prepare("DELETE FROM contas_pagar WHERE origem_tipo = 'OrdemServicoParcela' AND origem_id IN (SELECT id FROM os_parcelas WHERE os_id = ?)").run(req.params.id);
+      db.prepare('DELETE FROM os_parcelas WHERE os_id = ?').run(req.params.id);
+      db.prepare("DELETE FROM contas_pagar WHERE origem_tipo = 'OrdemServico' AND origem_id = ?").run(req.params.id);
+
+      const valorTotal = Math.round(totalDepois);
+      if (valorTotal > 0) {
+        if (osAtualizada.qtd_parcelas) {
+          const primeiroVencimento = req.body.primeira_parcela_vencimento || osAtualizada.data || hojeIsoBrasilia();
+          const valorBase = Math.floor(valorTotal / osAtualizada.qtd_parcelas);
+          const resto = valorTotal - valorBase * osAtualizada.qtd_parcelas;
+          for (let numero = 1; numero <= osAtualizada.qtd_parcelas; numero += 1) {
+            const valorParcela = numero === osAtualizada.qtd_parcelas ? valorBase + resto : valorBase;
+            const vencimento = somarMeses(primeiroVencimento, numero - 1);
+            const parcelaInfo = db.prepare(`
+              INSERT INTO os_parcelas (empresa_id, os_id, numero_parcela, data_vencimento, valor_parcela)
+              VALUES (?, ?, ?, ?, ?)
+            `).run(req.empresaId, osAtualizada.id, numero, vencimento, valorParcela);
+            db.prepare(`
+              INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
+              VALUES (?, ?, ?, ?, ?, 'Pendente', 'OrdemServicoParcela', ?)
+            `).run(req.empresaId, osAtualizada.fornecedor_id || null, `ORDEM DE SERVICO #${osAtualizada.id} - PARCELA ${numero}/${osAtualizada.qtd_parcelas}`, valorParcela, vencimento, parcelaInfo.lastInsertRowid);
+          }
+        } else {
+          db.prepare(`
+            INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
+            VALUES (?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), 'Pendente', 'OrdemServico', ?)
+          `).run(req.empresaId, osAtualizada.fornecedor_id || null, `ORDEM DE SERVICO #${osAtualizada.id}`, valorTotal, osAtualizada.data || null, osAtualizada.id);
+        }
+      }
+    }
+
+    return buscarOsCompleta(req.params.id, req.empresaId);
+  });
+
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'ordens_servico', registroId: depois.id, acao: 'UPDATE', antes, depois });
   res.json(depois);
 }));

@@ -6,4 +6,5 @@ module.exports = createCrudRouter({
   required: ['nome'],
   searchFields: ['nome'],
   writeMinRole: 'Admin', // taxonomia/configuracao do sistema
+  uppercaseFields: ['nome'],
 });

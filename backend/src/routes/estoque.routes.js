@@ -127,7 +127,7 @@ router.post('/movimentacoes', requerAcessoModulo('estoque', 'Gerenciar'), exigir
       db.prepare(`
         INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
         VALUES (?, ?, ?, ?, date('now', '-3 hours'), 'Pendente', 'EstoqueMovimentacao', ?)
-      `).run(req.empresaId, fornecedor_id || null, `Compra de estoque: ${item.nome} x${quantidade}`, Math.round(quantidade * custo_unitario), info.lastInsertRowid);
+      `).run(req.empresaId, fornecedor_id || null, `Compra de estoque: ${item.nome} x${quantidade}`.toUpperCase(), Math.round(quantidade * custo_unitario), info.lastInsertRowid);
     } else {
       db.prepare("UPDATE estoque_itens SET quantidade_atual = quantidade_atual - ?, atualizado_em = datetime('now', '-3 hours') WHERE id = ?")
         .run(quantidade, item_id);

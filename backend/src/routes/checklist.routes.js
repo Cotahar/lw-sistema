@@ -32,7 +32,7 @@ router.get('/catalogo', requerAcessoModulo('checklist', 'Visualizar'), asyncHand
 router.post('/catalogo', requerPerfilMinimo('Admin'), asyncHandler(async (req, res) => {
   const { nome } = req.body;
   if (!nome) throw new ApiError(400, 'Informe o nome do item.');
-  const info = db.prepare('INSERT INTO checklist_itens_catalogo (nome) VALUES (?)').run(nome);
+  const info = db.prepare('INSERT INTO checklist_itens_catalogo (nome) VALUES (?)').run(nome.toUpperCase());
   const item = db.prepare('SELECT * FROM checklist_itens_catalogo WHERE id = ?').get(info.lastInsertRowid);
   registrarAuditoria({ usuarioId: req.usuario.id, tabela: 'checklist_itens_catalogo', registroId: item.id, acao: 'INSERT', depois: item });
   res.status(201).json(item);
@@ -44,7 +44,7 @@ router.put('/catalogo/:id', requerPerfilMinimo('Admin'), asyncHandler(async (req
   const { nome, ativo } = req.body;
   const sets = [];
   const valores = [];
-  if (nome !== undefined) { sets.push('nome = ?'); valores.push(nome); }
+  if (nome !== undefined) { sets.push('nome = ?'); valores.push(nome.toUpperCase()); }
   if (ativo !== undefined) { sets.push('ativo = ?'); valores.push(ativo ? 1 : 0); }
   if (!sets.length) throw new ApiError(400, 'Nenhum campo valido informado.');
   db.prepare(`UPDATE checklist_itens_catalogo SET ${sets.join(', ')} WHERE id = ?`).run(...valores, req.params.id);
@@ -82,16 +82,17 @@ router.get('/veiculo/:veiculoId', requerAcessoModulo('checklist', 'Visualizar'),
 router.put('/veiculo/:veiculoId/:itemId', requerAcessoModulo('checklist', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   exigirVeiculoDaEmpresa(req);
   const { presente, observacao } = req.body;
+  const observacaoUpper = observacao ? observacao.toUpperCase() : null;
   const existente = db.prepare('SELECT * FROM veiculo_checklist WHERE veiculo_id = ? AND item_id = ?').get(req.params.veiculoId, req.params.itemId);
 
   let depois;
   if (existente) {
     db.prepare("UPDATE veiculo_checklist SET presente = ?, observacao = ?, atualizado_em = datetime('now', '-3 hours') WHERE id = ?")
-      .run(presente ? 1 : 0, observacao || null, existente.id);
+      .run(presente ? 1 : 0, observacaoUpper, existente.id);
     depois = db.prepare('SELECT * FROM veiculo_checklist WHERE id = ?').get(existente.id);
   } else {
     const info = db.prepare('INSERT INTO veiculo_checklist (empresa_id, veiculo_id, item_id, presente, observacao) VALUES (?, ?, ?, ?, ?)')
-      .run(req.empresaId, req.params.veiculoId, req.params.itemId, presente ? 1 : 0, observacao || null);
+      .run(req.empresaId, req.params.veiculoId, req.params.itemId, presente ? 1 : 0, observacaoUpper);
     depois = db.prepare('SELECT * FROM veiculo_checklist WHERE id = ?').get(info.lastInsertRowid);
   }
 
@@ -212,18 +213,19 @@ router.put('/vistorias/:vistoriaId/veiculo/:veiculoId/item/:itemId', requerAcess
   if (!antes) throw new ApiError(404, 'Item da vistoria nao encontrado.');
 
   const { presente, observacao } = req.body;
+  const observacaoUpper = observacao ? observacao.toUpperCase() : null;
   db.prepare('UPDATE checklist_vistoria_itens SET presente = ?, observacao = ? WHERE id = ?')
-    .run(presente ? 1 : 0, observacao || null, antes.id);
+    .run(presente ? 1 : 0, observacaoUpper, antes.id);
 
   // Mantem veiculo_checklist (ultimo estado conhecido) em sincronia, pra
   // servir de ponto de partida pra proxima vistoria.
   const existente = db.prepare('SELECT id FROM veiculo_checklist WHERE veiculo_id = ? AND item_id = ?').get(req.params.veiculoId, req.params.itemId);
   if (existente) {
     db.prepare("UPDATE veiculo_checklist SET presente = ?, observacao = ?, atualizado_em = datetime('now', '-3 hours') WHERE id = ?")
-      .run(presente ? 1 : 0, observacao || null, existente.id);
+      .run(presente ? 1 : 0, observacaoUpper, existente.id);
   } else {
     db.prepare('INSERT INTO veiculo_checklist (empresa_id, veiculo_id, item_id, presente, observacao) VALUES (?, ?, ?, ?, ?)')
-      .run(req.empresaId, req.params.veiculoId, req.params.itemId, presente ? 1 : 0, observacao || null);
+      .run(req.empresaId, req.params.veiculoId, req.params.itemId, presente ? 1 : 0, observacaoUpper);
   }
 
   const depois = db.prepare('SELECT * FROM checklist_vistoria_itens WHERE id = ?').get(antes.id);

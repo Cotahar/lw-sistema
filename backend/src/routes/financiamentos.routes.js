@@ -52,10 +52,11 @@ router.post('/', requerAcessoModulo('financiamentos', 'Gerenciar'), exigirEmpres
   if (!centroCusto) throw new ApiError(400, 'Centro de custo nao encontrado.');
 
   const financiamento = withTransaction(db, () => {
+    const descricaoUpper = descricao.toUpperCase();
     const info = db.prepare(`
       INSERT INTO financiamentos (empresa_id, centro_custo_id, descricao, credor_fornecedor_id, valor_total, qtd_parcelas, data_contrato)
       VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')))
-    `).run(req.empresaId, centro_custo_id, descricao, credor_fornecedor_id || null, valor_total, qtd_parcelas, data_contrato || null);
+    `).run(req.empresaId, centro_custo_id, descricaoUpper, credor_fornecedor_id || null, valor_total, qtd_parcelas, data_contrato || null);
     const financiamentoId = info.lastInsertRowid;
 
     const primeiroVencimento = primeira_parcela_vencimento || data_contrato || hojeIsoBrasilia();
@@ -73,7 +74,7 @@ router.post('/', requerAcessoModulo('financiamentos', 'Gerenciar'), exigirEmpres
       db.prepare(`
         INSERT INTO contas_pagar (empresa_id, fornecedor_id, centro_custo_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
         VALUES (?, ?, ?, ?, ?, ?, 'Pendente', 'FinanciamentoParcela', ?)
-      `).run(req.empresaId, credor_fornecedor_id || null, centro_custo_id, `${descricao} - parcela ${numero}/${qtd_parcelas}`, valorParcela, vencimento, parcelaInfo.lastInsertRowid);
+      `).run(req.empresaId, credor_fornecedor_id || null, centro_custo_id, `${descricaoUpper} - PARCELA ${numero}/${qtd_parcelas}`, valorParcela, vencimento, parcelaInfo.lastInsertRowid);
     }
 
     return buscarFinanciamentoCompleto(financiamentoId, req.empresaId);

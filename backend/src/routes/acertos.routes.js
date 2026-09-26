@@ -191,7 +191,7 @@ router.post('/viagem/:viagemId/fechar', requerAcessoModulo('acertos', 'Gerenciar
       db.prepare(`
         INSERT INTO contas_pagar (empresa_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
         VALUES (?, ?, ?, date('now', '-3 hours'), 'Pendente', 'AcertoViagem', ?)
-      `).run(req.empresaId, `Acerto viagem #${req.params.viagemId} - pagamento a ${calculo.motorista.nome}`, calculo.saldoFinal, acertoId);
+      `).run(req.empresaId, `Acerto viagem #${req.params.viagemId} - pagamento a ${calculo.motorista.nome}`.toUpperCase(), calculo.saldoFinal, acertoId);
     }
 
     // Imposto da empresa sobre o frete bruto - lancamento separado, nao
@@ -200,7 +200,7 @@ router.post('/viagem/:viagemId/fechar', requerAcessoModulo('acertos', 'Gerenciar
       db.prepare(`
         INSERT INTO contas_pagar (empresa_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
         VALUES (?, ?, ?, date('now', '-3 hours'), 'Pendente', 'AcertoViagem', ?)
-      `).run(req.empresaId, `Imposto (${calculo.empresa.razao_social}) - viagem #${req.params.viagemId}`, calculo.valorImposto, acertoId);
+      `).run(req.empresaId, `Imposto (${calculo.empresa.razao_social}) - viagem #${req.params.viagemId}`.toUpperCase(), calculo.valorImposto, acertoId);
     }
 
     db.prepare("UPDATE viagens SET status = 'Finalizada' WHERE id = ?").run(req.params.viagemId);

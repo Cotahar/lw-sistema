@@ -7,4 +7,5 @@ module.exports = createCrudRouter({
   searchFields: ['nome', 'cnpj'],
   modulo: 'fornecedores',
   empresaScoped: true,
+  uppercaseFields: ['nome', 'localizacao'],
 });

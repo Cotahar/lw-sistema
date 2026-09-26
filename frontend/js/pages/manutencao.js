@@ -6,6 +6,7 @@ import { abrirModal, fecharModal } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
 import { formatarMoeda, attachMoedaMask, attachMoedaMaskReais, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr, attachUppercaseInput } from '../masks.js';
 import { navegar } from '../router.js';
+import { criarAnexos } from '../components/anexos.js';
 
 async function buscarVeiculos(termo) {
   return (await get(`/veiculos${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((v) => ({ value: v.id, label: v.placa }));
@@ -17,7 +18,12 @@ async function buscarItensEstoque(termo) {
   return (await get(`/estoque/itens${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((i) => ({ value: i.id, label: `${i.nome} (${i.quantidade_atual} ${i.unidade_medida})` }));
 }
 
-function montarFormulario(aoSalvar) {
+// `registro` (opcional, com o formato completo de GET /ordens-servico/:id +
+// registro.placa/registro.fornecedor_nome ja resolvidos por quem chama)
+// preenche o formulario pra edicao - sem ele, cadastra uma OS nova do zero.
+// Itens (os_itens) nunca aparecem aqui pra editar - sao historico permanente
+// ja ligado a baixas de estoque (mesma regra do backend, PUT /:id).
+function montarFormulario(aoSalvar, registro) {
   const form = document.createElement('form');
   form.className = 'space-y-4';
   form.innerHTML = `
@@ -44,22 +50,30 @@ function montarFormulario(aoSalvar) {
       <div class="mt-3 max-w-[10rem]"><label class="label">1a parcela vence em</label><input type="text" name="primeira_parcela_vencimento" class="input" /></div>
     </div>
     <div><label class="label">Descricao</label><textarea name="descricao" class="input" rows="2"></textarea></div>
-    <div>
-      <div class="mb-2 flex items-center justify-between">
-        <label class="label mb-0">Itens trocados/realizados (opcional)</label>
-        <button type="button" class="btn-secondary btn-sm" data-add-item>+ Item</button>
+    ${!registro ? `
+      <div>
+        <div class="mb-2 flex items-center justify-between">
+          <label class="label mb-0">Itens trocados/realizados (opcional)</label>
+          <button type="button" class="btn-secondary btn-sm" data-add-item>+ Item</button>
+        </div>
+        <div data-itens class="space-y-2"></div>
       </div>
-      <div data-itens class="space-y-2"></div>
-    </div>
+    ` : ''}
     <p class="hidden text-sm text-red-600" data-erro></p>
-    <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Cadastrar OS</button></div>
+    <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">${registro ? 'Salvar alteracoes' : 'Cadastrar OS'}</button></div>
   `;
-  attachDataMask(form.data);
-  attachMoedaMaskReais(form.valor_pecas, 0);
-  attachMoedaMaskReais(form.valor_mao_obra, 0);
+  attachDataMask(form.data, registro ? registro.data : undefined);
+  attachMoedaMaskReais(form.valor_pecas, registro ? registro.valor_pecas : 0);
+  attachMoedaMaskReais(form.valor_mao_obra, registro ? registro.valor_mao_obra : 0);
   attachMoedaMaskReais(form.valor_parcela, 0);
-  attachDataMask(form.primeira_parcela_vencimento);
+  attachDataMask(form.primeira_parcela_vencimento, registro && registro.parcelas[0] ? registro.parcelas[0].data_vencimento : undefined);
   attachUppercaseInput(form.descricao);
+  if (registro) {
+    form.hodometro.value = registro.hodometro ?? '';
+    form.tipo.value = registro.tipo;
+    form.qtd_parcelas.value = registro.qtd_parcelas || '';
+    form.descricao.value = registro.descricao || '';
+  }
 
   // O total a parcelar e sempre pecas + mao de obra (nao e um campo proprio) -
   // qtd_parcelas e valor_parcela se autocalculam um a partir do outro usando
@@ -86,9 +100,15 @@ function montarFormulario(aoSalvar) {
   form.qtd_parcelas.addEventListener('input', recalcularParcelas);
   form.valor_parcela.addEventListener('input', recalcularParcelas);
 
-  const veiculoSelect = criarSearchableSelect({ buscar: buscarVeiculos, placeholder: 'Pesquisar placa...' });
+  const veiculoSelect = criarSearchableSelect({
+    buscar: buscarVeiculos, placeholder: 'Pesquisar placa...',
+    valorInicial: registro ? registro.veiculo_id : null, labelInicial: registro ? registro.placa : '',
+  });
   form.querySelector('[data-veiculo]').appendChild(veiculoSelect.el);
-  const fornecedorSelect = criarSearchableSelect({ buscar: buscarFornecedores, placeholder: 'Pesquisar oficina...', criarNovo: { label: 'Cadastrar novo fornecedor', abrir: criarNovoFornecedor } });
+  const fornecedorSelect = criarSearchableSelect({
+    buscar: buscarFornecedores, placeholder: 'Pesquisar oficina...', criarNovo: { label: 'Cadastrar novo fornecedor', abrir: criarNovoFornecedor },
+    valorInicial: registro ? registro.fornecedor_id : null, labelInicial: registro ? registro.fornecedor_nome || '' : '',
+  });
   form.querySelector('[data-fornecedor]').appendChild(fornecedorSelect.el);
 
   const itensContainer = form.querySelector('[data-itens]');
@@ -115,7 +135,7 @@ function montarFormulario(aoSalvar) {
     itensContainer.appendChild(linha);
     linhasItens.push({ linha, itemSelect });
   }
-  form.querySelector('[data-add-item]').addEventListener('click', adicionarItem);
+  if (!registro) form.querySelector('[data-add-item]').addEventListener('click', adicionarItem);
 
   const erro = form.querySelector('[data-erro]');
   form.addEventListener('submit', async (ev) => {
@@ -164,7 +184,26 @@ async function abrirNovaOs(recarregar) {
   abrirModal({ titulo: 'Nova Ordem de Servico', conteudo: form, largura: 'max-w-2xl' });
 }
 
-async function verDetalhes(os) {
+// So permite editar enquanto a OS ainda nao tiver nenhum pagamento lancado
+// (backend recusa com 400 caso contrario - mesma regra do DELETE) - por
+// pedido explicito do usuario ("editar as OCs ainda nao baixadas").
+async function abrirEditarOs(registro, recarregar) {
+  try {
+    const completa = await get(`/ordens-servico/${registro.id}`);
+    const fornecedorNome = completa.fornecedor_id ? (await get(`/fornecedores/${completa.fornecedor_id}`)).nome : '';
+    const form = montarFormulario(async (valores) => {
+      await put(`/ordens-servico/${registro.id}`, valores);
+      fecharModal();
+      mostrarToast('Ordem de servico atualizada.');
+      recarregar();
+    }, { ...completa, placa: registro.placa, fornecedor_nome: fornecedorNome });
+    abrirModal({ titulo: `Editar OS #${registro.id}`, conteudo: form, largura: 'max-w-2xl' });
+  } catch (err) {
+    mostrarErro(err);
+  }
+}
+
+async function verDetalhes(os, gerenciar) {
   try {
     const completa = await get(`/ordens-servico/${os.id}`);
     const corpo = document.createElement('div');
@@ -182,7 +221,11 @@ async function verDetalhes(os) {
           ${completa.itens.map((i) => `<tr class="border-b border-slate-100"><td class="py-1">${i.descricao}</td><td class="py-1">${i.quantidade}</td><td class="py-1 text-right">${formatarMoeda(i.valor_unitario)}</td></tr>`).join('') || '<tr><td colspan="3" class="py-3 text-center text-slate-400">Sem itens detalhados.</td></tr>'}
         </tbody>
       </table>
+      <div class="mt-4 border-t border-slate-200 pt-3" data-anexos></div>
     `;
+    corpo.querySelector('[data-anexos]').appendChild(
+      criarAnexos({ entidadeTipo: 'OrdemServico', entidadeId: completa.id, podeGerenciar: gerenciar, max: 3 }).el,
+    );
     abrirModal({ titulo: `OS #${completa.id}`, conteudo: corpo, largura: 'max-w-xl' });
   } catch (err) {
     mostrarErro(err);
@@ -216,8 +259,9 @@ export async function render(container) {
       return ordens;
     },
     onNovo: gerenciar ? () => abrirNovaOs(tabela.recarregar) : undefined,
+    onEditar: gerenciar ? (r) => abrirEditarOs(r, tabela.recarregar) : undefined,
     acoesExtras: (r) => [
-      { label: 'Detalhes', onClick: verDetalhes },
+      { label: 'Detalhes', onClick: (os) => verDetalhes(os, gerenciar) },
       ...(r.qtd_parcelas ? [{ label: 'Ver parcelas', onClick: (os) => navegar(`/contas-pagar?os_id=${os.id}`) }] : []),
     ],
     tituloNovo: 'Ordem de Servico',

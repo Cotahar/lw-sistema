@@ -26,7 +26,7 @@ router.post('/', requerAcessoModulo('contas_bancarias', 'Gerenciar'), exigirEmpr
   const { nome, banco, agencia, conta, saldo_atual } = req.body;
   if (!nome) throw new ApiError(400, 'Informe o nome da conta.');
   const info = db.prepare('INSERT INTO contas_bancarias (empresa_id, nome, banco, agencia, conta, saldo_atual) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(req.empresaId, nome, banco || null, agencia || null, conta || null, saldo_atual || 0);
+    .run(req.empresaId, nome.toUpperCase(), banco ? banco.toUpperCase() : null, agencia || null, conta || null, saldo_atual || 0);
   const nova = db.prepare('SELECT * FROM contas_bancarias WHERE id = ?').get(info.lastInsertRowid);
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'contas_bancarias', registroId: nova.id, acao: 'INSERT', depois: nova });
   res.status(201).json(nova);
@@ -36,10 +36,14 @@ router.put('/:id', requerAcessoModulo('contas_bancarias', 'Gerenciar'), exigirEm
   const antes = db.prepare('SELECT * FROM contas_bancarias WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
   if (!antes) throw new ApiError(404, 'Conta bancaria nao encontrada.');
   const campos = ['nome', 'banco', 'agencia', 'conta', 'ativo'];
+  const camposTexto = ['nome', 'banco'];
   const sets = [];
   const valores = [];
   for (const campo of campos) {
-    if (req.body[campo] !== undefined) { sets.push(`${campo} = ?`); valores.push(req.body[campo]); }
+    if (req.body[campo] !== undefined) {
+      sets.push(`${campo} = ?`);
+      valores.push(camposTexto.includes(campo) && req.body[campo] ? String(req.body[campo]).toUpperCase() : req.body[campo]);
+    }
   }
   if (!sets.length) throw new ApiError(400, 'Nenhum campo valido informado.');
   db.prepare(`UPDATE contas_bancarias SET ${sets.join(', ')} WHERE id = ?`).run(...valores, req.params.id);

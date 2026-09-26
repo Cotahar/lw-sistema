@@ -54,7 +54,7 @@ router.post('/', requerAcessoModulo('pneus', 'Gerenciar'), exigirEmpresaEspecifi
     const info = db.prepare(`
       INSERT INTO pneus (empresa_id, numero_fogo, marca, modelo, medida, custo_unitario, status, custo_pendente_dre, fornecedor_id, data_aquisicao)
       VALUES (?, ?, ?, ?, ?, ?, 'Estoque', ?, ?, COALESCE(?, date('now', '-3 hours')))
-    `).run(req.empresaId, numero_fogo, marca || null, modelo || null, medida, custo_unitario, custo_unitario, fornecedor_id || null, data_aquisicao || null);
+    `).run(req.empresaId, numero_fogo.toUpperCase(), marca ? marca.toUpperCase() : null, modelo ? modelo.toUpperCase() : null, medida.toUpperCase(), custo_unitario, custo_unitario, fornecedor_id || null, data_aquisicao || null);
     const novoPneu = db.prepare('SELECT * FROM pneus WHERE id = ?').get(info.lastInsertRowid);
 
     const evento = registrarEvento({
@@ -64,7 +64,7 @@ router.post('/', requerAcessoModulo('pneus', 'Gerenciar'), exigirEmpresaEspecifi
     db.prepare(`
       INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
       VALUES (?, ?, ?, ?, date('now', '-3 hours'), 'Pendente', 'PneuEvento', ?)
-    `).run(req.empresaId, fornecedor_id || null, `Compra de pneu: ${novoPneu.numero_fogo}`, custo_unitario, evento.id);
+    `).run(req.empresaId, fornecedor_id || null, `Compra de pneu: ${novoPneu.numero_fogo}`.toUpperCase(), custo_unitario, evento.id);
 
     return novoPneu;
   });
@@ -77,11 +77,15 @@ router.put('/:id', requerAcessoModulo('pneus', 'Gerenciar'), exigirEmpresaEspeci
   const antes = db.prepare('SELECT * FROM pneus WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
   if (!antes) throw new ApiError(404, 'Pneu nao encontrado.');
   // Apenas dados cadastrais. Status/posicao so mudam pelas acoes dedicadas abaixo.
-  const campos = ['numero_fogo', 'marca', 'modelo', 'medida', 'fornecedor_id'];
+  const camposTexto = ['numero_fogo', 'marca', 'modelo', 'medida'];
+  const campos = [...camposTexto, 'fornecedor_id'];
   const sets = [];
   const valores = [];
   for (const campo of campos) {
-    if (req.body[campo] !== undefined) { sets.push(`${campo} = ?`); valores.push(req.body[campo]); }
+    if (req.body[campo] !== undefined) {
+      sets.push(`${campo} = ?`);
+      valores.push(camposTexto.includes(campo) && req.body[campo] ? String(req.body[campo]).toUpperCase() : req.body[campo]);
+    }
   }
   if (!sets.length) throw new ApiError(400, 'Nenhum campo valido informado.');
   db.prepare(`UPDATE pneus SET ${sets.join(', ')} WHERE id = ?`).run(...valores, req.params.id);
@@ -192,7 +196,7 @@ router.post('/:id/retornar-recapagem', requerAcessoModulo('pneus', 'Gerenciar'),
     db.prepare(`
       INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
       VALUES (?, ?, ?, ?, date('now', '-3 hours'), 'Pendente', 'PneuEvento', ?)
-    `).run(req.empresaId, fornecedor_id || null, `Recapagem do pneu: ${atual.numero_fogo}`, custo, evento.id);
+    `).run(req.empresaId, fornecedor_id || null, `Recapagem do pneu: ${atual.numero_fogo}`.toUpperCase(), custo, evento.id);
 
     return db.prepare('SELECT * FROM pneus WHERE id = ?').get(atual.id);
   });

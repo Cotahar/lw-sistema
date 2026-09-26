@@ -142,7 +142,7 @@ router.post('/consolidar', requerAcessoModulo('contas_pagar', 'Gerenciar'), exig
     }
 
     const fornecedor = db.prepare('SELECT nome FROM fornecedores WHERE id = ?').get(fornecedorId);
-    const descricaoFinal = descricao || `Fatura consolidada - ${fornecedor ? fornecedor.nome : 'fornecedor'} (${contas.length} lancamentos)`;
+    const descricaoFinal = (descricao || `Fatura consolidada - ${fornecedor ? fornecedor.nome : 'fornecedor'} (${contas.length} lancamentos)`).toUpperCase();
     const info = db.prepare(`
       INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo)
       VALUES (?, ?, ?, ?, ?, 'Pendente', 'Outro')
@@ -176,7 +176,7 @@ router.post('/', requerAcessoModulo('contas_pagar', 'Gerenciar'), exigirEmpresaE
   const info = db.prepare(`
     INSERT INTO contas_pagar (empresa_id, fornecedor_id, centro_custo_id, descricao, valor, data_vencimento, status, origem_tipo)
     VALUES (?, ?, ?, ?, ?, ?, 'Pendente', 'Outro')
-  `).run(req.empresaId, fornecedor_id || null, centro_custo_id || null, descricao, valor, data_vencimento);
+  `).run(req.empresaId, fornecedor_id || null, centro_custo_id || null, descricao.toUpperCase(), valor, data_vencimento);
   const conta = db.prepare('SELECT * FROM contas_pagar WHERE id = ?').get(info.lastInsertRowid);
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'contas_pagar', registroId: conta.id, acao: 'INSERT', depois: conta });
   res.status(201).json(conta);
@@ -190,7 +190,7 @@ router.put('/:id', requerAcessoModulo('contas_pagar', 'Gerenciar'), exigirEmpres
   const sets = [];
   const valores = [];
   for (const campo of campos) {
-    if (req.body[campo] !== undefined) { sets.push(`${campo} = ?`); valores.push(req.body[campo]); }
+    if (req.body[campo] !== undefined) { sets.push(`${campo} = ?`); valores.push(campo === 'descricao' ? String(req.body[campo]).toUpperCase() : req.body[campo]); }
   }
   if (!sets.length) throw new ApiError(400, 'Nenhum campo valido informado.');
   db.prepare(`UPDATE contas_pagar SET ${sets.join(', ')} WHERE id = ?`).run(...valores, req.params.id);

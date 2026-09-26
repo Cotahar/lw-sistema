@@ -215,7 +215,14 @@ router.delete('/:id', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmpresaE
 router.get('/:id/fretes', requerAcessoModulo('viagens', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const viagem = db.prepare('SELECT id FROM viagens WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
   if (!viagem) throw new ApiError(404, 'Viagem nao encontrada.');
-  res.json(db.prepare('SELECT * FROM fretes WHERE viagem_id = ? ORDER BY id').all(req.params.id));
+  // Status do recebivel (quitado/em aberto/parcial/atrasado) direto na lista
+  // de fretes - antes so dava pra ver abrindo "Recebivel/Baixas" de cada um.
+  res.json(db.prepare(`
+    SELECT f.*, cr.status AS recebimento_status, cr.valor_recebido AS recebimento_valor_recebido, cr.valor_descontado AS recebimento_valor_descontado
+    FROM fretes f
+    LEFT JOIN contas_receber cr ON cr.frete_id = f.id
+    WHERE f.viagem_id = ? ORDER BY f.id
+  `).all(req.params.id));
 }));
 
 function dataOuHoje(data) {

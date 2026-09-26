@@ -76,10 +76,10 @@ router.post('/', requerAcessoModulo('multas', 'Gerenciar'), exigirEmpresaEspecif
       valor_original, data_infracao, data_notificacao, prazo_indicacao, status, condutor_indicado_em, observacoes, criado_por
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    req.empresaId, veiculo_id, motorista_id || null, orgao_autuador || null, numero_ait || null, descricao,
+    req.empresaId, veiculo_id, motorista_id || null, orgao_autuador ? orgao_autuador.toUpperCase() : null, numero_ait ? numero_ait.toUpperCase() : null, descricao.toUpperCase(),
     valor_original, data_infracao || null, data_notificacao, prazoIndicacao,
     motorista_id ? 'CondutorIndicado' : 'AguardandoIndicacao', motorista_id ? agoraDataHoraIsoBrasilia() : null,
-    observacoes || null, req.usuario.id,
+    observacoes ? observacoes.toUpperCase() : null, req.usuario.id,
   );
   const multa = db.prepare(`${SELECT_LISTA} WHERE m.id = ?`).get(info.lastInsertRowid);
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'multas', registroId: multa.id, acao: 'INSERT', depois: multa });
@@ -91,10 +91,14 @@ router.put('/:id', requerAcessoModulo('multas', 'Gerenciar'), exigirEmpresaEspec
   if (!antes) throw new ApiError(404, 'Multa nao encontrada.');
 
   const campos = ['orgao_autuador', 'numero_ait', 'descricao', 'valor_original', 'data_infracao', 'data_notificacao', 'observacoes'];
+  const camposTexto = ['orgao_autuador', 'numero_ait', 'descricao', 'observacoes'];
   const sets = [];
   const valores = [];
   for (const campo of campos) {
-    if (req.body[campo] !== undefined) { sets.push(`${campo} = ?`); valores.push(req.body[campo]); }
+    if (req.body[campo] !== undefined) {
+      sets.push(`${campo} = ?`);
+      valores.push(camposTexto.includes(campo) && req.body[campo] ? String(req.body[campo]).toUpperCase() : req.body[campo]);
+    }
   }
   if (!sets.length) throw new ApiError(400, 'Nenhum campo valido informado.');
   if (req.body.data_notificacao !== undefined) {

@@ -319,11 +319,14 @@ export async function render(container, params, query) {
   const inputVencAte = container.querySelector('[data-filtro-venc-ate]');
   const inputCadDe = container.querySelector('[data-filtro-cad-de]');
   const inputCadAte = container.querySelector('[data-filtro-cad-ate]');
+  // Sem valor padrao em nenhum filtro de data (mesmo criterio de
+  // contas-a-receber.js): um "Vencimento ate hoje" pre-preenchido escondia
+  // silenciosamente as pendencias futuras (o usuario cadastrava uma conta
+  // pra daqui a 2 meses e ela "sumia" da lista sem nenhum aviso visivel de
+  // que havia um filtro ativo) - o badge de dias vencido/a vencer ja destaca
+  // urgencia sem precisar esconder nada por padrao.
   attachDataMask(inputVencDe);
-  // Quando vem filtrado por financiamento/despesa fixa/OS, nao faz sentido
-  // tambem esconder parcelas futuras por padrao - o usuario quer ver TODAS
-  // as parcelas daquele lancamento, vencidas ou nao.
-  attachDataMask(inputVencAte, origemFiltrada ? undefined : hojeIsoLocal());
+  attachDataMask(inputVencAte);
   attachDataMask(inputCadDe);
   attachDataMask(inputCadAte);
   for (const input of [inputVencDe, inputVencAte, inputCadDe, inputCadAte]) {

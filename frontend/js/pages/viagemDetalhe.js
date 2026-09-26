@@ -56,6 +56,17 @@ async function buscarCentrosCusto(termo) {
 
 // ---- Fretes ----
 
+// Mesmo mapa de status/cores de financeiro/contasReceber.js - duplicado aqui
+// (em vez de importado) porque e so 4 linhas e evita acoplar as duas telas
+// por um utilitario de uma so constante.
+const RECEBIMENTO_BADGE = { Pendente: 'badge-atencao', Parcial: 'badge-atencao', Recebido: 'badge-sucesso', Atrasado: 'badge-critico' };
+function badgeRecebimentoFrete(frete) {
+  if (!frete.recebimento_status) return '-';
+  const saldo = frete.frete_bruto - (frete.recebimento_valor_recebido || 0) - (frete.recebimento_valor_descontado || 0);
+  const saldoTexto = frete.recebimento_status !== 'Recebido' && saldo > 0 ? ` <span class="text-xs text-slate-400">(${formatarMoeda(saldo)} em aberto)</span>` : '';
+  return `<span class="${RECEBIMENTO_BADGE[frete.recebimento_status]}">${frete.recebimento_status}</span>${saldoTexto}`;
+}
+
 // `frete` (opcional) preenche o formulario para edicao - sem ele, cadastra um
 // frete novo do zero. `transportadoraLabelInicial` e o nome ja resolvido do
 // fornecedor (o frete so guarda o id) - quem chama ja tem esse mapa em maos
@@ -1061,6 +1072,7 @@ export async function render(container, params) {
         { chave: 'data_carregamento', titulo: 'Carregamento', render: (r) => (r.data_carregamento ? formatarDataBr(r.data_carregamento) : '-') },
         { chave: 'peso_carga_kg', titulo: 'Peso', render: (r) => (r.peso_carga_kg ? `${r.peso_carga_kg.toLocaleString('pt-BR')} kg` : '-') },
         { chave: 'frete_bruto', titulo: 'Frete Bruto', render: (r) => formatarMoeda(r.frete_bruto) },
+        { chave: 'recebimento_status', titulo: 'Recebimento', render: (r) => badgeRecebimentoFrete(r) },
       ],
       buscarDados: (termo) => {
         if (!termo) return Promise.resolve(fretes);

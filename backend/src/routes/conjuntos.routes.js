@@ -52,7 +52,7 @@ router.get('/:id', requerAcessoModulo('conjuntos', 'Visualizar'), exigirEmpresaE
 router.post('/', requerAcessoModulo('conjuntos', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const { nome, itens } = req.body;
   const conjunto = withTransaction(db, () => {
-    const info = db.prepare('INSERT INTO conjuntos (empresa_id, nome) VALUES (?, ?)').run(req.empresaId, nome || null);
+    const info = db.prepare('INSERT INTO conjuntos (empresa_id, nome) VALUES (?, ?)').run(req.empresaId, nome ? nome.toUpperCase() : null);
     inserirItens(info.lastInsertRowid, itens, req.empresaId);
     return buscarConjuntoCompleto(info.lastInsertRowid, req.empresaId);
   });
@@ -66,7 +66,7 @@ router.put('/:id', requerAcessoModulo('conjuntos', 'Gerenciar'), exigirEmpresaEs
 
   const { nome, ativo, itens } = req.body;
   const depois = withTransaction(db, () => {
-    if (nome !== undefined) db.prepare('UPDATE conjuntos SET nome = ? WHERE id = ?').run(nome, req.params.id);
+    if (nome !== undefined) db.prepare('UPDATE conjuntos SET nome = ? WHERE id = ?').run(nome ? nome.toUpperCase() : null, req.params.id);
     if (ativo !== undefined) db.prepare('UPDATE conjuntos SET ativo = ? WHERE id = ?').run(ativo ? 1 : 0, req.params.id);
     if (itens !== undefined) {
       db.prepare('DELETE FROM conjunto_itens WHERE conjunto_id = ?').run(req.params.id);

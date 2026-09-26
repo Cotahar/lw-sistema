@@ -65,7 +65,7 @@ router.post('/', requerAcessoModulo('veiculos', 'Gerenciar'), exigirEmpresaEspec
     const info = db.prepare(`
       INSERT INTO veiculos (empresa_id, placa, tipo, qtd_eixos, marca, modelo, ano_fabricacao, carreta_padrao_id, hodometro_atual, tipo_tracao)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(req.empresaId, placa.toUpperCase(), tipo, qtd_eixos, marca || null, modelo || null, ano_fabricacao || null, carreta_padrao_id || null, hodometro_atual || 0, tipo === 'Cavalo' ? tipo_tracao || null : null);
+    `).run(req.empresaId, placa.toUpperCase(), tipo, qtd_eixos, marca ? marca.toUpperCase() : null, modelo ? modelo.toUpperCase() : null, ano_fabricacao || null, carreta_padrao_id || null, hodometro_atual || 0, tipo === 'Cavalo' ? tipo_tracao || null : null);
     // Todo veiculo e, por si so, um centro de custo (usado por despesas, OS, DRE...).
     db.prepare('INSERT INTO centros_custo (empresa_id, tipo, veiculo_id, nome) VALUES (?, ?, ?, ?)')
       .run(req.empresaId, 'Veiculo', info.lastInsertRowid, placa.toUpperCase());
@@ -87,10 +87,11 @@ router.put('/:id', requerAcessoModulo('veiculos', 'Gerenciar'), exigirEmpresaEsp
   const campos = { placa: 'placa', tipo: 'tipo', qtd_eixos: 'qtd_eixos', marca: 'marca', modelo: 'modelo', ano_fabricacao: 'ano_fabricacao', carreta_padrao_id: 'carreta_padrao_id', ativo: 'ativo', tipo_tracao: 'tipo_tracao' };
   const sets = [];
   const valores = [];
+  const camposTexto = ['placa', 'marca', 'modelo'];
   for (const [campo, coluna] of Object.entries(campos)) {
     if (req.body[campo] !== undefined) {
       sets.push(`${coluna} = ?`);
-      valores.push(campo === 'placa' ? String(req.body[campo]).toUpperCase() : req.body[campo]);
+      valores.push(camposTexto.includes(campo) && req.body[campo] ? String(req.body[campo]).toUpperCase() : req.body[campo]);
     }
   }
   if (!sets.length) throw new ApiError(400, 'Nenhum campo valido informado.');
@@ -245,14 +246,14 @@ router.post('/:id/localizacao', requerAcessoModulo('veiculos', 'Gerenciar'), exi
     const info = db.prepare(`
       INSERT INTO localizacao_eventos (empresa_id, veiculo_id, cidade, uf, origem, usuario_id, observacao)
       VALUES (?, ?, ?, ?, 'Manual', ?, ?)
-    `).run(req.empresaId, veiculo.id, cidade, uf.toUpperCase(), req.usuario.id, observacao || null);
+    `).run(req.empresaId, veiculo.id, cidade.toUpperCase(), uf.toUpperCase(), req.usuario.id, observacao ? observacao.toUpperCase() : null);
     // Lancamento manual so tem cidade/UF (nao tem como o usuario digitar
     // coordenadas exatas) - zera lat/lng pra nao deixar um par de coordenadas
     // antigo (de uma sincronizacao Onixsat anterior) associado a uma cidade
     // diferente da que acabou de ser informada.
     db.prepare(`
       UPDATE veiculos SET localizacao_cidade = ?, localizacao_uf = ?, localizacao_lat = NULL, localizacao_lng = NULL, localizacao_atualizado_em = datetime('now', '-3 hours') WHERE id = ?
-    `).run(cidade, uf.toUpperCase(), veiculo.id);
+    `).run(cidade.toUpperCase(), uf.toUpperCase(), veiculo.id);
     return db.prepare('SELECT * FROM localizacao_eventos WHERE id = ?').get(info.lastInsertRowid);
   });
 

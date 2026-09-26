@@ -13,11 +13,15 @@ router.use(exigirEmpresaEspecifica);
 
 const RANK_NIVEL = { Nenhum: 0, Visualizar: 1, Gerenciar: 2 };
 
-// So as duas entidades pedidas (recebiveis/despesas de viagem) por enquanto -
-// ambas pertencem ao modulo 'viagens' na matriz de permissoes, mesmo padrao
-// de ocorrencias.routes.js.
-const MODULO_POR_ENTIDADE = { Frete: 'viagens', DespesaViagem: 'viagens' };
-const TABELA_POR_ENTIDADE = { Frete: 'fretes', DespesaViagem: 'despesas_viagem' };
+// Frete/DespesaViagem pertencem ao modulo 'viagens' na matriz de permissoes,
+// mesmo padrao de ocorrencias.routes.js; OrdemServico ao modulo 'manutencao'.
+const MODULO_POR_ENTIDADE = { Frete: 'viagens', DespesaViagem: 'viagens', OrdemServico: 'manutencao' };
+const TABELA_POR_ENTIDADE = { Frete: 'fretes', DespesaViagem: 'despesas_viagem', OrdemServico: 'ordens_servico' };
+// Limite maximo de anexos por entidade (pedido explicito do usuario pra OS:
+// "ate 3 anexos") - checado tambem aqui no servidor (nao so escondendo o
+// botao no frontend), senao um upload direto na API furaria o limite.
+// Entidades sem entrada aqui continuam sem limite.
+const LIMITE_POR_ENTIDADE = { OrdemServico: 3 };
 
 function checarAcesso(req, entidadeTipo, nivelMinimo) {
   const modulo = MODULO_POR_ENTIDADE[entidadeTipo];
@@ -72,10 +76,16 @@ router.post('/', upload.single('arquivo'), asyncHandler(async (req, res) => {
     const entidade = db.prepare(`SELECT 1 FROM ${tabela} WHERE id = ? AND empresa_id = ?`).get(entidade_id, req.empresaId);
     if (!entidade) throw new ApiError(404, 'Registro referenciado nao encontrado nesta empresa.');
 
+    const limite = LIMITE_POR_ENTIDADE[entidade_tipo];
+    if (limite) {
+      const { total } = db.prepare('SELECT COUNT(*) AS total FROM anexos WHERE entidade_tipo = ? AND entidade_id = ?').get(entidade_tipo, entidade_id);
+      if (total >= limite) throw new ApiError(400, `Limite de ${limite} anexos atingido para este registro.`);
+    }
+
     const info = db.prepare(`
       INSERT INTO anexos (empresa_id, entidade_tipo, entidade_id, nome_arquivo, nome_original, tipo_mime, tamanho_bytes, criado_por)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(req.empresaId, entidade_tipo, entidade_id, req.file.filename, req.file.originalname, req.file.mimetype, req.file.size, req.usuario.id);
+    `).run(req.empresaId, entidade_tipo, entidade_id, req.file.filename, req.file.originalname.toUpperCase(), req.file.mimetype, req.file.size, req.usuario.id);
     const anexo = db.prepare(`
       SELECT a.*, u.nome AS criado_por_nome FROM anexos a LEFT JOIN usuarios u ON u.id = a.criado_por WHERE a.id = ?
     `).get(info.lastInsertRowid);

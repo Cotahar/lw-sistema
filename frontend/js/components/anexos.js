@@ -19,17 +19,22 @@ const ICONE_IMG = '<svg class="h-5 w-5 shrink-0 text-blue-500" viewBox="0 0 20 2
 // mesmo padrao/estrutura de ocorrencias.js, so trocando texto por upload de
 // arquivo. `podeGerenciar` controla se o upload/remocao aparecem - leitura
 // (e abrir/baixar o que ja foi anexado) sempre e permitida a quem ve a tela.
-export function criarAnexos({ entidadeTipo, entidadeId, podeGerenciar }) {
+// `max` (opcional): limite de anexos pra esta entidade (ex.: 3 nas Ordens de
+// Servico) - some com o botao de upload ao atingir; o servidor tambem
+// recusa (LIMITE_POR_ENTIDADE em anexos.routes.js), isto aqui e so a UI.
+export function criarAnexos({ entidadeTipo, entidadeId, podeGerenciar, max }) {
   const el = document.createElement('div');
   el.innerHTML = `
     <h3 class="mb-2 text-sm font-semibold text-slate-900">Anexos</h3>
     <div data-lista class="mb-3 space-y-2"></div>
     ${podeGerenciar ? `
-      <label class="btn-secondary btn-sm inline-flex cursor-pointer items-center gap-1">
-        <span data-texto-upload>+ Anexar arquivo</span>
-        <input type="file" accept="image/*,.pdf" class="hidden" data-input-arquivo />
-      </label>
-      <p class="mt-1 text-xs text-slate-400">Imagem ou PDF, ate 10MB.</p>
+      <div data-bloco-upload>
+        <label class="btn-secondary btn-sm inline-flex cursor-pointer items-center gap-1">
+          <span data-texto-upload>+ Anexar arquivo</span>
+          <input type="file" accept="image/*,.pdf" class="hidden" data-input-arquivo />
+        </label>
+        <p class="mt-1 text-xs text-slate-400">Imagem ou PDF, ate 10MB${max ? ` (maximo ${max} anexos)` : ''}.</p>
+      </div>
     ` : ''}
   `;
 
@@ -54,6 +59,8 @@ export function criarAnexos({ entidadeTipo, entidadeId, podeGerenciar }) {
       lista.innerHTML = anexos.length
         ? anexos.map(renderItem).join('')
         : '<p class="text-sm text-slate-400">Nenhum anexo.</p>';
+      const blocoUpload = el.querySelector('[data-bloco-upload]');
+      if (blocoUpload) blocoUpload.classList.toggle('hidden', Boolean(max) && anexos.length >= max);
       lista.querySelectorAll('[data-remover]').forEach((btn) => {
         btn.addEventListener('click', async () => {
           const ok = await confirmarAcao({ titulo: 'Remover anexo', mensagem: 'Remover este anexo? Essa acao nao pode ser desfeita.', textoConfirmar: 'Remover' });
