@@ -51,6 +51,7 @@ export const GRUPOS_MENU = [
     itens: [
       { chave: 'dre', label: 'DRE', rota: '/dre', secao: 'Financeiro' },
       { chave: 'dre', label: 'Saldos em Aberto', rota: '/relatorios/saldos-em-aberto', secao: 'Financeiro' },
+      { chave: 'dre', label: 'Aging de Contas a Pagar', rota: '/relatorios/aging-contas-pagar', secao: 'Financeiro' },
       { chave: 'dre', label: 'Relatorio de Despesas', rota: '/relatorios/despesas', secao: 'Financeiro' },
       { chave: 'dre', label: 'Relatorio de Fretes/Receitas', rota: '/relatorios/fretes', secao: 'Financeiro' },
       { chave: 'dre', label: 'Extrato Conta Corrente Motorista', rota: '/relatorios/conta-corrente-motorista', secao: 'Financeiro' },

@@ -494,6 +494,7 @@ registrarPagina('/relatorios/estoque', () => import('./pages/relatorios/estoqueP
 registrarPagina('/relatorios/pneus', () => import('./pages/relatorios/pneus.js'), 'dre');
 registrarPagina('/relatorios/alertas', () => import('./pages/relatorios/alertasManutencao.js'), 'dre');
 registrarPagina('/relatorios/cnh-vencimento', () => import('./pages/relatorios/cnhVencimento.js'), 'dre');
+registrarPagina('/relatorios/aging-contas-pagar', () => import('./pages/relatorios/agingContasPagar.js'), 'dre');
 // Sem modulo de permissao (undefined) - mesmo padrao de /usuarios e
 // /auditoria abaixo: a tela so aparece no menu para Admin (ver
 // modulosConfig.js/main.js, grupo "Administracao"), e a API (requerAdmin)

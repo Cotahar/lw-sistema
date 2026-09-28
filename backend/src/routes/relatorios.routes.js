@@ -433,4 +433,32 @@ router.get('/cnh-vencimento', requerAcessoModulo('dre', 'Visualizar'), exigirEmp
   res.json(linhas);
 }));
 
+// Aging de Contas a Pagar: o que devo, para quem, e ha quanto tempo. Sempre
+// restrito a contas ainda nao totalmente pagas (mesmo raciocinio de
+// /saldos-em-aberto do lado da receita) - "dias_vencido" negativo significa
+// que ainda nao venceu (dias ate o vencimento), positivo significa atraso;
+// o frontend e quem agrupa em faixas (0-15/16-30/31-60/60+), aqui so calcula
+// o numero de dias em si.
+router.get('/aging-contas-pagar', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { fornecedor_id, origem_tipo, data_vencimento_de, data_vencimento_ate } = req.query;
+  const condicoes = ["cp.empresa_id = ?", "cp.status != 'Pago'", '(cp.valor - cp.valor_pago - cp.valor_descontado) > 0'];
+  const params = [req.empresaId];
+  if (fornecedor_id) { condicoes.push('cp.fornecedor_id = ?'); params.push(fornecedor_id); }
+  if (origem_tipo) { condicoes.push('cp.origem_tipo = ?'); params.push(origem_tipo); }
+  if (data_vencimento_de) { condicoes.push('cp.data_vencimento >= ?'); params.push(data_vencimento_de); }
+  if (data_vencimento_ate) { condicoes.push('cp.data_vencimento <= ?'); params.push(data_vencimento_ate); }
+
+  const linhas = db.prepare(`
+    SELECT cp.id, cp.descricao, cp.valor, cp.valor_pago, cp.valor_descontado, cp.data_vencimento, cp.status, cp.origem_tipo,
+           forn.nome AS fornecedor_nome,
+           CAST(julianday(date('now', '-3 hours')) - julianday(date(cp.data_vencimento)) AS INTEGER) AS dias_vencido
+    FROM contas_pagar cp
+    LEFT JOIN fornecedores forn ON forn.id = cp.fornecedor_id
+    WHERE ${condicoes.join(' AND ')}
+    ORDER BY cp.data_vencimento
+  `).all(...params);
+
+  res.json(linhas.map((r) => ({ ...r, saldo_pendente: r.valor - r.valor_pago - r.valor_descontado })));
+}));
+
 module.exports = router;
