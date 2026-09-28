@@ -47,6 +47,7 @@ export const GRUPOS_MENU = [
     itens: [
       { chave: 'dre', label: 'DRE', rota: '/dre' },
       { chave: 'dre', label: 'Saldos em Aberto', rota: '/relatorios/saldos-em-aberto' },
+      { chave: 'dre', label: 'Relatorio de Despesas', rota: '/relatorios/despesas' },
     ],
   },
 ];

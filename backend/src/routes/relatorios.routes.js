@@ -77,4 +77,57 @@ router.get('/saldos-em-aberto', requerAcessoModulo('dre', 'Visualizar'), exigirE
   res.json(resultado);
 }));
 
+// Relatorio flexivel de Despesas: mesma ideia do Saldos em Aberto, mas
+// escopado a despesas_viagem - o usuario filtra (categoria/veiculo/
+// motorista/pago por/fornecedor/viagem/periodo) e escolhe no frontend quais
+// colunas ver/agrupar. O backend so devolve o catalogo inteiro de campos
+// (ver colunas do SELECT) ja com os nomes resolvidos via join - agrupamento/
+// soma e escolha de coluna sao tratados no cliente, sem endpoint por
+// combinacao possivel.
+router.get('/despesas', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const {
+    categoria_id, veiculo_id, motorista_id, pago_por, posto_fornecedor_id, viagem_id,
+    data_de, data_ate,
+  } = req.query;
+
+  const condicoes = ['dv.empresa_id = ?'];
+  const params = [req.empresaId];
+  if (categoria_id) { condicoes.push('dv.categoria_id = ?'); params.push(categoria_id); }
+  if (veiculo_id) { condicoes.push('cc.veiculo_id = ?'); params.push(veiculo_id); }
+  if (motorista_id) { condicoes.push('vg.motorista_id = ?'); params.push(motorista_id); }
+  if (pago_por) { condicoes.push('dv.pago_por = ?'); params.push(pago_por); }
+  if (posto_fornecedor_id) { condicoes.push('dv.posto_fornecedor_id = ?'); params.push(posto_fornecedor_id); }
+  if (viagem_id) { condicoes.push('dv.viagem_id = ?'); params.push(viagem_id); }
+  if (data_de) { condicoes.push('dv.data >= ?'); params.push(data_de); }
+  if (data_ate) { condicoes.push('dv.data <= ?'); params.push(data_ate); }
+
+  const linhas = db.prepare(`
+    SELECT dv.id, dv.data, dv.valor, dv.pago_por, dv.descricao, dv.litragem, dv.preco_litro,
+           dv.km_abastecimento, dv.tanque_completo, dv.data_vencimento, dv.viagem_id,
+           cat.nome AS categoria_nome,
+           cc.tipo AS centro_custo_tipo, v.placa AS veiculo_placa,
+           mo.nome AS motorista_nome,
+           forn.nome AS fornecedor_nome,
+           cp.status AS status_pagamento
+    FROM despesas_viagem dv
+    LEFT JOIN categorias_despesa cat ON cat.id = dv.categoria_id
+    LEFT JOIN centros_custo cc ON cc.id = dv.centro_custo_id
+    LEFT JOIN veiculos v ON v.id = cc.veiculo_id
+    LEFT JOIN viagens vg ON vg.id = dv.viagem_id
+    LEFT JOIN motoristas mo ON mo.id = vg.motorista_id
+    LEFT JOIN fornecedores forn ON forn.id = dv.posto_fornecedor_id
+    LEFT JOIN contas_pagar cp ON cp.id = dv.contas_pagar_id
+    WHERE ${condicoes.join(' AND ')}
+    ORDER BY dv.data DESC, dv.id DESC
+  `).all(...params);
+
+  // Despesa lancada no centro "Base/Administrativo" nao tem veiculo (por
+  // definicao) - mostra o nome do centro de custo em vez de deixar em
+  // branco, senao parece um dado faltando por engano.
+  res.json(linhas.map((r) => ({
+    ...r,
+    veiculo_placa: r.veiculo_placa || (r.centro_custo_tipo === 'Base' ? 'BASE/ADMINISTRATIVO' : null),
+  })));
+}));
+
 module.exports = router;
