@@ -4,9 +4,59 @@ import { navegar } from '../router.js';
 import { esqueletoPagina } from '../components/skeleton.js';
 
 const STATUS_LABEL = { EmAndamento: 'Em Andamento', AguardandoAcerto: 'Aguardando Acerto', Finalizada: 'Finalizada' };
+const STATUS_CHIP = {
+  EmAndamento: 'bg-amber-50 text-amber-700 border border-amber-200',
+  AguardandoAcerto: 'bg-amber-50 text-amber-700 border border-amber-200',
+  Finalizada: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+};
+
+// Paleta desta tela: o resto do sistema usa slate/gray invertidos (ver
+// tailwind.config.js) pro dark mode fixo do app - slate-900 vira quase
+// branco (#F5F4F6). Isso e exatamente o oposto do que um relatorio
+// impresso em fundo branco precisa, e e a causa raiz do relatorio "sem
+// vida"/baixo contraste. Por isso esta tela usa zinc (nao remapeado) pro
+// texto neutro, e emerald/red/blue/amber (tambem nao remapeados) pra dar
+// cor com significado semantico - nunca slate/gray aqui.
+function chip(texto, classes) {
+  return `<span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${classes}">${texto}</span>`;
+}
+
+function estatistica(label, valor, { destaque = false, corValor = 'text-zinc-900', sub = '' } = {}) {
+  return `
+    <div class="rounded-lg border border-zinc-200 ${destaque ? 'bg-blue-50 border-blue-200' : 'bg-zinc-50'} px-3 py-2">
+      <p class="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">${label}</p>
+      <p class="text-base font-bold ${destaque ? 'text-blue-700' : corValor}">${valor}</p>
+      ${sub ? `<p class="text-[11px] text-zinc-400">${sub}</p>` : ''}
+    </div>
+  `;
+}
 
 function linha(label, valor, destaque = false) {
-  return `<div class="flex items-center justify-between py-1.5 ${destaque ? 'text-base font-semibold text-slate-900' : 'text-sm text-slate-600'}"><span>${label}</span><span>${valor}</span></div>`;
+  return `<div class="flex items-center justify-between py-1 ${destaque ? 'text-base font-bold text-zinc-900' : 'text-sm text-zinc-600'}"><span>${label}</span><span class="${destaque ? '' : 'font-medium text-zinc-900'}">${valor}</span></div>`;
+}
+
+function tabela({ colunas, linhasHtml, corHeader = 'bg-zinc-100 text-zinc-600', rodape = '' }) {
+  return `
+    <table class="mb-4 w-full border-collapse overflow-hidden rounded-lg text-sm">
+      <thead>
+        <tr class="${corHeader} text-left text-[11px] uppercase tracking-wide">
+          ${colunas.map((c) => `<th class="px-2 py-1.5 ${c.alinhamento === 'right' ? 'text-right' : ''}">${c.label}</th>`).join('')}
+        </tr>
+      </thead>
+      <tbody>
+        ${linhasHtml}
+        ${rodape}
+      </tbody>
+    </table>
+  `;
+}
+
+function linhaTabela(celulas, { zebra = false } = {}) {
+  return `<tr class="border-b border-zinc-100 ${zebra ? 'bg-zinc-50/60' : ''}">${celulas.map((c) => `<td class="px-2 py-1.5 ${c.alinhamento === 'right' ? 'text-right' : ''} ${c.classe || 'text-zinc-700'}">${c.valor}</td>`).join('')}</tr>`;
+}
+
+function semDados(texto, colunas) {
+  return `<tr><td colspan="${colunas}" class="px-2 py-3 text-center text-sm text-zinc-400">${texto}</td></tr>`;
 }
 
 export async function renderRelatorio(root, params, query) {
@@ -37,13 +87,188 @@ export async function renderRelatorio(root, params, query) {
 
   const fretes = viagem.fretes || [];
   const freteBrutoTotal = fretes.reduce((t, f) => t + f.frete_bruto, 0);
+  const pesoTotal = fretes.reduce((t, f) => t + (f.peso_carga_kg || 0), 0);
   const totalDespesas = despesas.reduce((t, d) => t + d.valor, 0);
   const totalAdiantamentos = adiantamentos.reduce((t, a) => t + a.valor, 0);
   const kmRodado = viagem.km_final ? viagem.km_final - viagem.km_inicial : null;
   const usuario = getUsuario();
 
+  // Duracao/medias diarias: so fazem sentido com data_fim definida (viagem
+  // finalizada) - Math.max(1, ...) pra nao dividir por zero numa viagem de
+  // 1 dia so (data_fim === data_inicio), mesmo criterio ja usado no card de
+  // "dias em viagem" do dashboard.
+  const duracaoDias = viagem.data_fim
+    ? Math.max(1, Math.round((new Date(`${viagem.data_fim}T00:00:00Z`) - new Date(`${viagem.data_inicio}T00:00:00Z`)) / 86400000))
+    : null;
+  const faturamentoPorDia = duracaoDias ? Math.round(freteBrutoTotal / duracaoDias) : null;
+  const kmPorDia = duracaoDias && kmRodado !== null ? Math.round(kmRodado / duracaoDias) : null;
+  // Prioriza o valor congelado no fechamento do acerto (foi o que definiu a
+  // faixa de comissao aplicada); sem acerto fechado, cai pro valor "ao vivo"
+  // que a tela da viagem ja calcula (ver bug de media cross-viagem corrigido
+  // em mediaConsumoHelper.js).
+  const mediaConsumo = acerto?.media_consumo_km_l ?? viagem.media_consumo_km_l ?? null;
+
+  const categoriaAbastecimentoId = categorias.find((c) => c.nome.trim().toLowerCase() === 'abastecimento')?.id ?? null;
+  const categoriaArlaId = categorias.find((c) => c.nome.trim().toLowerCase() === 'arla')?.id ?? null;
+  const despesasAbastecimento = despesas.filter((d) => d.categoria_id === categoriaAbastecimentoId);
+  const despesasArla = despesas.filter((d) => d.categoria_id === categoriaArlaId);
+  const despesasOutras = despesas.filter((d) => d.categoria_id !== categoriaAbastecimentoId && d.categoria_id !== categoriaArlaId);
+  const despesasMotorista = despesas.filter((d) => d.pago_por === 'Motorista');
+  const totalDescontosMotorista = despesasMotorista.reduce((t, d) => t + d.valor, 0);
+
+  const custoPorKm = kmRodado ? Math.round(totalDespesas / kmRodado) : null;
+  const ticketMedioFrete = fretes.length ? Math.round(freteBrutoTotal / fretes.length) : null;
+  const percentualDespesasSobreFaturamento = freteBrutoTotal ? (totalDespesas / freteBrutoTotal) * 100 : null;
+  const percentualComissaoSobreFaturamento = acerto && freteBrutoTotal ? (acerto.valor_comissao / freteBrutoTotal) * 100 : null;
+  const percentualDescontosSobreFaturamento = freteBrutoTotal ? (totalDescontosMotorista / freteBrutoTotal) * 100 : null;
+
+  function tabelaFretes() {
+    const linhas = fretes.map((f, i) => linhaTabela([
+      { valor: f.data_carregamento ? formatarDataBr(f.data_carregamento) : '-' },
+      { valor: f.transportadora_id ? (nomeFornecedor[f.transportadora_id] || '-') : '-' },
+      { valor: `${f.origem_cidade}/${f.origem_uf} &rarr; ${f.destino_cidade}/${f.destino_uf}` },
+      { valor: f.peso_carga_kg ? formatarPeso(f.peso_carga_kg) : '-', alinhamento: 'right' },
+      { valor: formatarMoeda(f.frete_bruto), alinhamento: 'right', classe: 'font-medium text-zinc-900' },
+    ], { zebra: i % 2 === 1 })).join('') || semDados('Nenhum frete cadastrado nesta viagem.', 5);
+    const rodape = fretes.length ? `
+      <tr class="bg-emerald-50 font-bold text-emerald-800">
+        <td colspan="3" class="px-2 py-1.5 text-right">Total</td>
+        <td class="px-2 py-1.5 text-right">${pesoTotal ? formatarPeso(pesoTotal) : '-'}</td>
+        <td class="px-2 py-1.5 text-right">${formatarMoeda(freteBrutoTotal)}</td>
+      </tr>
+    ` : '';
+    return tabela({
+      colunas: [
+        { label: 'Data' }, { label: 'Transportadora' }, { label: 'Rota' },
+        { label: 'Peso', alinhamento: 'right' }, { label: 'Frete Bruto', alinhamento: 'right' },
+      ],
+      linhasHtml: linhas,
+      rodape,
+    });
+  }
+
+  function tabelaCombustivel(lista, { comKm }) {
+    const colunas = [
+      { label: 'Data' }, { label: 'Posto' },
+      ...(comKm ? [{ label: 'KM', alinhamento: 'right' }] : []),
+      { label: 'Litros', alinhamento: 'right' }, { label: 'R$/Litro', alinhamento: 'right' },
+      ...(comKm ? [{ label: 'Tanque' }] : []),
+      { label: 'Valor', alinhamento: 'right' },
+    ];
+    const linhas = lista.map((d, i) => linhaTabela([
+      { valor: formatarDataBr(d.data) },
+      { valor: d.posto_fornecedor_id ? (nomeFornecedor[d.posto_fornecedor_id] || '-') : '-' },
+      ...(comKm ? [{ valor: d.km_abastecimento !== null ? d.km_abastecimento.toLocaleString('pt-BR') : '-', alinhamento: 'right' }] : []),
+      { valor: d.litragem !== null ? `${Number(d.litragem).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} L` : '-', alinhamento: 'right' },
+      { valor: d.preco_litro !== null ? formatarMoeda(d.preco_litro) : '-', alinhamento: 'right' },
+      ...(comKm ? [{ valor: d.tanque_completo ? chip('Cheio', 'bg-emerald-50 text-emerald-700 border border-emerald-200') : chip('Parcial', 'bg-zinc-100 text-zinc-500 border border-zinc-200') }] : []),
+      { valor: formatarMoeda(d.valor), alinhamento: 'right', classe: 'font-medium text-zinc-900' },
+    ], { zebra: i % 2 === 1 })).join('') || semDados('Nenhum lancamento.', colunas.length);
+    const totalValor = lista.reduce((t, d) => t + d.valor, 0);
+    const totalLitros = lista.reduce((t, d) => t + (d.litragem || 0), 0);
+    // Colspan dinamico (a tabela de diesel tem 2 colunas a mais que a de
+    // Arla - KM e Tanque): um rotulo so, com o total de litros embutido no
+    // texto, evita ter que acertar em qual coluna intermediaria cada
+    // subtotal cairia (isso desalinhava "litros" embaixo da coluna errada
+    // quando KM/Tanque estavam presentes).
+    const rodape = lista.length ? `
+      <tr class="bg-zinc-100 font-bold text-zinc-800">
+        <td colspan="${colunas.length - 1}" class="px-2 py-1.5 text-right">Total${totalLitros ? ` (${totalLitros.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} L)` : ''}</td>
+        <td class="px-2 py-1.5 text-right">${formatarMoeda(totalValor)}</td>
+      </tr>
+    ` : '';
+    return tabela({ colunas, linhasHtml: linhas, rodape });
+  }
+
+  function tabelaOutrasDespesas() {
+    const porCategoria = new Map();
+    for (const d of despesasOutras) {
+      if (!porCategoria.has(d.categoria_id)) porCategoria.set(d.categoria_id, []);
+      porCategoria.get(d.categoria_id).push(d);
+    }
+    const categoriasOrdenadas = [...porCategoria.keys()].sort((a, b) => (nomeCategoria[a] || '').localeCompare(nomeCategoria[b] || ''));
+    if (!categoriasOrdenadas.length) return '<p class="mb-4 text-sm text-zinc-400">Nenhuma despesa adicional.</p>';
+    return categoriasOrdenadas.map((catId) => {
+      const itens = porCategoria.get(catId);
+      const subtotal = itens.reduce((t, d) => t + d.valor, 0);
+      const linhas = itens.map((d, i) => linhaTabela([
+        { valor: formatarDataBr(d.data) },
+        { valor: d.descricao || '-' },
+        { valor: d.posto_fornecedor_id ? (nomeFornecedor[d.posto_fornecedor_id] || '-') : '-' },
+        { valor: d.pago_por },
+        { valor: formatarMoeda(d.valor), alinhamento: 'right', classe: 'font-medium text-zinc-900' },
+      ], { zebra: i % 2 === 1 })).join('');
+      const rodape = `
+        <tr class="bg-zinc-100 font-bold text-zinc-800">
+          <td colspan="4" class="px-2 py-1.5 text-right">Subtotal ${nomeCategoria[catId] || ''}</td>
+          <td class="px-2 py-1.5 text-right">${formatarMoeda(subtotal)}</td>
+        </tr>
+      `;
+      return `
+        <h3 class="mb-1 mt-4 text-sm font-bold uppercase tracking-wide text-zinc-700">${nomeCategoria[catId] || '-'}</h3>
+        ${tabela({
+          colunas: [{ label: 'Data' }, { label: 'Descricao' }, { label: 'Fornecedor' }, { label: 'Pago por' }, { label: 'Valor', alinhamento: 'right' }],
+          linhasHtml: linhas,
+          rodape,
+        })}
+      `;
+    }).join('');
+  }
+
+  function tabelaDescontosMotorista() {
+    const linhas = despesasMotorista.map((d, i) => linhaTabela([
+      { valor: formatarDataBr(d.data) },
+      { valor: nomeCategoria[d.categoria_id] || '-' },
+      { valor: d.descricao || '-' },
+      { valor: formatarMoeda(d.valor), alinhamento: 'right', classe: 'font-medium text-red-700' },
+    ], { zebra: i % 2 === 1 })).join('') || semDados('Nenhuma despesa paga pelo motorista.', 4);
+    const rodape = despesasMotorista.length ? `
+      <tr class="bg-red-50 font-bold text-red-800">
+        <td colspan="3" class="px-2 py-1.5 text-right">Total de descontos</td>
+        <td class="px-2 py-1.5 text-right">${formatarMoeda(totalDescontosMotorista)}</td>
+      </tr>
+    ` : '';
+    return tabela({
+      colunas: [{ label: 'Data' }, { label: 'Categoria' }, { label: 'Descricao' }, { label: 'Valor', alinhamento: 'right' }],
+      linhasHtml: linhas,
+      rodape,
+    });
+  }
+
+  function tabelaAdiantamentos() {
+    const linhas = adiantamentos.map((a, i) => linhaTabela([
+      { valor: formatarDataBr(a.data) },
+      { valor: `${a.descricao || '-'}${a.conta_bancaria_id ? '' : ' <span class="text-zinc-400">(sem caixa)</span>'}` },
+      { valor: formatarMoeda(a.valor), alinhamento: 'right', classe: 'font-medium text-red-700' },
+    ], { zebra: i % 2 === 1 })).join('') || semDados('Nenhum adiantamento.', 3);
+    const rodape = adiantamentos.length ? `
+      <tr class="bg-red-50 font-bold text-red-800">
+        <td colspan="2" class="px-2 py-1.5 text-right">Total de adiantamentos</td>
+        <td class="px-2 py-1.5 text-right">${formatarMoeda(totalAdiantamentos)}</td>
+      </tr>
+    ` : '';
+    return tabela({
+      colunas: [{ label: 'Data' }, { label: 'Descricao' }, { label: 'Valor', alinhamento: 'right' }],
+      linhasHtml: linhas,
+      rodape,
+    });
+  }
+
+  const saldoFinalValor = acerto ? acerto.saldo_final : null;
+  const saldoPositivo = saldoFinalValor !== null ? saldoFinalValor >= 0 : true;
+  const totalCreditos = acerto ? acerto.valor_comissao + acerto.valor_reembolsos : null;
+  const totalDebitos = acerto ? acerto.valor_adiantamentos + acerto.valor_descontos : null;
+
   root.innerHTML = `
-    <div class="mx-auto max-w-3xl p-6 print:max-w-none print:p-0">
+    <style>
+      /* Forca o navegador a manter cores/fundos na impressao (por padrao a
+         maioria descarta bg-color pra economizar tinta) - sem isto os
+         acentos coloridos desta tela somem no "Imprimir/Salvar PDF". */
+      @media print {
+        .relatorio-acerto, .relatorio-acerto * { -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact; }
+      }
+    </style>
+    <div class="relatorio-acerto mx-auto max-w-4xl p-6 print:max-w-none print:p-0">
       <div class="mb-4 flex flex-wrap items-center justify-between gap-2 print:hidden">
         <button type="button" class="btn-secondary btn-sm" data-voltar>&larr; Voltar para o acerto</button>
         <div class="flex flex-wrap gap-2">
@@ -53,116 +278,111 @@ export async function renderRelatorio(root, params, query) {
         </div>
       </div>
 
-      <div class="rounded-xl border border-slate-200 bg-white p-8 print:border-0 print:p-0">
-        <div class="mb-6 border-b border-slate-200 pb-4">
-          <h1 class="text-xl font-bold text-slate-900">Relatorio de Acerto - Viagem #${viagem.id}</h1>
-          <p class="text-sm text-slate-500">${tipo === 'detalhado' ? 'Detalhado' : 'Resumido'} &middot; Gerado em ${formatarDataBr(hojeIsoLocal())}${usuario ? ` por ${usuario.nome}` : ''}</p>
+      <div class="rounded-xl border border-zinc-200 bg-white p-8 text-zinc-900 print:border-0 print:p-0">
+        <div class="mb-5 flex items-start justify-between border-b-4 border-brand-yellow pb-4">
+          <div>
+            <h1 class="text-2xl font-extrabold text-zinc-900">Relatorio de Acerto <span class="text-zinc-400">&middot; Viagem #${viagem.id}</span></h1>
+            <p class="mt-1 text-sm font-medium text-zinc-500">${tipo === 'detalhado' ? 'Detalhado' : 'Resumido'} &middot; Gerado em ${formatarDataBr(hojeIsoLocal())}${usuario ? ` por ${usuario.nome}` : ''}</p>
+          </div>
+          ${chip(STATUS_LABEL[viagem.status], STATUS_CHIP[viagem.status] || 'bg-zinc-100 text-zinc-500 border border-zinc-200')}
         </div>
 
-        <div class="mb-6 grid grid-cols-2 gap-3 text-sm">
-          <p><span class="font-medium">Motorista:</span> ${motorista ? motorista.nome : '-'}</p>
-          <p><span class="font-medium">Composicao:</span> ${conjunto.itens.map((i) => i.placa).join(' + ')}</p>
-          <p><span class="font-medium">Periodo:</span> ${formatarDataBr(viagem.data_inicio)}${viagem.data_fim ? ` a ${formatarDataBr(viagem.data_fim)}` : ' (em andamento)'}</p>
-          <p><span class="font-medium">KM rodado:</span> ${kmRodado !== null ? `${kmRodado.toLocaleString('pt-BR')} km` : '-'}</p>
-          <p><span class="font-medium">Status:</span> ${STATUS_LABEL[viagem.status]}</p>
+        <div class="mb-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+          <p><span class="font-semibold text-zinc-500">Motorista:</span> <span class="text-zinc-900">${motorista ? motorista.nome : '-'}</span></p>
+          <p><span class="font-semibold text-zinc-500">Composicao:</span> <span class="text-zinc-900">${conjunto.itens.map((i) => i.placa).join(' + ')}</span></p>
+          <p><span class="font-semibold text-zinc-500">Periodo:</span> <span class="text-zinc-900">${formatarDataBr(viagem.data_inicio)}${viagem.data_fim ? ` a ${formatarDataBr(viagem.data_fim)}` : ' (em andamento)'}</span></p>
+          <p><span class="font-semibold text-zinc-500">KM rodado:</span> <span class="text-zinc-900">${kmRodado !== null ? `${kmRodado.toLocaleString('pt-BR')} km` : '-'}</span></p>
+        </div>
+
+        <div class="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          ${estatistica('Duracao', duracaoDias !== null ? `${duracaoDias} dia${duracaoDias > 1 ? 's' : ''}` : '-')}
+          ${estatistica('Media KM/dia', kmPorDia !== null ? `${kmPorDia.toLocaleString('pt-BR')} km` : '-')}
+          ${estatistica('Faturamento/dia', faturamentoPorDia !== null ? formatarMoeda(faturamentoPorDia) : '-', { corValor: 'text-emerald-700' })}
+          ${estatistica('Media consumo', mediaConsumo ? `${mediaConsumo.toFixed(2)} km/l` : '-', { destaque: true })}
+          ${estatistica('Faturamento total', formatarMoeda(freteBrutoTotal), { corValor: 'text-emerald-700' })}
+          ${estatistica('Despesas totais', formatarMoeda(totalDespesas), { corValor: 'text-red-700' })}
         </div>
 
         ${tipo === 'detalhado' ? `
-          <h2 class="mb-2 mt-6 font-semibold text-slate-900">Fretes</h2>
-          <table class="mb-4 w-full text-sm">
-            <thead><tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
-              <th class="py-1">Transportadora</th><th class="py-1">Rota</th><th class="py-1">Peso</th><th class="py-1 text-right">Frete Bruto</th>
-            </tr></thead>
-            <tbody>
-              ${fretes.map((f) => `
-                <tr class="border-b border-slate-100">
-                  <td class="py-1">${f.transportadora_id ? nomeFornecedor[f.transportadora_id] || '-' : '-'}</td>
-                  <td class="py-1">${f.origem_cidade}/${f.origem_uf} &rarr; ${f.destino_cidade}/${f.destino_uf}</td>
-                  <td class="py-1">${f.peso_carga_kg ? formatarPeso(f.peso_carga_kg) : '-'}</td>
-                  <td class="py-1 text-right">${formatarMoeda(f.frete_bruto)}</td>
-                </tr>
-              `).join('') || '<tr><td colspan="4" class="py-2 text-center text-slate-400">Nenhum frete.</td></tr>'}
-            </tbody>
-          </table>
+          <h2 class="mb-2 mt-6 flex items-center gap-2 text-base font-bold text-zinc-900"><span class="h-4 w-1.5 rounded-full bg-emerald-500"></span>Fretes</h2>
+          ${tabelaFretes()}
 
-          <h2 class="mb-2 mt-6 font-semibold text-slate-900">Despesas por categoria</h2>
-          ${(() => {
-            const porCategoria = new Map();
-            for (const d of despesas) {
-              const catId = d.categoria_id;
-              if (!porCategoria.has(catId)) porCategoria.set(catId, []);
-              porCategoria.get(catId).push(d);
-            }
-            const categoriasOrdenadas = [...porCategoria.keys()].sort((a, b) => (nomeCategoria[a] || '').localeCompare(nomeCategoria[b] || ''));
-            if (!categoriasOrdenadas.length) return '<p class="mb-4 text-sm text-slate-400">Nenhuma despesa.</p>';
-            return categoriasOrdenadas.map((catId) => {
-              const itens = porCategoria.get(catId);
-              const subtotal = itens.reduce((t, d) => t + d.valor, 0);
-              return `
-                <h3 class="mb-1 mt-3 text-sm font-semibold text-slate-700">${nomeCategoria[catId] || '-'}</h3>
-                <table class="mb-3 w-full text-sm">
-                  <thead><tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
-                    <th class="py-1">Data</th><th class="py-1">Pago por</th><th class="py-1 text-right">Valor</th>
-                  </tr></thead>
-                  <tbody>
-                    ${itens.map((d) => `
-                      <tr class="border-b border-slate-100">
-                        <td class="py-1">${formatarDataBr(d.data)}</td>
-                        <td class="py-1">${d.pago_por}</td>
-                        <td class="py-1 text-right">${formatarMoeda(d.valor)}</td>
-                      </tr>
-                    `).join('')}
-                    <tr class="font-medium"><td colspan="2" class="py-1 text-right">Subtotal ${nomeCategoria[catId] || ''}</td><td class="py-1 text-right">${formatarMoeda(subtotal)}</td></tr>
-                  </tbody>
-                </table>
-              `;
-            }).join('');
-          })()}
-          <div class="mb-4 flex items-center justify-between border-t border-slate-300 pt-2 text-sm font-semibold text-slate-900">
+          <h2 class="mb-2 mt-6 flex items-center gap-2 text-base font-bold text-zinc-900"><span class="h-4 w-1.5 rounded-full bg-blue-500"></span>Abastecimento (Diesel)</h2>
+          ${tabelaCombustivel(despesasAbastecimento, { comKm: true })}
+
+          ${despesasArla.length ? `
+            <h2 class="mb-2 mt-6 flex items-center gap-2 text-base font-bold text-zinc-900"><span class="h-4 w-1.5 rounded-full bg-cyan-500"></span>Arla</h2>
+            ${tabelaCombustivel(despesasArla, { comKm: false })}
+          ` : ''}
+
+          <h2 class="mb-2 mt-6 flex items-center gap-2 text-base font-bold text-zinc-900"><span class="h-4 w-1.5 rounded-full bg-zinc-400"></span>Demais despesas</h2>
+          ${tabelaOutrasDespesas()}
+          <div class="mb-4 flex items-center justify-between border-t-2 border-zinc-300 pt-2 text-sm font-bold text-zinc-900">
             <span>Total geral de despesas</span><span>${formatarMoeda(totalDespesas)}</span>
           </div>
 
-          <h2 class="mb-2 mt-6 font-semibold text-slate-900">Adiantamentos ao motorista</h2>
-          <table class="mb-4 w-full text-sm">
-            <thead><tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
-              <th class="py-1">Data</th><th class="py-1">Descricao</th><th class="py-1 text-right">Valor</th>
-            </tr></thead>
-            <tbody>
-              ${adiantamentos.map((a) => `
-                <tr class="border-b border-slate-100">
-                  <td class="py-1">${formatarDataBr(a.data)}</td>
-                  <td class="py-1">${a.descricao || '-'}${a.conta_bancaria_id ? '' : ' (sem caixa)'}</td>
-                  <td class="py-1 text-right">${formatarMoeda(a.valor)}</td>
-                </tr>
-              `).join('') || '<tr><td colspan="3" class="py-2 text-center text-slate-400">Nenhum adiantamento.</td></tr>'}
-              <tr class="font-medium"><td colspan="2" class="py-1 text-right">Total de adiantamentos</td><td class="py-1 text-right">${formatarMoeda(totalAdiantamentos)}</td></tr>
-            </tbody>
-          </table>
+          <h2 class="mb-2 mt-6 flex items-center gap-2 text-base font-bold text-zinc-900"><span class="h-4 w-1.5 rounded-full bg-red-500"></span>Descontos do motorista (despesas pagas por ele)</h2>
+          ${tabelaDescontosMotorista()}
 
-          <h2 class="mb-2 mt-6 font-semibold text-slate-900">Valores medios</h2>
-          <div class="mb-4 grid grid-cols-2 gap-2 text-sm">
-            ${linha('Media de consumo', acerto && acerto.media_consumo_km_l ? `${acerto.media_consumo_km_l.toFixed(2)} km/l` : '-')}
-            ${linha('Valor medio por frete', fretes.length ? formatarMoeda(Math.round(freteBrutoTotal / fretes.length)) : '-')}
-            ${linha('Custo por KM (despesas)', kmRodado ? formatarMoeda(Math.round(totalDespesas / kmRodado)) : '-')}
+          <h2 class="mb-2 mt-6 flex items-center gap-2 text-base font-bold text-zinc-900"><span class="h-4 w-1.5 rounded-full bg-red-500"></span>Adiantamentos ao motorista</h2>
+          ${tabelaAdiantamentos()}
+
+          <h2 class="mb-2 mt-6 flex items-center gap-2 text-base font-bold text-zinc-900"><span class="h-4 w-1.5 rounded-full bg-blue-500"></span>Indicadores</h2>
+          <div class="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            ${estatistica('Valor medio por frete', ticketMedioFrete !== null ? formatarMoeda(ticketMedioFrete) : '-')}
+            ${estatistica('Custo por KM (despesas)', custoPorKm !== null ? formatarMoeda(custoPorKm) : '-')}
+            ${estatistica('Despesas / Faturamento', percentualDespesasSobreFaturamento !== null ? `${percentualDespesasSobreFaturamento.toFixed(1)}%` : '-')}
+            ${percentualComissaoSobreFaturamento !== null ? estatistica('Comissao / Faturamento', `${percentualComissaoSobreFaturamento.toFixed(1)}%`, { corValor: 'text-emerald-700' }) : ''}
+            ${percentualDescontosSobreFaturamento !== null ? estatistica('Descontos motorista / Faturamento', `${percentualDescontosSobreFaturamento.toFixed(1)}%`, { corValor: 'text-red-700' }) : ''}
           </div>
         ` : ''}
 
-        <h2 class="mb-2 mt-6 font-semibold text-slate-900">Resumo financeiro</h2>
-        <div class="rounded-lg bg-slate-50 p-4">
+        <h2 class="mb-2 mt-6 text-base font-bold text-zinc-900">Resumo financeiro (romaneio ao motorista)</h2>
+        <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
           ${linha('Frete bruto total', formatarMoeda(freteBrutoTotal))}
           ${acerto && acerto.valor_imposto > 0 ? linha(`Imposto (${acerto.percentual_imposto_aplicado}%)`, `- ${formatarMoeda(acerto.valor_imposto)}`) : ''}
           ${acerto && acerto.valor_imposto > 0 ? linha('Base de calculo da comissao (bruto - imposto)', formatarMoeda(freteBrutoTotal - acerto.valor_imposto)) : ''}
-          ${acerto ? linha(`Comissao (${acerto.percentual_comissao_aplicado}%)`, formatarMoeda(acerto.valor_comissao)) : ''}
-          ${acerto && acerto.valor_reembolsos > 0 ? linha('Reembolsos', formatarMoeda(acerto.valor_reembolsos)) : ''}
-          ${acerto ? linha('Adiantamentos tomados', formatarMoeda(acerto.valor_adiantamentos)) : linha('Adiantamentos tomados', formatarMoeda(totalAdiantamentos))}
-          ${acerto && acerto.valor_descontos > 0 ? linha('Descontos', formatarMoeda(acerto.valor_descontos)) : ''}
-          ${acerto && acerto.saldo_conta_corrente_anterior > 0 ? linha('Saldo conta corrente anterior', formatarMoeda(acerto.saldo_conta_corrente_anterior)) : ''}
-          <hr class="my-2 border-slate-200" />
-          ${acerto
-            ? linha('Saldo final', `${formatarMoeda(Math.abs(acerto.saldo_final))} ${acerto.saldo_final >= 0 ? '(a pagar ao motorista)' : '(fica em conta corrente)'}`, true)
-            : '<p class="text-sm text-slate-400">Acerto ainda nao fechado - valores sujeitos a alteracao.</p>'}
         </div>
-        ${acerto && acerto.observacoes_ajustes ? `<p class="mt-3 text-sm text-slate-500">Obs.: ${acerto.observacoes_ajustes}</p>` : ''}
+
+        ${acerto ? `
+          <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+              <h3 class="mb-2 text-xs font-bold uppercase tracking-wide text-emerald-700">Creditos ao motorista</h3>
+              <div class="space-y-0.5 text-sm text-emerald-900">
+                ${linha(`Comissao (${acerto.percentual_comissao_aplicado}%)`, formatarMoeda(acerto.valor_comissao))}
+                ${acerto.valor_reembolsos > 0 ? linha('Reembolsos', formatarMoeda(acerto.valor_reembolsos)) : ''}
+                ${acerto.valor_reembolsos === 0 && acerto.valor_comissao === 0 ? '<p class="text-sm text-emerald-700/60">Nenhum.</p>' : ''}
+              </div>
+              <div class="mt-2 flex items-center justify-between border-t border-emerald-200 pt-2 text-sm font-bold text-emerald-800">
+                <span>Total creditos</span><span>${formatarMoeda(totalCreditos)}</span>
+              </div>
+            </div>
+            <div class="rounded-lg border border-red-200 bg-red-50 p-4">
+              <h3 class="mb-2 text-xs font-bold uppercase tracking-wide text-red-700">Debitos do motorista</h3>
+              <div class="space-y-0.5 text-sm text-red-900">
+                ${acerto.valor_adiantamentos > 0 ? linha('Adiantamentos tomados na viagem', formatarMoeda(acerto.valor_adiantamentos)) : ''}
+                ${acerto.valor_descontos > 0 ? linha('Descontos (multas/avarias/despesas)', formatarMoeda(acerto.valor_descontos)) : ''}
+                ${totalDebitos === 0 ? '<p class="text-sm text-red-700/60">Nenhum.</p>' : ''}
+              </div>
+              <div class="mt-2 flex items-center justify-between border-t border-red-200 pt-2 text-sm font-bold text-red-800">
+                <span>Total debitos</span><span>${formatarMoeda(totalDebitos)}</span>
+              </div>
+            </div>
+          </div>
+          <div class="mt-3 flex items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-2 text-sm text-zinc-600">
+            <span>Saldo conta corrente anterior</span><span class="font-medium text-zinc-900">${formatarMoeda(acerto.saldo_conta_corrente_anterior)}</span>
+          </div>
+          <div class="mt-3 flex items-center justify-between rounded-lg border-2 ${saldoPositivo ? 'border-emerald-600' : 'border-red-600'} bg-white px-4 py-3">
+            <span class="text-sm font-bold uppercase tracking-wide text-zinc-700">Saldo final ${saldoPositivo ? '(a pagar ao motorista)' : '(fica em conta corrente)'}</span>
+            <span class="text-xl font-extrabold ${saldoPositivo ? 'text-emerald-700' : 'text-red-700'}">${formatarMoeda(Math.abs(acerto.saldo_final))}</span>
+          </div>
+          ${acerto.observacoes_ajustes ? `<p class="mt-3 rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800"><strong>Obs.:</strong> ${acerto.observacoes_ajustes}</p>` : ''}
+        ` : `
+          <div class="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            ${linha('Adiantamentos tomados', formatarMoeda(totalAdiantamentos))}
+            <p class="mt-2 font-medium">Acerto ainda nao fechado - valores sujeitos a alteracao.</p>
+          </div>
+        `}
       </div>
     </div>
   `;
