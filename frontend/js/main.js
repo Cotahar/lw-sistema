@@ -11,6 +11,12 @@ import { GRUPOS_MENU, ROTA_PAINEL, ITEM_ADMIN, ITEM_AUDITORIA, ITEM_ATIVIDADE_US
 
 const appEl = document.getElementById('app');
 let shellConstruido = false;
+// Fila dos grupos do menu lateral abertos no momento (mais antigo primeiro,
+// no maximo 2) - inicializada em wireShell() a partir do que o HTML ja
+// renderizou aberto. Abrir um 3o grupo fecha o mais antigo da fila, pra o
+// menu (que cresceu bastante com os relatorios novos) nao acumular varios
+// grupos expandidos ao mesmo tempo.
+let gruposAbertos = [];
 
 // Icones do menu lateral, um por grupo (SVG inline, sem biblioteca externa -
 // ver revisao de design, "Icones no menu e nos cards"). Centralizado aqui:
@@ -47,6 +53,26 @@ function rotaEstaAtiva(rota) {
 function renderGrupoAccordion(chave, titulo, itens, forcarAberto) {
   if (!itens.length) return '';
   const aberto = forcarAberto || itens.some((item) => rotaEstaAtiva(item.rota));
+  // "secao" (opcional, por item - ver modulosConfig.js): quebra a lista em
+  // sub-cabecalhos visuais quando o grupo cresce demais (caso do Relatorios,
+  // que passou de uma duzia de itens). So imprime o cabecalho quando a
+  // secao muda em relacao ao item anterior, e so quando o item de fato tem
+  // uma - grupos sem "secao" em nenhum item continuam uma lista lisa, como
+  // sempre foram.
+  let secaoAnterior;
+  const itensHtml = itens.map((item, indice) => {
+    const mostrarCabecalho = item.secao && item.secao !== secaoAnterior;
+    secaoAnterior = item.secao;
+    const cabecalho = mostrarCabecalho
+      ? `<p class="mb-0.5 ${indice === 0 ? '' : 'mt-2.5'} px-3 text-[10px] font-bold uppercase tracking-wider text-white/30">${item.secao}</p>`
+      : '';
+    return `
+      ${cabecalho}
+      <a href="#${item.rota}" data-rota="${item.rota}" data-cor-base="text-white/60" data-peso-base="font-medium" class="menu-link flex items-center rounded-lg border-l-4 border-transparent px-3 py-2 text-sm font-medium text-white/60 hover:bg-white/10 hover:text-white">
+        ${item.label}
+      </a>
+    `;
+  }).join('');
   return `
     <div data-grupo="${chave}">
       <button type="button" data-grupo-toggle="${chave}" class="flex w-full items-center justify-between rounded-lg px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide ${aberto ? 'text-brand-yellow' : 'text-white/50 hover:text-white/80'}">
@@ -57,11 +83,7 @@ function renderGrupoAccordion(chave, titulo, itens, forcarAberto) {
       </button>
       <div data-grupo-body class="grupo-corpo ${aberto ? '' : 'recolhido'}">
         <div class="space-y-0.5">
-          ${itens.map((item) => `
-            <a href="#${item.rota}" data-rota="${item.rota}" data-cor-base="text-white/60" data-peso-base="font-medium" class="menu-link flex items-center rounded-lg border-l-4 border-transparent px-3 py-2 text-sm font-medium text-white/60 hover:bg-white/10 hover:text-white">
-              ${item.label}
-            </a>
-          `).join('')}
+          ${itensHtml}
         </div>
       </div>
     </div>
@@ -187,12 +209,43 @@ function wireShell() {
   overlay.addEventListener('click', fecharMenu);
   appEl.querySelectorAll('.menu-link').forEach((link) => link.addEventListener('click', fecharMenu));
 
+  function corpoEChevronDoGrupo(chave) {
+    const grupoEl = appEl.querySelector(`[data-grupo="${chave}"]`);
+    if (!grupoEl) return {};
+    return { body: grupoEl.querySelector('[data-grupo-body]'), chevron: grupoEl.querySelector('[data-grupo-chevron]') };
+  }
+  function fecharGrupo(chave) {
+    const { body, chevron } = corpoEChevronDoGrupo(chave);
+    body?.classList.add('recolhido');
+    chevron?.classList.remove('rotate-90');
+  }
+  function abrirGrupo(chave) {
+    const { body, chevron } = corpoEChevronDoGrupo(chave);
+    body?.classList.remove('recolhido');
+    chevron?.classList.add('rotate-90');
+  }
+
+  // Le do HTML ja renderizado quais grupos nasceram abertos (renderGrupoAccordion
+  // decide isso pela rota atual) - normalmente 1 so, mas cobre o caso de mais.
+  gruposAbertos = [...appEl.querySelectorAll('[data-grupo]')]
+    .filter((el) => !el.querySelector('[data-grupo-body]')?.classList.contains('recolhido'))
+    .map((el) => el.dataset.grupo);
+
   appEl.querySelectorAll('[data-grupo-toggle]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const body = btn.parentElement.querySelector('[data-grupo-body]');
-      const chevron = btn.querySelector('[data-grupo-chevron]');
-      body.classList.toggle('recolhido');
-      chevron.classList.toggle('rotate-90');
+      const chave = btn.dataset.grupoToggle;
+      if (gruposAbertos.includes(chave)) {
+        fecharGrupo(chave);
+        gruposAbertos = gruposAbertos.filter((c) => c !== chave);
+        return;
+      }
+      // Abrindo um grupo que nao estava aberto: no maximo 2 ao mesmo tempo -
+      // fecha o mais antigo da fila antes de abrir este.
+      if (gruposAbertos.length >= 2) {
+        fecharGrupo(gruposAbertos.shift());
+      }
+      abrirGrupo(chave);
+      gruposAbertos.push(chave);
     });
   });
 

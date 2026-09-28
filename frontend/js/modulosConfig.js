@@ -43,22 +43,26 @@ export const GRUPOS_MENU = [
     ],
   },
   {
+    // "secao" (opcional, por item): sub-cabecalho visual dentro do grupo -
+    // ver renderGrupoAccordion em main.js. So o grupo Relatorios usa isso
+    // por enquanto (cresceu demais pra ficar tudo numa lista so), mas
+    // qualquer grupo pode usar o mesmo campo.
     titulo: 'Relatorios',
     itens: [
-      { chave: 'dre', label: 'DRE', rota: '/dre' },
-      { chave: 'dre', label: 'Saldos em Aberto', rota: '/relatorios/saldos-em-aberto' },
-      { chave: 'dre', label: 'Relatorio de Despesas', rota: '/relatorios/despesas' },
-      { chave: 'dre', label: 'Relatorio de Fretes/Receitas', rota: '/relatorios/fretes' },
-      { chave: 'dre', label: 'Extrato Conta Corrente Motorista', rota: '/relatorios/conta-corrente-motorista' },
-      { chave: 'dre', label: 'Despesas Fixas por Categoria', rota: '/relatorios/despesas-fixas' },
-      { chave: 'dre', label: 'Parcelas de Financiamento', rota: '/relatorios/parcelas-financiamento' },
-      { chave: 'dre', label: 'Multas por Motorista/Veiculo', rota: '/relatorios/multas' },
-      { chave: 'dre', label: 'Custo de Manutencao por Veiculo', rota: '/relatorios/manutencao-custo' },
-      { chave: 'dre', label: 'Historico de Manutencao', rota: '/relatorios/manutencao-historico' },
-      { chave: 'dre', label: 'Posicao e Consumo de Estoque', rota: '/relatorios/estoque' },
-      { chave: 'dre', label: 'Pneus - Custo e Vida Util', rota: '/relatorios/pneus' },
-      { chave: 'dre', label: 'Alertas de Manutencao', rota: '/relatorios/alertas' },
-      { chave: 'dre', label: 'CNH a Vencer', rota: '/relatorios/cnh-vencimento' },
+      { chave: 'dre', label: 'DRE', rota: '/dre', secao: 'Financeiro' },
+      { chave: 'dre', label: 'Saldos em Aberto', rota: '/relatorios/saldos-em-aberto', secao: 'Financeiro' },
+      { chave: 'dre', label: 'Relatorio de Despesas', rota: '/relatorios/despesas', secao: 'Financeiro' },
+      { chave: 'dre', label: 'Relatorio de Fretes/Receitas', rota: '/relatorios/fretes', secao: 'Financeiro' },
+      { chave: 'dre', label: 'Extrato Conta Corrente Motorista', rota: '/relatorios/conta-corrente-motorista', secao: 'Financeiro' },
+      { chave: 'dre', label: 'Despesas Fixas por Categoria', rota: '/relatorios/despesas-fixas', secao: 'Financeiro' },
+      { chave: 'dre', label: 'Parcelas de Financiamento', rota: '/relatorios/parcelas-financiamento', secao: 'Financeiro' },
+      { chave: 'dre', label: 'Custo de Manutencao por Veiculo', rota: '/relatorios/manutencao-custo', secao: 'Frota' },
+      { chave: 'dre', label: 'Historico de Manutencao', rota: '/relatorios/manutencao-historico', secao: 'Frota' },
+      { chave: 'dre', label: 'Posicao e Consumo de Estoque', rota: '/relatorios/estoque', secao: 'Frota' },
+      { chave: 'dre', label: 'Pneus - Custo e Vida Util', rota: '/relatorios/pneus', secao: 'Frota' },
+      { chave: 'dre', label: 'Alertas de Manutencao', rota: '/relatorios/alertas', secao: 'Frota' },
+      { chave: 'dre', label: 'Multas por Motorista/Veiculo', rota: '/relatorios/multas', secao: 'Compliance' },
+      { chave: 'dre', label: 'CNH a Vencer', rota: '/relatorios/cnh-vencimento', secao: 'Compliance' },
     ],
   },
 ];
