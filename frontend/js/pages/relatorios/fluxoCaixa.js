@@ -3,6 +3,7 @@ import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
+import { periodoAnteriorEquivalente, renderComparativoPeriodo } from '../../components/comparativoPeriodo.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
 
 const ORIGEM_LABEL = {
@@ -31,8 +32,13 @@ export async function render(container) {
       </div>
       <div><label class="label">Data de</label><input type="text" class="input" data-filtro-data-de placeholder="dd/mm/aaaa" /></div>
       <div><label class="label">Data ate</label><input type="text" class="input" data-filtro-data-ate placeholder="dd/mm/aaaa" /></div>
+      <div class="flex items-center gap-2 pt-6">
+        <input type="checkbox" id="comparar-periodo" class="h-4 w-4" data-comparar-periodo />
+        <label for="comparar-periodo" class="text-sm text-slate-700">Comparar com periodo anterior</label>
+      </div>
     </div>
     <div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3" data-resumo></div>
+    <div data-comparativo-periodo></div>
     <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
       <div data-relatorios-salvos></div>
       <button type="button" class="btn-secondary btn-sm" data-exportar-pdf>Exportar PDF</button>
@@ -47,11 +53,43 @@ export async function render(container) {
   const selectTipo = container.querySelector('[data-filtro-tipo]');
   const inputDataDe = container.querySelector('[data-filtro-data-de]');
   const inputDataAte = container.querySelector('[data-filtro-data-ate]');
+  const checkComparar = container.querySelector('[data-comparar-periodo]');
   const resumoEl = container.querySelector('[data-resumo]');
+  const comparativoEl = container.querySelector('[data-comparativo-periodo]');
   selectTipo.addEventListener('change', () => tabela.recarregar());
+  checkComparar.addEventListener('change', () => tabela.recarregar());
   for (const input of [inputDataDe, inputDataAte]) {
     attachDataMask(input);
     input.addEventListener('change', () => tabela.recarregar());
+  }
+
+  // Refaz a mesma consulta com as datas do periodo anterior EQUIVALENTE
+  // (mesma duracao, imediatamente antes) e os demais filtros intactos -
+  // reaproveita o mesmo endpoint, sem rota nova no backend.
+  async function atualizarComparativo(dadosAtuais) {
+    if (!checkComparar.checked) { comparativoEl.innerHTML = ''; return; }
+    const dataDeIso = inputDataDe.value ? parseDataBrParaIso(inputDataDe.value) : null;
+    const dataAteIso = inputDataAte.value ? parseDataBrParaIso(inputDataAte.value) : null;
+    const anterior = periodoAnteriorEquivalente(dataDeIso, dataAteIso);
+    if (!anterior) { comparativoEl.innerHTML = ''; return; }
+    const params = new URLSearchParams();
+    if (contaId) params.set('conta_bancaria_id', contaId);
+    if (selectTipo.value) params.set('tipo', selectTipo.value);
+    params.set('data_de', anterior.de);
+    params.set('data_ate', anterior.ate);
+    const dadosAnteriores = await get(`/relatorios/fluxo-caixa?${params.toString()}`);
+    const entradasAnt = dadosAnteriores.filter((r) => r.tipo === 'Entrada').reduce((t, r) => t + r.valor, 0);
+    const saidasAnt = dadosAnteriores.filter((r) => r.tipo === 'Saida').reduce((t, r) => t + r.valor, 0);
+    const entradasAtual = dadosAtuais.filter((r) => r.tipo === 'Entrada').reduce((t, r) => t + r.valor, 0);
+    const saidasAtual = dadosAtuais.filter((r) => r.tipo === 'Saida').reduce((t, r) => t + r.valor, 0);
+    renderComparativoPeriodo(comparativoEl, {
+      periodoAnteriorTexto: `${formatarDataBr(anterior.de)} a ${formatarDataBr(anterior.ate)}`,
+      indicadores: [
+        { label: 'Entradas', atual: entradasAtual, anterior: entradasAnt, formatador: formatarMoeda },
+        { label: 'Saidas', atual: saidasAtual, anterior: saidasAnt, formatador: formatarMoeda, inverterCores: true },
+        { label: 'Saldo', atual: entradasAtual - saidasAtual, anterior: entradasAnt - saidasAnt, formatador: formatarMoeda },
+      ],
+    });
   }
 
   const tabela = criarDataTable({
@@ -85,6 +123,7 @@ export async function render(container) {
         <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Saidas</p><p class="mt-1 text-2xl font-bold text-red-500">${formatarMoeda(saidas)}</p></div>
         <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Saldo do periodo filtrado</p><p class="mt-1 text-2xl font-bold ${saldo >= 0 ? 'text-slate-900' : 'text-red-500'}">${formatarMoeda(saldo)}</p></div>
       `;
+      atualizarComparativo(dados);
       return dados;
     },
     vazio: 'Nenhuma movimentacao encontrada com estes filtros.',
@@ -96,6 +135,7 @@ export async function render(container) {
     obterFiltros: () => ({
       contaId: contaSelect.getValue(), contaLabel: contaSelect.getLabel(),
       tipo: selectTipo.value, dataDe: inputDataDe.value, dataAte: inputDataAte.value,
+      comparar: checkComparar.checked,
     }),
     aplicarFiltros: (f) => {
       contaId = f.contaId || null;
@@ -103,6 +143,7 @@ export async function render(container) {
       selectTipo.value = f.tipo || '';
       inputDataDe.value = f.dataDe || '';
       inputDataAte.value = f.dataAte || '';
+      checkComparar.checked = Boolean(f.comparar);
       tabela.recarregar();
     },
   });

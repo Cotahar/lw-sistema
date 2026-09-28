@@ -4,6 +4,7 @@ import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { criarMultiSearchableSelect } from '../../components/multiSearchableSelect.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
+import { periodoAnteriorEquivalente, renderComparativoPeriodo } from '../../components/comparativoPeriodo.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
 
 // Sem badge de cor no status aqui (diferente de contasReceber.js/
@@ -60,6 +61,10 @@ export async function render(container) {
       <div><label class="label">Transportadora</label><div data-filtro-transportadora></div></div>
       <div><label class="label">Carregamento de</label><input type="text" class="input" data-filtro-data-de placeholder="dd/mm/aaaa" /></div>
       <div><label class="label">Carregamento ate</label><input type="text" class="input" data-filtro-data-ate placeholder="dd/mm/aaaa" /></div>
+      <div class="flex items-center gap-2 pt-6">
+        <input type="checkbox" id="comparar-periodo" class="h-4 w-4" data-comparar-periodo />
+        <label for="comparar-periodo" class="text-sm text-slate-700">Comparar com periodo anterior</label>
+      </div>
     </div>
     <div class="card mb-4 p-4">
       <div class="mb-3 flex flex-wrap items-end justify-between gap-3">
@@ -81,6 +86,7 @@ export async function render(container) {
       </div>
     </div>
     <div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2" data-resumo></div>
+    <div data-comparativo-periodo></div>
     <div class="mb-4" data-resumo-grupo></div>
     <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
       <div data-relatorios-salvos></div>
@@ -92,7 +98,9 @@ export async function render(container) {
   const inputDataDe = container.querySelector('[data-filtro-data-de]');
   const inputDataAte = container.querySelector('[data-filtro-data-ate]');
   const selectAgrupar = container.querySelector('[data-agrupar]');
+  const checkComparar = container.querySelector('[data-comparar-periodo]');
   const resumoEl = container.querySelector('[data-resumo]');
+  const comparativoEl = container.querySelector('[data-comparativo-periodo]');
   const resumoGrupoEl = container.querySelector('[data-resumo-grupo]');
   const tabelaContainer = container.querySelector('[data-tabela]');
 
@@ -113,6 +121,32 @@ export async function render(container) {
   attachDataMask(inputDataAte);
   for (const el of [inputDataDe, inputDataAte]) el.addEventListener('change', () => recarregarDados());
   selectAgrupar.addEventListener('change', () => recarregarDados());
+  checkComparar.addEventListener('change', () => recarregarDados());
+
+  async function atualizarComparativo(dadosAtuais) {
+    if (!checkComparar.checked) { comparativoEl.innerHTML = ''; return; }
+    const dataDeIso = inputDataDe.value ? parseDataBrParaIso(inputDataDe.value) : null;
+    const dataAteIso = inputDataAte.value ? parseDataBrParaIso(inputDataAte.value) : null;
+    const anterior = periodoAnteriorEquivalente(dataDeIso, dataAteIso);
+    if (!anterior) { comparativoEl.innerHTML = ''; return; }
+    const params = new URLSearchParams();
+    for (const id of veiculoSelect.getValues()) params.append('veiculo_id', id);
+    for (const id of motoristaSelect.getValues()) params.append('motorista_id', id);
+    for (const id of viagemSelect.getValues()) params.append('viagem_id', id);
+    if (transportadoraId) params.set('transportadora_id', transportadoraId);
+    params.set('data_carregamento_de', anterior.de);
+    params.set('data_carregamento_ate', anterior.ate);
+    const dadosAnteriores = await get(`/relatorios/fretes?${params.toString()}`);
+    const totalAnterior = dadosAnteriores.reduce((t, r) => t + r.valor, 0);
+    const totalAtual = dadosAtuais.reduce((t, r) => t + r.valor, 0);
+    renderComparativoPeriodo(comparativoEl, {
+      periodoAnteriorTexto: `${formatarDataBr(anterior.de)} a ${formatarDataBr(anterior.ate)}`,
+      indicadores: [
+        { label: 'Frete bruto total', atual: totalAtual, anterior: totalAnterior, formatador: formatarMoeda },
+        { label: 'Fretes', atual: dadosAtuais.length, anterior: dadosAnteriores.length, formatador: (v) => v.toLocaleString('pt-BR') },
+      ],
+    });
+  }
 
   function colunasSelecionadas() {
     return CATALOGO_COLUNAS.filter((c) => container.querySelector(`[data-coluna="${c.chave}"]`).checked);
@@ -184,6 +218,7 @@ export async function render(container) {
           <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Saldo ainda pendente</p><p class="mt-1 text-2xl font-bold text-amber-400">${formatarMoeda(pendente)}</p></div>
         `;
         renderResumoGrupo(dados);
+        atualizarComparativo(dados);
         return dados;
       },
       vazio: 'Nenhum frete encontrado com estes filtros.',
@@ -204,6 +239,7 @@ export async function render(container) {
       dataDe: inputDataDe.value, dataAte: inputDataAte.value,
       agrupar: selectAgrupar.value,
       colunas: colunasSelecionadas().map((c) => c.chave),
+      comparar: checkComparar.checked,
     }),
     aplicarFiltros: (f) => {
       veiculoSelect.setValues(f.veiculoIds || [], f.veiculoLabels || []);
@@ -217,6 +253,7 @@ export async function render(container) {
       if (Array.isArray(f.colunas)) {
         container.querySelectorAll('[data-coluna]').forEach((chk) => { chk.checked = f.colunas.includes(chk.dataset.coluna); });
       }
+      checkComparar.checked = Boolean(f.comparar);
       montarTabela();
     },
   });
