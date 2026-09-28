@@ -2,6 +2,7 @@ import { get } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
+import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
 
 // Sem badge de cor no status aqui (diferente de contasReceber.js/
@@ -80,7 +81,10 @@ export async function render(container) {
     </div>
     <div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2" data-resumo></div>
     <div class="mb-4" data-resumo-grupo></div>
-    <div class="mb-3 flex justify-end"><button type="button" class="btn-secondary btn-sm" data-exportar-pdf>Exportar PDF</button></div>
+    <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <div data-relatorios-salvos></div>
+      <button type="button" class="btn-secondary btn-sm" data-exportar-pdf>Exportar PDF</button>
+    </div>
     <div data-tabela></div>
   `;
 
@@ -191,6 +195,37 @@ export async function render(container) {
 
   container.querySelectorAll('[data-coluna]').forEach((chk) => chk.addEventListener('change', montarTabela));
   montarTabela();
+
+  const relatoriosSalvos = criarRelatoriosSalvos({
+    rota: '/relatorios/fretes',
+    obterFiltros: () => ({
+      veiculoId, veiculoLabel: veiculoSelect.getLabel(),
+      motoristaId, motoristaLabel: motoristaSelect.getLabel(),
+      viagemId, viagemLabel: viagemSelect.getLabel(),
+      transportadoraId, transportadoraLabel: transportadoraSelect.getLabel(),
+      dataDe: inputDataDe.value, dataAte: inputDataAte.value,
+      agrupar: selectAgrupar.value,
+      colunas: colunasSelecionadas().map((c) => c.chave),
+    }),
+    aplicarFiltros: (f) => {
+      veiculoId = f.veiculoId || null;
+      veiculoSelect.setValue(f.veiculoId || null, f.veiculoLabel || '');
+      motoristaId = f.motoristaId || null;
+      motoristaSelect.setValue(f.motoristaId || null, f.motoristaLabel || '');
+      viagemId = f.viagemId || null;
+      viagemSelect.setValue(f.viagemId || null, f.viagemLabel || '');
+      transportadoraId = f.transportadoraId || null;
+      transportadoraSelect.setValue(f.transportadoraId || null, f.transportadoraLabel || '');
+      inputDataDe.value = f.dataDe || '';
+      inputDataAte.value = f.dataAte || '';
+      selectAgrupar.value = f.agrupar || '';
+      if (Array.isArray(f.colunas)) {
+        container.querySelectorAll('[data-coluna]').forEach((chk) => { chk.checked = f.colunas.includes(chk.dataset.coluna); });
+      }
+      montarTabela();
+    },
+  });
+  container.querySelector('[data-relatorios-salvos]').appendChild(relatoriosSalvos.el);
 
   container.querySelector('[data-exportar-pdf]').addEventListener('click', () => {
     const dados = tabela.dados();

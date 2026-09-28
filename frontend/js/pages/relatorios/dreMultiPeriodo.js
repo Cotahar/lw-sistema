@@ -1,6 +1,7 @@
 import { get } from '../../api.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
+import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda } from '../../masks.js';
 
 async function buscarVeiculos(termo) {
@@ -23,7 +24,10 @@ export async function render(container) {
       </div>
       <div><label class="label">Veiculo (opcional, geral se vazio)</label><div data-filtro-veiculo></div></div>
     </div>
-    <div class="mb-3 flex justify-end"><button type="button" class="btn-secondary btn-sm" data-exportar-pdf>Exportar PDF</button></div>
+    <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <div data-relatorios-salvos></div>
+      <button type="button" class="btn-secondary btn-sm" data-exportar-pdf>Exportar PDF</button>
+    </div>
     <div class="card overflow-x-auto border-gray-300 p-0" data-tabela></div>
   `;
 
@@ -64,6 +68,18 @@ export async function render(container) {
     const resultado = await get(`/relatorios/dre-multi-periodo?${params.toString()}`);
     renderTabela(resultado);
   }
+
+  const relatoriosSalvos = criarRelatoriosSalvos({
+    rota: '/relatorios/dre-multi-periodo',
+    obterFiltros: () => ({ meses: selectMeses.value, veiculoId, veiculoLabel: veiculoSelect.getLabel() }),
+    aplicarFiltros: (f) => {
+      selectMeses.value = f.meses || '6';
+      veiculoId = f.veiculoId || null;
+      veiculoSelect.setValue(f.veiculoId || null, f.veiculoLabel || '');
+      atualizar();
+    },
+  });
+  container.querySelector('[data-relatorios-salvos]').appendChild(relatoriosSalvos.el);
 
   container.querySelector('[data-exportar-pdf]').addEventListener('click', () => {
     if (!ultimoResultado) return;

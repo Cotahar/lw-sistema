@@ -1,6 +1,7 @@
 import { get } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
+import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda, hojeIsoLocal, attachDataMask, parseDataBrParaIso } from '../../masks.js';
 
 function primeiroDiaMesAtualIso() {
@@ -16,7 +17,10 @@ export async function render(container) {
       <div><label class="label">De</label><input type="text" class="input" data-filtro-data-de placeholder="dd/mm/aaaa" /></div>
       <div><label class="label">Ate</label><input type="text" class="input" data-filtro-data-ate placeholder="dd/mm/aaaa" /></div>
     </div>
-    <div class="mb-3 flex justify-end"><button type="button" class="btn-secondary btn-sm" data-exportar-pdf>Exportar PDF</button></div>
+    <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <div data-relatorios-salvos></div>
+      <button type="button" class="btn-secondary btn-sm" data-exportar-pdf>Exportar PDF</button>
+    </div>
     <div data-tabela></div>
   `;
 
@@ -47,6 +51,17 @@ export async function render(container) {
     vazio: 'Nenhum motorista encontrado.',
   });
   container.querySelector('[data-tabela]').appendChild(tabela.el);
+
+  const relatoriosSalvos = criarRelatoriosSalvos({
+    rota: '/relatorios/ranking-motoristas',
+    obterFiltros: () => ({ dataDe: inputDataDe.value, dataAte: inputDataAte.value }),
+    aplicarFiltros: (f) => {
+      inputDataDe.value = f.dataDe || '';
+      inputDataAte.value = f.dataAte || '';
+      tabela.recarregar();
+    },
+  });
+  container.querySelector('[data-relatorios-salvos]').appendChild(relatoriosSalvos.el);
 
   container.querySelector('[data-exportar-pdf]').addEventListener('click', () => {
     const dados = tabela.dados();

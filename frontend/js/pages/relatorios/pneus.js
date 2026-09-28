@@ -2,6 +2,7 @@ import { get } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
+import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
 
 const TIPOS_EVENTO = ['Aquisicao', 'Instalacao', 'Remocao', 'EnvioRecapagem', 'RetornoRecapagem', 'Sucateamento'];
@@ -29,10 +30,13 @@ export async function render(container) {
         <div><label class="label">Data ate</label><input type="text" class="input" data-filtro-data-ate placeholder="dd/mm/aaaa" /></div>
       </div>
     </div>
-    <div class="mb-4 flex items-center justify-end gap-2">
-      <input type="checkbox" id="agrupar-pneu" class="h-4 w-4" data-agrupar-pneu />
-      <label for="agrupar-pneu" class="text-sm text-slate-700">Agrupar por pneu (custo total e km rodado)</label>
-      <button type="button" class="btn-secondary btn-sm ml-4" data-exportar-pdf>Exportar PDF</button>
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+      <div data-relatorios-salvos></div>
+      <div class="flex items-center gap-2">
+        <input type="checkbox" id="agrupar-pneu" class="h-4 w-4" data-agrupar-pneu />
+        <label for="agrupar-pneu" class="text-sm text-slate-700">Agrupar por pneu (custo total e km rodado)</label>
+        <button type="button" class="btn-secondary btn-sm ml-4" data-exportar-pdf>Exportar PDF</button>
+      </div>
     </div>
     <div class="mb-4" data-resumo-grupo></div>
     <div data-tabela></div>
@@ -136,6 +140,26 @@ export async function render(container) {
     vazio: 'Nenhum evento de pneu encontrado com estes filtros.',
   });
   container.querySelector('[data-tabela]').appendChild(tabela.el);
+
+  const relatoriosSalvos = criarRelatoriosSalvos({
+    rota: '/relatorios/pneus',
+    obterFiltros: () => ({
+      veiculoId, veiculoLabel: veiculoSelect.getLabel(),
+      fogo: inputFogo.value, tipoEvento: selectTipoEvento.value,
+      dataDe: inputDataDe.value, dataAte: inputDataAte.value, agrupar: checkAgrupar.checked,
+    }),
+    aplicarFiltros: (f) => {
+      veiculoId = f.veiculoId || null;
+      veiculoSelect.setValue(f.veiculoId || null, f.veiculoLabel || '');
+      inputFogo.value = f.fogo || '';
+      selectTipoEvento.value = f.tipoEvento || '';
+      inputDataDe.value = f.dataDe || '';
+      inputDataAte.value = f.dataAte || '';
+      checkAgrupar.checked = Boolean(f.agrupar);
+      tabela.recarregar();
+    },
+  });
+  container.querySelector('[data-relatorios-salvos]').appendChild(relatoriosSalvos.el);
 
   container.querySelector('[data-exportar-pdf]').addEventListener('click', () => {
     const dados = tabela.dados();

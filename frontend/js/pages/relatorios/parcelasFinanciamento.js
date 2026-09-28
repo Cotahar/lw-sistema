@@ -2,6 +2,7 @@ import { get } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
+import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
 
 const STATUS_BADGE = { Pendente: 'badge-atencao', Paga: 'badge-sucesso', Atrasada: 'badge-critico' };
@@ -28,7 +29,10 @@ export async function render(container) {
       <div><label class="label">Vencimento de</label><input type="text" class="input" data-filtro-data-de placeholder="dd/mm/aaaa" /></div>
       <div><label class="label">Vencimento ate</label><input type="text" class="input" data-filtro-data-ate placeholder="dd/mm/aaaa" /></div>
     </div>
-    <div class="mb-3 flex justify-end"><button type="button" class="btn-secondary btn-sm" data-exportar-pdf>Exportar PDF</button></div>
+    <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <div data-relatorios-salvos></div>
+      <button type="button" class="btn-secondary btn-sm" data-exportar-pdf>Exportar PDF</button>
+    </div>
     <div data-tabela></div>
   `;
 
@@ -73,6 +77,23 @@ export async function render(container) {
     vazio: 'Nenhuma parcela encontrada com estes filtros.',
   });
   container.querySelector('[data-tabela]').appendChild(tabela.el);
+
+  const relatoriosSalvos = criarRelatoriosSalvos({
+    rota: '/relatorios/parcelas-financiamento',
+    obterFiltros: () => ({
+      veiculoId, veiculoLabel: veiculoSelect.getLabel(),
+      status: selectStatus.value, dataDe: inputDataDe.value, dataAte: inputDataAte.value,
+    }),
+    aplicarFiltros: (f) => {
+      veiculoId = f.veiculoId || null;
+      veiculoSelect.setValue(f.veiculoId || null, f.veiculoLabel || '');
+      selectStatus.value = f.status || '';
+      inputDataDe.value = f.dataDe || '';
+      inputDataAte.value = f.dataAte || '';
+      tabela.recarregar();
+    },
+  });
+  container.querySelector('[data-relatorios-salvos]').appendChild(relatoriosSalvos.el);
 
   container.querySelector('[data-exportar-pdf]').addEventListener('click', () => {
     const dados = tabela.dados();

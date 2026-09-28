@@ -2,6 +2,7 @@ import { get } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
+import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
 
 const ORIGEM_LABEL = {
@@ -32,7 +33,10 @@ export async function render(container) {
       <div><label class="label">Data ate</label><input type="text" class="input" data-filtro-data-ate placeholder="dd/mm/aaaa" /></div>
     </div>
     <div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3" data-resumo></div>
-    <div class="mb-3 flex justify-end"><button type="button" class="btn-secondary btn-sm" data-exportar-pdf>Exportar PDF</button></div>
+    <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <div data-relatorios-salvos></div>
+      <button type="button" class="btn-secondary btn-sm" data-exportar-pdf>Exportar PDF</button>
+    </div>
     <div data-tabela></div>
   `;
 
@@ -86,6 +90,23 @@ export async function render(container) {
     vazio: 'Nenhuma movimentacao encontrada com estes filtros.',
   });
   container.querySelector('[data-tabela]').appendChild(tabela.el);
+
+  const relatoriosSalvos = criarRelatoriosSalvos({
+    rota: '/relatorios/fluxo-caixa',
+    obterFiltros: () => ({
+      contaId: contaSelect.getValue(), contaLabel: contaSelect.getLabel(),
+      tipo: selectTipo.value, dataDe: inputDataDe.value, dataAte: inputDataAte.value,
+    }),
+    aplicarFiltros: (f) => {
+      contaId = f.contaId || null;
+      contaSelect.setValue(f.contaId || null, f.contaLabel || '');
+      selectTipo.value = f.tipo || '';
+      inputDataDe.value = f.dataDe || '';
+      inputDataAte.value = f.dataAte || '';
+      tabela.recarregar();
+    },
+  });
+  container.querySelector('[data-relatorios-salvos]').appendChild(relatoriosSalvos.el);
 
   container.querySelector('[data-exportar-pdf]').addEventListener('click', () => {
     const dados = tabela.dados();

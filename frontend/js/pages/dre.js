@@ -1,6 +1,7 @@
 import { get } from '../api.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { mostrarErro } from '../components/toast.js';
+import { criarRelatoriosSalvos } from '../components/relatoriosSalvos.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso, hojeIsoLocal } from '../masks.js';
 
 // Periodo padrao ao abrir a tela: mes corrente (dia 1 ate hoje) - antes
@@ -244,11 +245,14 @@ export async function render(container) {
         <div class="sm:col-span-2"><label class="label">Veiculo (opcional, deixe vazio para DRE geral)</label><div data-veiculo></div></div>
         <div class="flex items-end"><button type="button" class="btn-secondary w-full" data-exportar-pdf>Exportar PDF</button></div>
       </div>
-      <div class="mt-3 flex flex-wrap gap-2">
-        <button type="button" class="btn-secondary btn-sm" data-atalho="7dias">Ultimos 7 dias</button>
-        <button type="button" class="btn-secondary btn-sm" data-atalho="30dias">Ultimos 30 dias</button>
-        <button type="button" class="btn-secondary btn-sm" data-atalho="mesAtual">Este mes</button>
-        <button type="button" class="btn-secondary btn-sm" data-atalho="mesPassado">Mes passado</button>
+      <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex flex-wrap gap-2">
+          <button type="button" class="btn-secondary btn-sm" data-atalho="7dias">Ultimos 7 dias</button>
+          <button type="button" class="btn-secondary btn-sm" data-atalho="30dias">Ultimos 30 dias</button>
+          <button type="button" class="btn-secondary btn-sm" data-atalho="mesAtual">Este mes</button>
+          <button type="button" class="btn-secondary btn-sm" data-atalho="mesPassado">Mes passado</button>
+        </div>
+        <div data-relatorios-salvos></div>
       </div>
     </div>
     <div data-resultado></div>
@@ -294,6 +298,19 @@ export async function render(container) {
     clearTimeout(debounceId);
     debounceId = setTimeout(atualizar, 400);
   }));
+
+  const relatoriosSalvos = criarRelatoriosSalvos({
+    rota: '/dre',
+    obterFiltros: () => ({ inicio: inicioInput.value, fim: fimInput.value, veiculoId, veiculoLabel: veiculoSelect.getLabel() }),
+    aplicarFiltros: (f) => {
+      inicioInput.value = f.inicio || '';
+      fimInput.value = f.fim || '';
+      veiculoId = f.veiculoId || null;
+      veiculoSelect.setValue(f.veiculoId || null, f.veiculoLabel || '');
+      atualizar();
+    },
+  });
+  container.querySelector('[data-relatorios-salvos]').appendChild(relatoriosSalvos.el);
 
   container.querySelector('[data-exportar-pdf]').addEventListener('click', () => {
     const qs = new URLSearchParams();

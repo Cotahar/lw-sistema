@@ -2,6 +2,7 @@ import { get } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
+import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
 
 const OPCOES_AGRUPAR = [
@@ -38,10 +39,13 @@ export async function render(container) {
         <div><label class="label">Data ate</label><input type="text" class="input" data-filtro-data-ate placeholder="dd/mm/aaaa" /></div>
       </div>
     </div>
-    <div class="mb-4 flex items-end justify-between gap-3">
-      <div class="w-56">
-        <label class="label">Agrupar por</label>
-        <select class="input" data-agrupar>${OPCOES_AGRUPAR.map((o) => `<option value="${o.value}">${o.label}</option>`).join('')}</select>
+    <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+      <div class="flex flex-wrap items-end gap-3">
+        <div data-relatorios-salvos></div>
+        <div class="w-56">
+          <label class="label">Agrupar por</label>
+          <select class="input" data-agrupar>${OPCOES_AGRUPAR.map((o) => `<option value="${o.value}">${o.label}</option>`).join('')}</select>
+        </div>
       </div>
       <button type="button" class="btn-secondary btn-sm" data-exportar-pdf>Exportar PDF</button>
     </div>
@@ -140,6 +144,28 @@ export async function render(container) {
     vazio: 'Nenhuma ordem de servico encontrada com estes filtros.',
   });
   container.querySelector('[data-tabela]').appendChild(tabela.el);
+
+  const relatoriosSalvos = criarRelatoriosSalvos({
+    rota: '/relatorios/manutencao-custo',
+    obterFiltros: () => ({
+      veiculoId, veiculoLabel: veiculoSelect.getLabel(),
+      tipo: selectTipo.value,
+      oficinaId, oficinaLabel: oficinaSelect.getLabel(),
+      dataDe: inputDataDe.value, dataAte: inputDataAte.value, agrupar: selectAgrupar.value,
+    }),
+    aplicarFiltros: (f) => {
+      veiculoId = f.veiculoId || null;
+      veiculoSelect.setValue(f.veiculoId || null, f.veiculoLabel || '');
+      selectTipo.value = f.tipo || '';
+      oficinaId = f.oficinaId || null;
+      oficinaSelect.setValue(f.oficinaId || null, f.oficinaLabel || '');
+      inputDataDe.value = f.dataDe || '';
+      inputDataAte.value = f.dataAte || '';
+      selectAgrupar.value = f.agrupar || '';
+      tabela.recarregar();
+    },
+  });
+  container.querySelector('[data-relatorios-salvos]').appendChild(relatoriosSalvos.el);
 
   container.querySelector('[data-exportar-pdf]').addEventListener('click', () => {
     const dados = tabela.dados();
