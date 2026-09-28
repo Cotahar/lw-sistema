@@ -10,6 +10,17 @@ const { hojeIsoBrasilia } = require('../utils/dataHora');
 
 const router = express.Router();
 
+// Normaliza um parametro de query que pode vir como valor unico ou lista
+// (filtro multi-selecao do frontend manda varios `?campo=1&campo=2`) num
+// array sem valores vazios. Undefined/string vazia -> [] (sem filtro).
+function comoLista(valor) {
+  if (valor === undefined || valor === null || valor === '') return [];
+  return Array.isArray(valor) ? valor.filter((v) => v !== '') : [valor];
+}
+function clausulaIn(coluna, valores) {
+  return `${coluna} IN (${valores.map(() => '?').join(',')})`;
+}
+
 function placasDoConjunto(conjuntoId) {
   return db.prepare(`
     SELECT v.placa FROM conjunto_itens ci JOIN veiculos v ON v.id = ci.veiculo_id
@@ -33,8 +44,10 @@ router.get('/saldos-em-aberto', requerAcessoModulo('dre', 'Visualizar'), exigirE
   const condicoes = ['cr.empresa_id = ?', '(cr.valor - cr.valor_recebido - cr.valor_descontado) > 0'];
   const params = [req.empresaId];
 
-  if (motorista_id) { condicoes.push('vg.motorista_id = ?'); params.push(motorista_id); }
-  if (viagem_id) { condicoes.push('f.viagem_id = ?'); params.push(viagem_id); }
+  const motoristaIds = comoLista(motorista_id);
+  if (motoristaIds.length) { condicoes.push(clausulaIn('vg.motorista_id', motoristaIds)); params.push(...motoristaIds); }
+  const viagemIds = comoLista(viagem_id);
+  if (viagemIds.length) { condicoes.push(clausulaIn('f.viagem_id', viagemIds)); params.push(...viagemIds); }
   if (transportadora_id) { condicoes.push('f.transportadora_id = ?'); params.push(transportadora_id); }
   if (data_carregamento_de) { condicoes.push('f.data_carregamento >= ?'); params.push(data_carregamento_de); }
   if (data_carregamento_ate) { condicoes.push('f.data_carregamento <= ?'); params.push(data_carregamento_ate); }
@@ -44,10 +57,11 @@ router.get('/saldos-em-aberto', requerAcessoModulo('dre', 'Visualizar'), exigirE
   if (somente_vencidos === '1' || somente_vencidos === 'true') {
     condicoes.push("cr.data_prevista < date('now', '-3 hours')");
   }
-  if (veiculo_id) {
-    const centroCusto = buscarCentroCustoDoVeiculo(veiculo_id);
-    condicoes.push('cr.centro_custo_id = ?');
-    params.push(centroCusto ? centroCusto.id : -1);
+  const veiculoIds = comoLista(veiculo_id);
+  if (veiculoIds.length) {
+    const centroCustoIds = veiculoIds.map((id) => { const c = buscarCentroCustoDoVeiculo(id); return c ? c.id : -1; });
+    condicoes.push(clausulaIn('cr.centro_custo_id', centroCustoIds));
+    params.push(...centroCustoIds);
   }
 
   const linhas = db.prepare(`
@@ -97,11 +111,14 @@ router.get('/despesas', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEs
   const condicoes = ['dv.empresa_id = ?'];
   const params = [req.empresaId];
   if (categoria_id) { condicoes.push('dv.categoria_id = ?'); params.push(categoria_id); }
-  if (veiculo_id) { condicoes.push('cc.veiculo_id = ?'); params.push(veiculo_id); }
-  if (motorista_id) { condicoes.push('vg.motorista_id = ?'); params.push(motorista_id); }
+  const veiculoIds = comoLista(veiculo_id);
+  if (veiculoIds.length) { condicoes.push(clausulaIn('cc.veiculo_id', veiculoIds)); params.push(...veiculoIds); }
+  const motoristaIds = comoLista(motorista_id);
+  if (motoristaIds.length) { condicoes.push(clausulaIn('vg.motorista_id', motoristaIds)); params.push(...motoristaIds); }
   if (pago_por) { condicoes.push('dv.pago_por = ?'); params.push(pago_por); }
   if (posto_fornecedor_id) { condicoes.push('dv.posto_fornecedor_id = ?'); params.push(posto_fornecedor_id); }
-  if (viagem_id) { condicoes.push('dv.viagem_id = ?'); params.push(viagem_id); }
+  const viagemIds = comoLista(viagem_id);
+  if (viagemIds.length) { condicoes.push(clausulaIn('dv.viagem_id', viagemIds)); params.push(...viagemIds); }
   if (data_de) { condicoes.push('dv.data >= ?'); params.push(data_de); }
   if (data_ate) { condicoes.push('dv.data <= ?'); params.push(data_ate); }
 
@@ -145,15 +162,18 @@ router.get('/fretes', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspe
 
   const condicoes = ['cr.empresa_id = ?'];
   const params = [req.empresaId];
-  if (motorista_id) { condicoes.push('vg.motorista_id = ?'); params.push(motorista_id); }
-  if (viagem_id) { condicoes.push('f.viagem_id = ?'); params.push(viagem_id); }
+  const motoristaIds = comoLista(motorista_id);
+  if (motoristaIds.length) { condicoes.push(clausulaIn('vg.motorista_id', motoristaIds)); params.push(...motoristaIds); }
+  const viagemIds = comoLista(viagem_id);
+  if (viagemIds.length) { condicoes.push(clausulaIn('f.viagem_id', viagemIds)); params.push(...viagemIds); }
   if (transportadora_id) { condicoes.push('f.transportadora_id = ?'); params.push(transportadora_id); }
   if (data_carregamento_de) { condicoes.push('f.data_carregamento >= ?'); params.push(data_carregamento_de); }
   if (data_carregamento_ate) { condicoes.push('f.data_carregamento <= ?'); params.push(data_carregamento_ate); }
-  if (veiculo_id) {
-    const centroCusto = buscarCentroCustoDoVeiculo(veiculo_id);
-    condicoes.push('cr.centro_custo_id = ?');
-    params.push(centroCusto ? centroCusto.id : -1);
+  const veiculoIds = comoLista(veiculo_id);
+  if (veiculoIds.length) {
+    const centroCustoIds = veiculoIds.map((id) => { const c = buscarCentroCustoDoVeiculo(id); return c ? c.id : -1; });
+    condicoes.push(clausulaIn('cr.centro_custo_id', centroCustoIds));
+    params.push(...centroCustoIds);
   }
 
   const linhas = db.prepare(`
@@ -267,8 +287,10 @@ router.get('/multas', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspe
   const { veiculo_id, motorista_id, status, data_de, data_ate } = req.query;
   const condicoes = ['m.empresa_id = ?'];
   const params = [req.empresaId];
-  if (veiculo_id) { condicoes.push('m.veiculo_id = ?'); params.push(veiculo_id); }
-  if (motorista_id) { condicoes.push('m.motorista_id = ?'); params.push(motorista_id); }
+  const veiculoIds = comoLista(veiculo_id);
+  if (veiculoIds.length) { condicoes.push(clausulaIn('m.veiculo_id', veiculoIds)); params.push(...veiculoIds); }
+  const motoristaIds = comoLista(motorista_id);
+  if (motoristaIds.length) { condicoes.push(clausulaIn('m.motorista_id', motoristaIds)); params.push(...motoristaIds); }
   if (status) { condicoes.push('m.status = ?'); params.push(status); }
   if (data_de) { condicoes.push("COALESCE(m.data_infracao, m.data_notificacao) >= ?"); params.push(data_de); }
   if (data_ate) { condicoes.push("COALESCE(m.data_infracao, m.data_notificacao) <= ?"); params.push(data_ate); }
@@ -553,9 +575,11 @@ router.get('/divergencia-consumo', requerAcessoModulo('dre', 'Visualizar'), exig
   const limitePct = Number(limite) || 15;
   const condicoes = ['vg.empresa_id = ?', 'vg.km_final IS NOT NULL'];
   const params = [req.empresaId];
-  if (motorista_id) { condicoes.push('vg.motorista_id = ?'); params.push(motorista_id); }
+  const motoristaIds = comoLista(motorista_id);
+  if (motoristaIds.length) { condicoes.push(clausulaIn('vg.motorista_id', motoristaIds)); params.push(...motoristaIds); }
   if (data_de) { condicoes.push('vg.data_inicio >= ?'); params.push(data_de); }
   if (data_ate) { condicoes.push('vg.data_inicio <= ?'); params.push(data_ate); }
+  const veiculoIds = comoLista(veiculo_id).map(String);
   const viagens = db.prepare(`SELECT vg.* FROM viagens vg WHERE ${condicoes.join(' AND ')} ORDER BY vg.data_inicio DESC`).all(...params);
   const categoriaAbastecimentoId = buscarCategoriaAbastecimentoId();
 
@@ -563,7 +587,7 @@ router.get('/divergencia-consumo', requerAcessoModulo('dre', 'Visualizar'), exig
   for (const viagem of viagens) {
     const tratora = buscarUnidadeTratora(viagem.conjunto_id);
     if (!tratora) continue;
-    if (veiculo_id && String(tratora.id) !== String(veiculo_id)) continue;
+    if (veiculoIds.length && !veiculoIds.includes(String(tratora.id))) continue;
     const centroCusto = buscarCentroCustoDoVeiculo(tratora.id);
     if (!centroCusto) continue;
 
@@ -659,17 +683,19 @@ router.get('/viagens', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEsp
   const { veiculo_id, motorista_id, status, data_de, data_ate } = req.query;
   const condicoes = ['vg.empresa_id = ?'];
   const params = [req.empresaId];
-  if (motorista_id) { condicoes.push('vg.motorista_id = ?'); params.push(motorista_id); }
+  const motoristaIds = comoLista(motorista_id);
+  if (motoristaIds.length) { condicoes.push(clausulaIn('vg.motorista_id', motoristaIds)); params.push(...motoristaIds); }
   if (status) { condicoes.push('vg.status = ?'); params.push(status); }
   if (data_de) { condicoes.push('vg.data_inicio >= ?'); params.push(data_de); }
   if (data_ate) { condicoes.push('vg.data_inicio <= ?'); params.push(data_ate); }
+  const veiculoIds = comoLista(veiculo_id).map(String);
   const viagens = db.prepare(`SELECT vg.* FROM viagens vg WHERE ${condicoes.join(' AND ')} ORDER BY vg.data_inicio DESC`).all(...params);
   const categoriaAbastecimentoId = buscarCategoriaAbastecimentoId();
 
   const linhas = [];
   for (const viagem of viagens) {
     const tratora = buscarUnidadeTratora(viagem.conjunto_id);
-    if (veiculo_id && (!tratora || String(tratora.id) !== String(veiculo_id))) continue;
+    if (veiculoIds.length && (!tratora || !veiculoIds.includes(String(tratora.id)))) continue;
     const motorista = db.prepare('SELECT nome FROM motoristas WHERE id = ?').get(viagem.motorista_id);
     const freteBruto = db.prepare('SELECT COALESCE(SUM(frete_bruto), 0) AS t FROM fretes WHERE viagem_id = ?').get(viagem.id).t;
     const despesasTotal = db.prepare('SELECT COALESCE(SUM(valor), 0) AS t FROM despesas_viagem WHERE viagem_id = ?').get(viagem.id).t;

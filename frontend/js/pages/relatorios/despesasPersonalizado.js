@@ -1,6 +1,7 @@
 import { get } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
+import { criarMultiSearchableSelect } from '../../components/multiSearchableSelect.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
@@ -145,9 +146,6 @@ export async function render(container) {
   const resumoGrupoEl = container.querySelector('[data-resumo-grupo]');
   const tabelaContainer = container.querySelector('[data-tabela]');
 
-  let veiculoId = null;
-  let motoristaId = null;
-  let viagemId = null;
   let fornecedorId = null;
 
   // Recarrega so a listagem (filtros mudaram) - nao precisa reconstruir a
@@ -155,11 +153,11 @@ export async function render(container) {
   let tabela = null;
   function recarregarDados() { if (tabela) tabela.recarregar(); }
 
-  const veiculoSelect = criarSearchableSelect({ buscar: buscarVeiculos, placeholder: 'Pesquisar placa...', onChange: (id) => { veiculoId = id; recarregarDados(); } });
+  const veiculoSelect = criarMultiSearchableSelect({ buscar: buscarVeiculos, placeholder: 'Pesquisar placa...', onChange: () => recarregarDados() });
   container.querySelector('[data-filtro-veiculo]').appendChild(veiculoSelect.el);
-  const motoristaSelect = criarSearchableSelect({ buscar: buscarMotoristas, placeholder: 'Pesquisar motorista...', onChange: (id) => { motoristaId = id; recarregarDados(); } });
+  const motoristaSelect = criarMultiSearchableSelect({ buscar: buscarMotoristas, placeholder: 'Pesquisar motorista...', onChange: () => recarregarDados() });
   container.querySelector('[data-filtro-motorista]').appendChild(motoristaSelect.el);
-  const viagemSelect = criarSearchableSelect({ buscar: buscarViagens, placeholder: 'Pesquisar viagem...', onChange: (id) => { viagemId = id; recarregarDados(); } });
+  const viagemSelect = criarMultiSearchableSelect({ buscar: buscarViagens, placeholder: 'Pesquisar viagem...', onChange: () => recarregarDados() });
   container.querySelector('[data-filtro-viagem]').appendChild(viagemSelect.el);
   const fornecedorSelect = criarSearchableSelect({ buscar: buscarFornecedores, placeholder: 'Pesquisar fornecedor...', onChange: (id) => { fornecedorId = id; recarregarDados(); } });
   container.querySelector('[data-filtro-fornecedor]').appendChild(fornecedorSelect.el);
@@ -229,9 +227,9 @@ export async function render(container) {
       buscarDados: async (termo) => {
         const params = new URLSearchParams();
         if (selectCategoria.value) params.set('categoria_id', selectCategoria.value);
-        if (veiculoId) params.set('veiculo_id', veiculoId);
-        if (motoristaId) params.set('motorista_id', motoristaId);
-        if (viagemId) params.set('viagem_id', viagemId);
+        for (const id of veiculoSelect.getValues()) params.append('veiculo_id', id);
+        for (const id of motoristaSelect.getValues()) params.append('motorista_id', id);
+        for (const id of viagemSelect.getValues()) params.append('viagem_id', id);
         if (selectPagoPor.value) params.set('pago_por', selectPagoPor.value);
         if (fornecedorId) params.set('posto_fornecedor_id', fornecedorId);
         if (inputDataDe.value) params.set('data_de', parseDataBrParaIso(inputDataDe.value));
@@ -263,9 +261,9 @@ export async function render(container) {
     rota: '/relatorios/despesas',
     obterFiltros: () => ({
       categoriaId: selectCategoria.value,
-      veiculoId, veiculoLabel: veiculoSelect.getLabel(),
-      motoristaId, motoristaLabel: motoristaSelect.getLabel(),
-      viagemId, viagemLabel: viagemSelect.getLabel(),
+      veiculoIds: veiculoSelect.getValues(), veiculoLabels: veiculoSelect.getLabels(),
+      motoristaIds: motoristaSelect.getValues(), motoristaLabels: motoristaSelect.getLabels(),
+      viagemIds: viagemSelect.getValues(), viagemLabels: viagemSelect.getLabels(),
       pagoPor: selectPagoPor.value,
       fornecedorId, fornecedorLabel: fornecedorSelect.getLabel(),
       dataDe: inputDataDe.value, dataAte: inputDataAte.value,
@@ -274,12 +272,9 @@ export async function render(container) {
     }),
     aplicarFiltros: (f) => {
       selectCategoria.value = f.categoriaId || '';
-      veiculoId = f.veiculoId || null;
-      veiculoSelect.setValue(f.veiculoId || null, f.veiculoLabel || '');
-      motoristaId = f.motoristaId || null;
-      motoristaSelect.setValue(f.motoristaId || null, f.motoristaLabel || '');
-      viagemId = f.viagemId || null;
-      viagemSelect.setValue(f.viagemId || null, f.viagemLabel || '');
+      veiculoSelect.setValues(f.veiculoIds || [], f.veiculoLabels || []);
+      motoristaSelect.setValues(f.motoristaIds || [], f.motoristaLabels || []);
+      viagemSelect.setValues(f.viagemIds || [], f.viagemLabels || []);
       selectPagoPor.value = f.pagoPor || '';
       fornecedorId = f.fornecedorId || null;
       fornecedorSelect.setValue(f.fornecedorId || null, f.fornecedorLabel || '');
@@ -297,9 +292,9 @@ export async function render(container) {
   function filtrosAtivos() {
     const filtros = [];
     if (selectCategoria.value) filtros.push(`Categoria: ${selectCategoria.options[selectCategoria.selectedIndex].text}`);
-    if (veiculoSelect.getValue()) filtros.push(`Veiculo: ${veiculoSelect.getLabel()}`);
-    if (motoristaSelect.getValue()) filtros.push(`Motorista: ${motoristaSelect.getLabel()}`);
-    if (viagemSelect.getValue()) filtros.push(`Viagem: ${viagemSelect.getLabel()}`);
+    if (veiculoSelect.getValues().length) filtros.push(`Veiculo: ${veiculoSelect.getLabels().join(', ')}`);
+    if (motoristaSelect.getValues().length) filtros.push(`Motorista: ${motoristaSelect.getLabels().join(', ')}`);
+    if (viagemSelect.getValues().length) filtros.push(`Viagem: ${viagemSelect.getLabels().join(', ')}`);
     if (selectPagoPor.value) filtros.push(`Pago por: ${selectPagoPor.value}`);
     if (fornecedorSelect.getValue()) filtros.push(`Fornecedor: ${fornecedorSelect.getLabel()}`);
     if (inputDataDe.value) filtros.push(`Data de: ${inputDataDe.value}`);

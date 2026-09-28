@@ -1,6 +1,6 @@
 import { get } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
-import { criarSearchableSelect } from '../../components/searchableSelect.js';
+import { criarMultiSearchableSelect } from '../../components/multiSearchableSelect.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
@@ -45,11 +45,9 @@ export async function render(container) {
     <div data-tabela></div>
   `;
 
-  let veiculoId = null;
-  let motoristaId = null;
-  const veiculoSelect = criarSearchableSelect({ buscar: buscarVeiculos, placeholder: 'Pesquisar placa...', onChange: (id) => { veiculoId = id; tabela.recarregar(); } });
+  const veiculoSelect = criarMultiSearchableSelect({ buscar: buscarVeiculos, placeholder: 'Pesquisar placa...', onChange: () => tabela.recarregar() });
   container.querySelector('[data-filtro-veiculo]').appendChild(veiculoSelect.el);
-  const motoristaSelect = criarSearchableSelect({ buscar: buscarMotoristas, placeholder: 'Pesquisar motorista...', onChange: (id) => { motoristaId = id; tabela.recarregar(); } });
+  const motoristaSelect = criarMultiSearchableSelect({ buscar: buscarMotoristas, placeholder: 'Pesquisar motorista...', onChange: () => tabela.recarregar() });
   container.querySelector('[data-filtro-motorista]').appendChild(motoristaSelect.el);
 
   const selectStatus = container.querySelector('[data-filtro-status]');
@@ -77,8 +75,8 @@ export async function render(container) {
     exportar: { nomeArquivo: 'multas' },
     buscarDados: async (termo) => {
       const params = new URLSearchParams();
-      if (veiculoId) params.set('veiculo_id', veiculoId);
-      if (motoristaId) params.set('motorista_id', motoristaId);
+      for (const id of veiculoSelect.getValues()) params.append('veiculo_id', id);
+      for (const id of motoristaSelect.getValues()) params.append('motorista_id', id);
       if (selectStatus.value) params.set('status', selectStatus.value);
       if (inputDataDe.value) params.set('data_de', parseDataBrParaIso(inputDataDe.value));
       if (inputDataAte.value) params.set('data_ate', parseDataBrParaIso(inputDataAte.value));
@@ -102,15 +100,13 @@ export async function render(container) {
   const relatoriosSalvos = criarRelatoriosSalvos({
     rota: '/relatorios/multas',
     obterFiltros: () => ({
-      veiculoId, veiculoLabel: veiculoSelect.getLabel(),
-      motoristaId, motoristaLabel: motoristaSelect.getLabel(),
+      veiculoIds: veiculoSelect.getValues(), veiculoLabels: veiculoSelect.getLabels(),
+      motoristaIds: motoristaSelect.getValues(), motoristaLabels: motoristaSelect.getLabels(),
       status: selectStatus.value, dataDe: inputDataDe.value, dataAte: inputDataAte.value,
     }),
     aplicarFiltros: (f) => {
-      veiculoId = f.veiculoId || null;
-      veiculoSelect.setValue(f.veiculoId || null, f.veiculoLabel || '');
-      motoristaId = f.motoristaId || null;
-      motoristaSelect.setValue(f.motoristaId || null, f.motoristaLabel || '');
+      veiculoSelect.setValues(f.veiculoIds || [], f.veiculoLabels || []);
+      motoristaSelect.setValues(f.motoristaIds || [], f.motoristaLabels || []);
       selectStatus.value = f.status || '';
       inputDataDe.value = f.dataDe || '';
       inputDataAte.value = f.dataAte || '';
@@ -123,8 +119,8 @@ export async function render(container) {
     const dados = tabela.dados();
     const total = dados.reduce((t, r) => t + r.valor_original, 0);
     const filtros = [];
-    if (veiculoSelect.getValue()) filtros.push(`Veiculo: ${veiculoSelect.getLabel()}`);
-    if (motoristaSelect.getValue()) filtros.push(`Motorista: ${motoristaSelect.getLabel()}`);
+    if (veiculoSelect.getValues().length) filtros.push(`Veiculo: ${veiculoSelect.getLabels().join(', ')}`);
+    if (motoristaSelect.getValues().length) filtros.push(`Motorista: ${motoristaSelect.getLabels().join(', ')}`);
     if (selectStatus.value) filtros.push(`Status: ${selectStatus.value}`);
     if (inputDataDe.value) filtros.push(`Data de: ${inputDataDe.value}`);
     if (inputDataAte.value) filtros.push(`Data ate: ${inputDataAte.value}`);

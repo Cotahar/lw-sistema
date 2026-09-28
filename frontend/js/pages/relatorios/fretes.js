@@ -1,6 +1,7 @@
 import { get } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
+import { criarMultiSearchableSelect } from '../../components/multiSearchableSelect.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
@@ -95,18 +96,15 @@ export async function render(container) {
   const resumoGrupoEl = container.querySelector('[data-resumo-grupo]');
   const tabelaContainer = container.querySelector('[data-tabela]');
 
-  let veiculoId = null;
-  let motoristaId = null;
-  let viagemId = null;
   let transportadoraId = null;
   let tabela = null;
   function recarregarDados() { if (tabela) tabela.recarregar(); }
 
-  const veiculoSelect = criarSearchableSelect({ buscar: buscarVeiculos, placeholder: 'Pesquisar placa...', onChange: (id) => { veiculoId = id; recarregarDados(); } });
+  const veiculoSelect = criarMultiSearchableSelect({ buscar: buscarVeiculos, placeholder: 'Pesquisar placa...', onChange: () => recarregarDados() });
   container.querySelector('[data-filtro-veiculo]').appendChild(veiculoSelect.el);
-  const motoristaSelect = criarSearchableSelect({ buscar: buscarMotoristas, placeholder: 'Pesquisar motorista...', onChange: (id) => { motoristaId = id; recarregarDados(); } });
+  const motoristaSelect = criarMultiSearchableSelect({ buscar: buscarMotoristas, placeholder: 'Pesquisar motorista...', onChange: () => recarregarDados() });
   container.querySelector('[data-filtro-motorista]').appendChild(motoristaSelect.el);
-  const viagemSelect = criarSearchableSelect({ buscar: buscarViagens, placeholder: 'Pesquisar viagem...', onChange: (id) => { viagemId = id; recarregarDados(); } });
+  const viagemSelect = criarMultiSearchableSelect({ buscar: buscarViagens, placeholder: 'Pesquisar viagem...', onChange: () => recarregarDados() });
   container.querySelector('[data-filtro-viagem]').appendChild(viagemSelect.el);
   const transportadoraSelect = criarSearchableSelect({ buscar: buscarTransportadoras, placeholder: 'Pesquisar transportadora...', onChange: (id) => { transportadoraId = id; recarregarDados(); } });
   container.querySelector('[data-filtro-transportadora]').appendChild(transportadoraSelect.el);
@@ -166,9 +164,9 @@ export async function render(container) {
       exportar: { nomeArquivo: 'relatorio-fretes' },
       buscarDados: async (termo) => {
         const params = new URLSearchParams();
-        if (veiculoId) params.set('veiculo_id', veiculoId);
-        if (motoristaId) params.set('motorista_id', motoristaId);
-        if (viagemId) params.set('viagem_id', viagemId);
+        for (const id of veiculoSelect.getValues()) params.append('veiculo_id', id);
+        for (const id of motoristaSelect.getValues()) params.append('motorista_id', id);
+        for (const id of viagemSelect.getValues()) params.append('viagem_id', id);
         if (transportadoraId) params.set('transportadora_id', transportadoraId);
         if (inputDataDe.value) params.set('data_carregamento_de', parseDataBrParaIso(inputDataDe.value));
         if (inputDataAte.value) params.set('data_carregamento_ate', parseDataBrParaIso(inputDataAte.value));
@@ -199,21 +197,18 @@ export async function render(container) {
   const relatoriosSalvos = criarRelatoriosSalvos({
     rota: '/relatorios/fretes',
     obterFiltros: () => ({
-      veiculoId, veiculoLabel: veiculoSelect.getLabel(),
-      motoristaId, motoristaLabel: motoristaSelect.getLabel(),
-      viagemId, viagemLabel: viagemSelect.getLabel(),
+      veiculoIds: veiculoSelect.getValues(), veiculoLabels: veiculoSelect.getLabels(),
+      motoristaIds: motoristaSelect.getValues(), motoristaLabels: motoristaSelect.getLabels(),
+      viagemIds: viagemSelect.getValues(), viagemLabels: viagemSelect.getLabels(),
       transportadoraId, transportadoraLabel: transportadoraSelect.getLabel(),
       dataDe: inputDataDe.value, dataAte: inputDataAte.value,
       agrupar: selectAgrupar.value,
       colunas: colunasSelecionadas().map((c) => c.chave),
     }),
     aplicarFiltros: (f) => {
-      veiculoId = f.veiculoId || null;
-      veiculoSelect.setValue(f.veiculoId || null, f.veiculoLabel || '');
-      motoristaId = f.motoristaId || null;
-      motoristaSelect.setValue(f.motoristaId || null, f.motoristaLabel || '');
-      viagemId = f.viagemId || null;
-      viagemSelect.setValue(f.viagemId || null, f.viagemLabel || '');
+      veiculoSelect.setValues(f.veiculoIds || [], f.veiculoLabels || []);
+      motoristaSelect.setValues(f.motoristaIds || [], f.motoristaLabels || []);
+      viagemSelect.setValues(f.viagemIds || [], f.viagemLabels || []);
       transportadoraId = f.transportadoraId || null;
       transportadoraSelect.setValue(f.transportadoraId || null, f.transportadoraLabel || '');
       inputDataDe.value = f.dataDe || '';
@@ -234,9 +229,9 @@ export async function render(container) {
     const pendente = dados.reduce((t, r) => t + r.saldo_pendente, 0);
     const grupo = calcularGrupo(dados);
     const filtros = [];
-    if (veiculoSelect.getValue()) filtros.push(`Veiculo: ${veiculoSelect.getLabel()}`);
-    if (motoristaSelect.getValue()) filtros.push(`Motorista: ${motoristaSelect.getLabel()}`);
-    if (viagemSelect.getValue()) filtros.push(`Viagem: ${viagemSelect.getLabel()}`);
+    if (veiculoSelect.getValues().length) filtros.push(`Veiculo: ${veiculoSelect.getLabels().join(', ')}`);
+    if (motoristaSelect.getValues().length) filtros.push(`Motorista: ${motoristaSelect.getLabels().join(', ')}`);
+    if (viagemSelect.getValues().length) filtros.push(`Viagem: ${viagemSelect.getLabels().join(', ')}`);
     if (transportadoraSelect.getValue()) filtros.push(`Transportadora: ${transportadoraSelect.getLabel()}`);
     if (inputDataDe.value) filtros.push(`Carregamento de: ${inputDataDe.value}`);
     if (inputDataAte.value) filtros.push(`Carregamento ate: ${inputDataAte.value}`);
