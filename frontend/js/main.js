@@ -435,6 +435,12 @@ registrarPagina('/relatorios/conta-corrente-motorista', () => import('./pages/re
 registrarPagina('/relatorios/despesas-fixas', () => import('./pages/relatorios/despesasFixas.js'), 'dre');
 registrarPagina('/relatorios/parcelas-financiamento', () => import('./pages/relatorios/parcelasFinanciamento.js'), 'dre');
 registrarPagina('/relatorios/multas', () => import('./pages/relatorios/multas.js'), 'dre');
+registrarPagina('/relatorios/manutencao-custo', () => import('./pages/relatorios/custoManutencao.js'), 'dre');
+registrarPagina('/relatorios/manutencao-historico', () => import('./pages/relatorios/historicoManutencao.js'), 'dre');
+registrarPagina('/relatorios/estoque', () => import('./pages/relatorios/estoquePosicao.js'), 'dre');
+registrarPagina('/relatorios/pneus', () => import('./pages/relatorios/pneus.js'), 'dre');
+registrarPagina('/relatorios/alertas', () => import('./pages/relatorios/alertasManutencao.js'), 'dre');
+registrarPagina('/relatorios/cnh-vencimento', () => import('./pages/relatorios/cnhVencimento.js'), 'dre');
 // Sem modulo de permissao (undefined) - mesmo padrao de /usuarios e
 // /auditoria abaixo: a tela so aparece no menu para Admin (ver
 // modulosConfig.js/main.js, grupo "Administracao"), e a API (requerAdmin)

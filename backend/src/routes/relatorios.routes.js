@@ -307,4 +307,130 @@ router.get('/atividade-usuarios', requerAdmin, asyncHandler(async (req, res) => 
   res.json(linhas);
 }));
 
+// Ordens de servico (manutencao): base comum do Custo de Manutencao por
+// Veiculo (visao agregada) e do Historico de Manutencao (visao
+// cronologica) - o frontend e quem decide como agrupar/exibir, aqui so
+// filtra e ja embute os itens de cada OS (mesmo padrao de "ultima_baixa"
+// em /saldos-em-aberto: 1 query extra por linha, aceitavel neste volume).
+router.get('/ordens-servico', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { veiculo_id, tipo, fornecedor_id, data_de, data_ate } = req.query;
+  const condicoes = ['os.empresa_id = ?'];
+  const params = [req.empresaId];
+  if (veiculo_id) { condicoes.push('os.veiculo_id = ?'); params.push(veiculo_id); }
+  if (tipo) { condicoes.push('os.tipo = ?'); params.push(tipo); }
+  if (fornecedor_id) { condicoes.push('os.fornecedor_id = ?'); params.push(fornecedor_id); }
+  if (data_de) { condicoes.push('os.data >= ?'); params.push(data_de); }
+  if (data_ate) { condicoes.push('os.data <= ?'); params.push(data_ate); }
+
+  const linhas = db.prepare(`
+    SELECT os.id, os.data, os.hodometro, os.tipo, os.valor_pecas, os.valor_mao_obra, os.descricao,
+           v.placa AS veiculo_placa, forn.nome AS fornecedor_nome
+    FROM ordens_servico os
+    JOIN veiculos v ON v.id = os.veiculo_id
+    LEFT JOIN fornecedores forn ON forn.id = os.fornecedor_id
+    WHERE ${condicoes.join(' AND ')}
+    ORDER BY os.data DESC, os.id DESC
+  `).all(...params);
+
+  res.json(linhas.map((r) => {
+    const itens = db.prepare('SELECT descricao, quantidade, valor_unitario FROM os_itens WHERE os_id = ?').all(r.id);
+    return { ...r, valor_total: r.valor_pecas + r.valor_mao_obra, itens };
+  }));
+}));
+
+// Posicao e consumo de estoque: quanto esta parado em pecas (valor =
+// quantidade_atual x custo_medio) e o que entrou/saiu no periodo filtrado.
+// "Abaixo do minimo" e calculado no frontend (so comparar dois campos ja
+// presentes na linha), sem precisar de coluna/flag propria no banco.
+router.get('/estoque', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { categoria, data_de, data_ate } = req.query;
+  const condicoes = ['ei.empresa_id = ?'];
+  const params = [req.empresaId];
+  if (categoria) { condicoes.push('ei.categoria = ?'); params.push(categoria); }
+
+  const periodoDe = data_de || '0000-01-01';
+  const periodoAte = data_ate || '9999-12-31';
+
+  const linhas = db.prepare(`
+    SELECT ei.id, ei.nome, ei.categoria, ei.unidade_medida, ei.quantidade_atual, ei.custo_medio, ei.estoque_minimo,
+           (SELECT COALESCE(SUM(quantidade), 0) FROM estoque_movimentacoes WHERE item_id = ei.id AND tipo = 'Entrada' AND date(data) BETWEEN ? AND ?) AS entrada_periodo,
+           (SELECT COALESCE(SUM(quantidade), 0) FROM estoque_movimentacoes WHERE item_id = ei.id AND tipo = 'Saida' AND date(data) BETWEEN ? AND ?) AS saida_periodo
+    FROM estoque_itens ei
+    WHERE ${condicoes.join(' AND ')}
+    ORDER BY ei.nome
+  `).all(periodoDe, periodoAte, periodoDe, periodoAte, ...params);
+
+  res.json(linhas.map((r) => ({
+    ...r,
+    valor_em_estoque: Math.round(r.quantidade_atual * r.custo_medio),
+    abaixo_minimo: r.quantidade_atual <= r.estoque_minimo,
+  })));
+}));
+
+// Pneus - custo e vida util: lista os EVENTOS (aquisicao/instalacao/
+// remocao/recapagem/sucateamento) filtraveis - "vida util" (km rodado) e
+// calculada no frontend ao agrupar por pneu (maior km_veiculo - menor
+// km_veiculo do conjunto filtrado), nao ha uma coluna pronta pra isso.
+router.get('/pneus', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { veiculo_id, numero_fogo, tipo_evento, data_de, data_ate } = req.query;
+  const condicoes = ['pe.empresa_id = ?'];
+  const params = [req.empresaId];
+  if (veiculo_id) { condicoes.push('pe.veiculo_id = ?'); params.push(veiculo_id); }
+  if (numero_fogo) { condicoes.push('p.numero_fogo LIKE ?'); params.push(`%${numero_fogo}%`); }
+  if (tipo_evento) { condicoes.push('pe.tipo_evento = ?'); params.push(tipo_evento); }
+  if (data_de) { condicoes.push('pe.data >= ?'); params.push(data_de); }
+  if (data_ate) { condicoes.push('pe.data <= ?'); params.push(data_ate); }
+
+  const linhas = db.prepare(`
+    SELECT pe.id, pe.tipo_evento, pe.eixo, pe.lado, pe.km_veiculo, pe.custo, pe.data, pe.observacao,
+           p.id AS pneu_id, p.numero_fogo, p.marca, p.modelo, p.medida,
+           v.placa AS veiculo_placa, forn.nome AS fornecedor_nome
+    FROM pneu_eventos pe
+    JOIN pneus p ON p.id = pe.pneu_id
+    LEFT JOIN veiculos v ON v.id = pe.veiculo_id
+    LEFT JOIN fornecedores forn ON forn.id = pe.fornecedor_id
+    WHERE ${condicoes.join(' AND ')}
+    ORDER BY pe.data DESC, pe.id DESC
+  `).all(...params);
+  res.json(linhas);
+}));
+
+// Alertas de manutencao (versao exportavel/imprimivel da tela de Alertas
+// ja existente - mesmo join de alertas.routes.js:/ocorrencias).
+router.get('/alertas', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { veiculo_id, status, data_de, data_ate } = req.query;
+  const condicoes = ['ao.empresa_id = ?'];
+  const params = [req.empresaId];
+  if (veiculo_id) { condicoes.push('ao.veiculo_id = ?'); params.push(veiculo_id); }
+  if (status) { condicoes.push('ao.status = ?'); params.push(status); }
+  if (data_de) { condicoes.push('date(ao.data_disparo) >= ?'); params.push(data_de); }
+  if (data_ate) { condicoes.push('date(ao.data_disparo) <= ?'); params.push(data_ate); }
+
+  const linhas = db.prepare(`
+    SELECT ao.id, ao.km_atual_no_disparo, ao.data_disparo, ao.status, ao.resolvido_em,
+           v.placa AS veiculo_placa, ar.descricao AS regra_descricao, ar.intervalo_km
+    FROM alertas_ocorrencias ao
+    JOIN veiculos v ON v.id = ao.veiculo_id
+    JOIN alertas_regras ar ON ar.id = ao.regra_id
+    WHERE ${condicoes.join(' AND ')}
+    ORDER BY ao.data_disparo DESC
+  `).all(...params);
+  res.json(linhas);
+}));
+
+// CNH a vencer: motoristas ativos com validade dentro da janela de dias
+// informada (padrao 60) - inclui as ja vencidas (dias_restantes negativo),
+// o frontend e quem decide como destacar.
+router.get('/cnh-vencimento', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const dias = Number(req.query.dias) || 60;
+  const linhas = db.prepare(`
+    SELECT id, nome, cpf, cnh, cnh_validade,
+           CAST(julianday(date(cnh_validade)) - julianday(date('now', '-3 hours')) AS INTEGER) AS dias_restantes
+    FROM motoristas
+    WHERE empresa_id = ? AND ativo = 1 AND date(cnh_validade) <= date('now', '-3 hours', ?)
+    ORDER BY cnh_validade
+  `).all(req.empresaId, `+${dias} days`);
+  res.json(linhas);
+}));
+
 module.exports = router;

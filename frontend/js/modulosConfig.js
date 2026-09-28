@@ -53,6 +53,12 @@ export const GRUPOS_MENU = [
       { chave: 'dre', label: 'Despesas Fixas por Categoria', rota: '/relatorios/despesas-fixas' },
       { chave: 'dre', label: 'Parcelas de Financiamento', rota: '/relatorios/parcelas-financiamento' },
       { chave: 'dre', label: 'Multas por Motorista/Veiculo', rota: '/relatorios/multas' },
+      { chave: 'dre', label: 'Custo de Manutencao por Veiculo', rota: '/relatorios/manutencao-custo' },
+      { chave: 'dre', label: 'Historico de Manutencao', rota: '/relatorios/manutencao-historico' },
+      { chave: 'dre', label: 'Posicao e Consumo de Estoque', rota: '/relatorios/estoque' },
+      { chave: 'dre', label: 'Pneus - Custo e Vida Util', rota: '/relatorios/pneus' },
+      { chave: 'dre', label: 'Alertas de Manutencao', rota: '/relatorios/alertas' },
+      { chave: 'dre', label: 'CNH a Vencer', rota: '/relatorios/cnh-vencimento' },
     ],
   },
 ];
