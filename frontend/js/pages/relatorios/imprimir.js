@@ -34,8 +34,16 @@ function cardResumo({ label, valor, cor = 'zinc' }) {
 }
 
 function tabelaGenerica(colunas, linhas, { tituloVazio = 'Nenhum registro.' } = {}) {
+  // overflow-x-auto: tabelas com muitas colunas (ex.: Saldos em Aberto, 10
+  // colunas) sao mais largas que o card branco - sem isso a tabela vazava
+  // pra fora do card na PRE-visualizacao (ficava "perdida" no fundo escuro
+  // do app atras). Na impressao de verdade isso nao aparecia (o navegador
+  // ja reflui pro tamanho da pagina), mas a tela quebrada antes de imprimir
+  // e o problema. mb-4 fica no wrapper, nao na tabela, pra nao contar o
+  // espaco de rolagem como parte do espacamento.
   return `
-    <table class="mb-4 w-full border-collapse overflow-hidden rounded-lg text-sm">
+    <div class="mb-4 overflow-x-auto print:overflow-visible">
+    <table class="w-full border-collapse overflow-hidden rounded-lg text-sm">
       <thead>
         <tr class="bg-zinc-100 text-left text-[11px] uppercase tracking-wide text-zinc-600">
           ${colunas.map((c) => `<th class="px-2 py-1.5 ${c.alinhar === 'right' ? 'text-right' : ''}">${escapeHtml(c.titulo)}</th>`).join('')}
@@ -49,6 +57,7 @@ function tabelaGenerica(colunas, linhas, { tituloVazio = 'Nenhum registro.' } = 
         `).join('') : `<tr><td colspan="${colunas.length}" class="px-2 py-3 text-center text-sm text-zinc-400">${escapeHtml(tituloVazio)}</td></tr>`}
       </tbody>
     </table>
+    </div>
   `;
 }
 
