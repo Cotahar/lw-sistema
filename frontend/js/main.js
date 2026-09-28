@@ -500,6 +500,9 @@ registrarPagina('/relatorios/ranking-motoristas', () => import('./pages/relatori
 registrarPagina('/relatorios/comparativo-consumo', () => import('./pages/relatorios/comparativoConsumo.js'), 'dre');
 registrarPagina('/relatorios/divergencia-consumo', () => import('./pages/relatorios/divergenciaConsumo.js'), 'dre');
 registrarPagina('/relatorios/rentabilidade-rota', () => import('./pages/relatorios/rentabilidadeRota.js'), 'dre');
+registrarPagina('/relatorios/dre-multi-periodo', () => import('./pages/relatorios/dreMultiPeriodo.js'), 'dre');
+registrarPagina('/relatorios/viagens', () => import('./pages/relatorios/viagensRelatorio.js'), 'dre');
+registrarPagina('/relatorios/fluxo-caixa', () => import('./pages/relatorios/fluxoCaixa.js'), 'dre');
 // Sem modulo de permissao (undefined) - mesmo padrao de /usuarios e
 // /auditoria abaixo: a tela so aparece no menu para Admin (ver
 // modulosConfig.js/main.js, grupo "Administracao"), e a API (requerAdmin)

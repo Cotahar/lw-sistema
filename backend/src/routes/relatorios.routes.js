@@ -5,7 +5,8 @@ const { requerAcessoModulo, requerAdmin } = require('../middleware/auth');
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
-const { periodoOuTudo, resultadoDoVeiculo } = require('../utils/dreHelper');
+const { periodoOuTudo, resultadoDoVeiculo, totaisGeraisDoPeriodo } = require('../utils/dreHelper');
+const { hojeIsoBrasilia } = require('../utils/dataHora');
 
 const router = express.Router();
 
@@ -615,6 +616,108 @@ router.get('/rentabilidade-rota', requerAcessoModulo('dre', 'Visualizar'), exigi
   const linhas = [...mapa.values()]
     .map((r) => ({ ...r, ticket_medio: Math.round(r.total / r.qtd) }))
     .sort((a, b) => b.total - a.total);
+  res.json(linhas);
+}));
+
+// DRE Multi-periodo: a mesma conta da DRE (geral ou de um veiculo
+// especifico), repetida mes a mes - reusa resultadoDoVeiculo/
+// totaisGeraisDoPeriodo (dreHelper.js), os mesmos usados por /dre/geral,
+// /dre/veiculo e pelo Ranking de Veiculos, pra nunca divergir.
+function ultimosMeses(mesFinalIso, quantidade) {
+  const [anoFinal, mesFinalNum] = mesFinalIso.split('-').map(Number);
+  const meses = [];
+  for (let i = quantidade - 1; i >= 0; i--) {
+    const data = new Date(Date.UTC(anoFinal, mesFinalNum - 1 - i, 1));
+    const ano = data.getUTCFullYear();
+    const mes = data.getUTCMonth();
+    const inicio = new Date(Date.UTC(ano, mes, 1)).toISOString().slice(0, 10);
+    const fim = new Date(Date.UTC(ano, mes + 1, 0)).toISOString().slice(0, 10);
+    meses.push({ label: `${String(mes + 1).padStart(2, '0')}/${ano}`, inicio, fim });
+  }
+  return meses;
+}
+
+router.get('/dre-multi-periodo', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const quantidade = Math.min(Math.max(Number(req.query.meses) || 6, 2), 24);
+  const mesFinal = req.query.mes_final || hojeIsoBrasilia().slice(0, 7);
+  const { veiculo_id } = req.query;
+  const veiculo = veiculo_id ? db.prepare('SELECT id, placa FROM veiculos WHERE id = ? AND empresa_id = ?').get(veiculo_id, req.empresaId) : null;
+
+  const linhas = ultimosMeses(mesFinal, quantidade).map((m) => {
+    const resultado = veiculo ? resultadoDoVeiculo(veiculo, m.inicio, m.fim) : totaisGeraisDoPeriodo(req.empresaId, m.inicio, m.fim);
+    const receita = resultado.receita ?? resultado.receitaTotal;
+    const lucro = resultado.lucro ?? resultado.lucroLiquido;
+    return { periodo: m.label, inicio: m.inicio, fim: m.fim, receita, custo: resultado.custoTotal, lucro };
+  });
+  res.json({ veiculo: veiculo || null, meses: linhas });
+}));
+
+// Relatorio de Viagens: uma linha por viagem (duracao, km rodado,
+// faturamento, despesas, lucro, media de consumo) - resposta direta a
+// "comparar varias viagens lado a lado".
+router.get('/viagens', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { veiculo_id, motorista_id, status, data_de, data_ate } = req.query;
+  const condicoes = ['vg.empresa_id = ?'];
+  const params = [req.empresaId];
+  if (motorista_id) { condicoes.push('vg.motorista_id = ?'); params.push(motorista_id); }
+  if (status) { condicoes.push('vg.status = ?'); params.push(status); }
+  if (data_de) { condicoes.push('vg.data_inicio >= ?'); params.push(data_de); }
+  if (data_ate) { condicoes.push('vg.data_inicio <= ?'); params.push(data_ate); }
+  const viagens = db.prepare(`SELECT vg.* FROM viagens vg WHERE ${condicoes.join(' AND ')} ORDER BY vg.data_inicio DESC`).all(...params);
+  const categoriaAbastecimentoId = buscarCategoriaAbastecimentoId();
+
+  const linhas = [];
+  for (const viagem of viagens) {
+    const tratora = buscarUnidadeTratora(viagem.conjunto_id);
+    if (veiculo_id && (!tratora || String(tratora.id) !== String(veiculo_id))) continue;
+    const motorista = db.prepare('SELECT nome FROM motoristas WHERE id = ?').get(viagem.motorista_id);
+    const freteBruto = db.prepare('SELECT COALESCE(SUM(frete_bruto), 0) AS t FROM fretes WHERE viagem_id = ?').get(viagem.id).t;
+    const despesasTotal = db.prepare('SELECT COALESCE(SUM(valor), 0) AS t FROM despesas_viagem WHERE viagem_id = ?').get(viagem.id).t;
+    const kmRodado = viagem.km_final !== null ? viagem.km_final - viagem.km_inicial : null;
+    const duracaoDias = viagem.data_fim
+      ? Math.max(1, Math.round((new Date(`${viagem.data_fim}T00:00:00Z`) - new Date(`${viagem.data_inicio}T00:00:00Z`)) / 86400000))
+      : null;
+
+    let mediaConsumoKmL = null;
+    const centroCusto = tratora ? buscarCentroCustoDoVeiculo(tratora.id) : null;
+    if (centroCusto) {
+      const abastecimentos = buscarAbastecimentosDoVeiculo(centroCusto.id, viagem.km_inicial, viagem.km_final);
+      mediaConsumoKmL = calcularMediasConsumo(abastecimentos, categoriaAbastecimentoId).mediaViagemKmL;
+    }
+
+    linhas.push({
+      viagem_id: viagem.id, status: viagem.status, data_inicio: viagem.data_inicio, data_fim: viagem.data_fim,
+      veiculo_placa: tratora ? tratora.placa : null, motorista_nome: motorista ? motorista.nome : null,
+      duracao_dias: duracaoDias, km_rodado: kmRodado,
+      faturamento: freteBruto, despesas: despesasTotal, lucro: freteBruto - despesasTotal,
+      media_consumo_km_l: mediaConsumoKmL,
+    });
+  }
+  res.json(linhas);
+}));
+
+// Fluxo de Caixa: entradas/saidas REALIZADAS (movimentacoes_caixa), por
+// conta bancaria/periodo - "saldo do periodo filtrado" e a soma das linhas
+// devolvidas (entrada positiva, saida negativa), nao um saldo projetado de
+// verdade (isso exigiria juntar contas_pagar/contas_receber ainda
+// pendentes, fora do escopo desta versao).
+router.get('/fluxo-caixa', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { conta_bancaria_id, tipo, data_de, data_ate } = req.query;
+  const condicoes = ['mc.empresa_id = ?'];
+  const params = [req.empresaId];
+  if (conta_bancaria_id) { condicoes.push('mc.conta_bancaria_id = ?'); params.push(conta_bancaria_id); }
+  if (tipo) { condicoes.push('mc.tipo = ?'); params.push(tipo); }
+  if (data_de) { condicoes.push('date(mc.data) >= ?'); params.push(data_de); }
+  if (data_ate) { condicoes.push('date(mc.data) <= ?'); params.push(data_ate); }
+
+  const linhas = db.prepare(`
+    SELECT mc.id, mc.data, mc.tipo, mc.valor, mc.descricao, mc.origem_tipo, mc.conta_bancaria_id,
+           cb.nome AS conta_bancaria_nome
+    FROM movimentacoes_caixa mc
+    JOIN contas_bancarias cb ON cb.id = mc.conta_bancaria_id
+    WHERE ${condicoes.join(' AND ')}
+    ORDER BY mc.data ASC, mc.id ASC
+  `).all(...params);
   res.json(linhas);
 }));
 

@@ -7,7 +7,7 @@ const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 const { hojeIsoBrasilia } = require('../utils/dataHora');
 const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
-const { somar, periodoOuTudo, custosDoCentroCusto, receitaECustosDaViagemPorCentro, custosDiretosDoVeiculo } = require('../utils/dreHelper');
+const { somar, periodoOuTudo, custosDoCentroCusto, receitaECustosDaViagemPorCentro, custosDiretosDoVeiculo, totaisGeraisDoPeriodo } = require('../utils/dreHelper');
 
 const router = express.Router();
 
@@ -245,31 +245,6 @@ router.get('/geral', requerAcessoModulo('dre', 'Visualizar'), asyncHandler(async
 // lucro da frota + Base) e Acertos fechados (quantidade e soma do saldo
 // final) lado a lado - escopo combinado que o usuario pediu no lugar de um
 // MoM/YoY completo.
-function totaisDreDoPeriodo(empresaId, inicio, fim) {
-  const veiculos = empresaId
-    ? db.prepare('SELECT id FROM veiculos WHERE empresa_id = ?').all(empresaId)
-    : db.prepare('SELECT id FROM veiculos').all();
-
-  let receitaTotal = 0;
-  let custoTotal = 0;
-  for (const veiculo of veiculos) {
-    const centroCusto = buscarCentroCustoDoVeiculo(veiculo.id);
-    if (!centroCusto) continue;
-    const { receita, custosViagem } = receitaECustosDaViagemPorCentro(centroCusto.id, inicio, fim);
-    const { custoPecasDireto, custoOrdensServico, custoPneus } = custosDiretosDoVeiculo(veiculo.id, inicio, fim);
-    const fixosEFinanciamento = custosDoCentroCusto(centroCusto.id, inicio, fim);
-    receitaTotal += receita;
-    custoTotal += custosViagem + custoPecasDireto + custoOrdensServico + custoPneus + fixosEFinanciamento.total;
-  }
-
-  const centrosBase = empresaId
-    ? db.prepare("SELECT id FROM centros_custo WHERE tipo = 'Base' AND empresa_id = ?").all(empresaId)
-    : db.prepare("SELECT id FROM centros_custo WHERE tipo = 'Base'").all();
-  const custosBaseTotal = somar(centrosBase.map((c) => custosDoCentroCusto(c.id, inicio, fim).total));
-
-  return { receitaTotal, custoTotal: custoTotal + custosBaseTotal, lucroLiquido: receitaTotal - custoTotal - custosBaseTotal };
-}
-
 function totaisAcertosDoPeriodo(empresaId, inicio, fim) {
   const condicoes = ["status = 'Fechado'", 'date(data_acerto) BETWEEN ? AND ?'];
   const params = [inicio, fim];
@@ -296,12 +271,12 @@ router.get('/comparativo', requerAcessoModulo('dre', 'Visualizar'), asyncHandler
   res.json({
     atual: {
       periodo: { inicio: dataInicio, fim: dataFim },
-      dre: totaisDreDoPeriodo(req.empresaId, dataInicio, dataFim),
+      dre: totaisGeraisDoPeriodo(req.empresaId, dataInicio, dataFim),
       acertos: totaisAcertosDoPeriodo(req.empresaId, dataInicio, dataFim),
     },
     anterior: {
       periodo: { inicio: isoInicioAnterior, fim: isoFimAnterior },
-      dre: totaisDreDoPeriodo(req.empresaId, isoInicioAnterior, isoFimAnterior),
+      dre: totaisGeraisDoPeriodo(req.empresaId, isoInicioAnterior, isoFimAnterior),
       acertos: totaisAcertosDoPeriodo(req.empresaId, isoInicioAnterior, isoFimAnterior),
     },
   });

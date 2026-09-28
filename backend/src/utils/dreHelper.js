@@ -84,6 +84,35 @@ function resultadoDoVeiculo(veiculo, inicio, fim) {
   return { receita, custoTotal, lucro: receita - custoTotal };
 }
 
+// Receita/custo/lucro liquido agregados de TODA a frota (todos os veiculos
+// + centros Base) no periodo - usado tanto por /dre/comparativo quanto pelo
+// DRE Multi-periodo (relatorios.routes.js), extraido daqui pra nao duplicar
+// o loop nas duas rotas.
+function totaisGeraisDoPeriodo(empresaId, inicio, fim) {
+  const veiculos = empresaId
+    ? db.prepare('SELECT id FROM veiculos WHERE empresa_id = ?').all(empresaId)
+    : db.prepare('SELECT id FROM veiculos').all();
+
+  let receitaTotal = 0;
+  let custoTotal = 0;
+  for (const veiculo of veiculos) {
+    const centroCusto = buscarCentroCustoDoVeiculo(veiculo.id);
+    if (!centroCusto) continue;
+    const { receita, custosViagem } = receitaECustosDaViagemPorCentro(centroCusto.id, inicio, fim);
+    const { custoPecasDireto, custoOrdensServico, custoPneus } = custosDiretosDoVeiculo(veiculo.id, inicio, fim);
+    const fixosEFinanciamento = custosDoCentroCusto(centroCusto.id, inicio, fim);
+    receitaTotal += receita;
+    custoTotal += custosViagem + custoPecasDireto + custoOrdensServico + custoPneus + fixosEFinanciamento.total;
+  }
+
+  const centrosBase = empresaId
+    ? db.prepare("SELECT id FROM centros_custo WHERE tipo = 'Base' AND empresa_id = ?").all(empresaId)
+    : db.prepare("SELECT id FROM centros_custo WHERE tipo = 'Base'").all();
+  const custosBaseTotal = somar(centrosBase.map((c) => custosDoCentroCusto(c.id, inicio, fim).total));
+
+  return { receitaTotal, custoTotal: custoTotal + custosBaseTotal, lucroLiquido: receitaTotal - custoTotal - custosBaseTotal };
+}
+
 module.exports = {
-  somar, periodoOuTudo, custosDoCentroCusto, receitaECustosDaViagemPorCentro, custosDiretosDoVeiculo, resultadoDoVeiculo,
+  somar, periodoOuTudo, custosDoCentroCusto, receitaECustosDaViagemPorCentro, custosDiretosDoVeiculo, resultadoDoVeiculo, totaisGeraisDoPeriodo,
 };
