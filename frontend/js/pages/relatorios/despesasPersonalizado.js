@@ -1,6 +1,7 @@
 import { get } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
+import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
 
 const CHAVE_COLUNAS = 'frottex-colunas-relatorio-despesas';
@@ -127,6 +128,7 @@ export async function render(container) {
     </div>
     <div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2" data-resumo></div>
     <div class="mb-4" data-resumo-grupo></div>
+    <div class="mb-3 flex justify-end"><button type="button" class="btn-secondary btn-sm" data-exportar-pdf>Exportar PDF</button></div>
     <div data-tabela></div>
   `;
 
@@ -169,9 +171,11 @@ export async function render(container) {
     return CATALOGO_COLUNAS.filter((c) => container.querySelector(`[data-coluna="${c.chave}"]`).checked);
   }
 
-  function renderResumoGrupo(dados) {
+  // Extraido de renderResumoGrupo pra ser reaproveitado tambem no "Exportar
+  // PDF" (mesma agregacao, so troca like onde o resultado e escrito).
+  function calcularGrupo(dados) {
     const agruparPor = selectAgrupar.value;
-    if (!agruparPor) { resumoGrupoEl.innerHTML = ''; return; }
+    if (!agruparPor) return null;
     const grupos = new Map();
     for (const r of dados) {
       const chave = r[agruparPor] || '-';
@@ -182,13 +186,19 @@ export async function render(container) {
     }
     const linhas = [...grupos.entries()].sort((a, b) => b[1].total - a[1].total);
     const label = OPCOES_AGRUPAR.find((o) => o.value === agruparPor)?.label || agruparPor;
+    return { label, linhas };
+  }
+
+  function renderResumoGrupo(dados) {
+    const grupo = calcularGrupo(dados);
+    if (!grupo) { resumoGrupoEl.innerHTML = ''; return; }
     resumoGrupoEl.innerHTML = `
       <div class="card overflow-x-auto border-gray-300 p-0">
-        <div class="px-4 pt-3"><h2 class="font-semibold text-slate-900">Total por ${label}</h2></div>
+        <div class="px-4 pt-3"><h2 class="font-semibold text-slate-900">Total por ${grupo.label}</h2></div>
         <table class="mt-2 w-full min-w-max border-collapse">
-          <thead class="bg-brand-black"><tr><th class="table-th">${label}</th><th class="table-th text-right">Qtd</th><th class="table-th text-right">Total</th></tr></thead>
+          <thead class="bg-brand-black"><tr><th class="table-th">${grupo.label}</th><th class="table-th text-right">Qtd</th><th class="table-th text-right">Total</th></tr></thead>
           <tbody>
-            ${linhas.map(([chave, g]) => `
+            ${grupo.linhas.map(([chave, g]) => `
               <tr class="border-b border-slate-100 last:border-0">
                 <td class="table-td">${chave}</td>
                 <td class="table-td text-right">${g.qtd}</td>
@@ -244,4 +254,44 @@ export async function render(container) {
 
   container.querySelectorAll('[data-coluna]').forEach((chk) => chk.addEventListener('change', montarTabela));
   montarTabela();
+
+  function filtrosAtivos() {
+    const filtros = [];
+    if (selectCategoria.value) filtros.push(`Categoria: ${selectCategoria.options[selectCategoria.selectedIndex].text}`);
+    if (veiculoSelect.getValue()) filtros.push(`Veiculo: ${veiculoSelect.getLabel()}`);
+    if (motoristaSelect.getValue()) filtros.push(`Motorista: ${motoristaSelect.getLabel()}`);
+    if (viagemSelect.getValue()) filtros.push(`Viagem: ${viagemSelect.getLabel()}`);
+    if (selectPagoPor.value) filtros.push(`Pago por: ${selectPagoPor.value}`);
+    if (fornecedorSelect.getValue()) filtros.push(`Fornecedor: ${fornecedorSelect.getLabel()}`);
+    if (inputDataDe.value) filtros.push(`Data de: ${inputDataDe.value}`);
+    if (inputDataAte.value) filtros.push(`Data ate: ${inputDataAte.value}`);
+    return filtros;
+  }
+
+  // As colunas do PDF sao exatamente as marcadas em "Colunas visiveis" (+
+  // Valor, sempre fixo) - os render() do catalogo ja devolvem texto puro
+  // (sem HTML), entao servem direto tambem pra impressao, sem duplicar a
+  // formatacao de cada campo numa segunda funcao.
+  container.querySelector('[data-exportar-pdf]').addEventListener('click', () => {
+    const dados = tabela.dados();
+    const colunasEscolhidas = [...colunasSelecionadas(), COLUNA_VALOR];
+    const total = dados.reduce((t, r) => t + r.valor, 0);
+    const grupo = calcularGrupo(dados);
+    abrirRelatorioImpressao({
+      titulo: 'Relatorio de Despesas',
+      filtros: filtrosAtivos(),
+      resumo: [
+        { label: 'Total no filtro', valor: formatarMoeda(total), cor: 'red' },
+        { label: 'Lancamentos', valor: String(dados.length) },
+      ],
+      colunas: colunasEscolhidas.map((c) => ({ titulo: c.titulo, alinhar: c.chave === 'valor' ? 'right' : undefined })),
+      linhas: dados.map((r) => colunasEscolhidas.map((c) => c.render(r))),
+      grupo: grupo ? {
+        titulo: `Total por ${grupo.label}`,
+        colunas: [grupo.label, { titulo: 'Qtd', alinhar: 'right' }, { titulo: 'Total', alinhar: 'right' }],
+        linhas: grupo.linhas.map(([chave, g]) => [chave, String(g.qtd), formatarMoeda(g.total)]),
+      } : null,
+      tituloVazio: 'Nenhuma despesa encontrada com estes filtros.',
+    });
+  });
 }

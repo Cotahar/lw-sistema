@@ -1,6 +1,7 @@
 import { get } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
+import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { formatarMoeda, formatarDataBr, hojeIsoLocal, attachDataMask, parseDataBrParaIso } from '../../masks.js';
 
 // Mesmo criterio de "vencido" usado em financeiro/contasReceber.js
@@ -55,6 +56,7 @@ export async function render(container) {
         <label for="filtro-vencidos" class="text-sm text-slate-700">Somente vencidos</label>
       </div>
     </div>
+    <div class="mb-3 flex justify-end"><button type="button" class="btn-secondary btn-sm" data-exportar-pdf>Exportar PDF</button></div>
     <div data-tabela></div>
   `;
   const resumoEl = container.querySelector('[data-resumo]');
@@ -126,4 +128,50 @@ export async function render(container) {
     vazio: 'Nenhum saldo pendente encontrado.',
   });
   container.querySelector('[data-tabela]').appendChild(tabela.el);
+
+  function filtrosAtivos() {
+    const filtros = [];
+    if (veiculoSelect.getValue()) filtros.push(`Veiculo: ${veiculoSelect.getLabel()}`);
+    if (motoristaSelect.getValue()) filtros.push(`Motorista: ${motoristaSelect.getLabel()}`);
+    if (viagemSelect.getValue()) filtros.push(`Viagem: ${viagemSelect.getLabel()}`);
+    if (inputCarregDe.value) filtros.push(`Carregamento de: ${inputCarregDe.value}`);
+    if (inputCarregAte.value) filtros.push(`Carregamento ate: ${inputCarregAte.value}`);
+    if (checkVencidos.checked) filtros.push('Somente vencidos');
+    return filtros;
+  }
+
+  // Exporta exatamente o que esta na tela agora (mesmos filtros/ordenacao
+  // ja aplicados pela tabela) - tabela.dados() devolve o array atual, sem
+  // precisar refazer a chamada a API.
+  container.querySelector('[data-exportar-pdf]').addEventListener('click', () => {
+    const dados = tabela.dados();
+    const saldoTotal = dados.reduce((t, r) => t + r.saldo_pendente, 0);
+    const vencidos = dados.filter((r) => new Date(`${r.data_prevista}T00:00:00Z`) < new Date(`${hojeIsoLocal()}T00:00:00Z`)).length;
+    abrirRelatorioImpressao({
+      titulo: 'Saldos em Aberto',
+      filtros: filtrosAtivos(),
+      resumo: [
+        { label: 'Saldo pendente total', valor: formatarMoeda(saldoTotal), cor: 'amber' },
+        { label: 'Fretes com saldo pendente', valor: String(dados.length) },
+        { label: 'Fretes vencidos', valor: String(vencidos), cor: vencidos ? 'red' : 'zinc' },
+      ],
+      colunas: [
+        'Frete', 'Conjunto', 'Motorista', 'Carregamento', 'Origem/Destino', 'Transportadora',
+        'Entrega', 'Ultima baixa', 'Vencimento', { titulo: 'Valor Pendente', alinhar: 'right' },
+      ],
+      linhas: dados.map((r) => [
+        `#${r.frete_id} (viagem #${r.viagem_id})`,
+        r.conjunto || '-',
+        r.motorista_nome || '-',
+        r.data_carregamento ? formatarDataBr(r.data_carregamento) : '-',
+        `${r.origem_cidade}/${r.origem_uf} -> ${r.destino_cidade}/${r.destino_uf}`,
+        r.transportadora_nome || '-',
+        r.data_descarga ? formatarDataBr(r.data_descarga) : '-',
+        r.ultima_baixa ? `${formatarDataBr(r.ultima_baixa.data)} (${r.ultima_baixa.tipo})` : '-',
+        formatarDataBr(r.data_prevista),
+        formatarMoeda(r.saldo_pendente),
+      ]),
+      tituloVazio: 'Nenhum saldo pendente encontrado.',
+    });
+  });
 }

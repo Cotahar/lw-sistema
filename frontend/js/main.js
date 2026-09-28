@@ -6,6 +6,7 @@ import './components/copiar.js'; // registra a delegacao global de click-to-copy
 import { renderLogin } from './pages/login.js';
 import { renderRelatorio } from './pages/acertoRelatorio.js';
 import { renderDreRelatorio } from './pages/dreRelatorio.js';
+import { render as renderImpressaoGenerica } from './pages/relatorios/imprimir.js';
 import { GRUPOS_MENU, ROTA_PAINEL, ITEM_ADMIN, ITEM_AUDITORIA, ITENS_CONFIGURACAO } from './modulosConfig.js';
 
 const appEl = document.getElementById('app');
@@ -347,6 +348,14 @@ registrar('/acertos/:viagemId/relatorio', (params, query) => {
 registrar('/dre/relatorio', (params, query) => {
   shellConstruido = false;
   renderDreRelatorio(appEl, params, query);
+});
+
+// Pagina generica de impressao/PDF (Saldos em Aberto, Relatorio de
+// Despesas, etc.) - le o payload do sessionStorage (ver
+// components/relatorioImpressao.js), mesmo padrao "fora do shell" acima.
+registrar('/relatorios/imprimir', () => {
+  shellConstruido = false;
+  renderImpressaoGenerica(appEl);
 });
 
 registrar('/', () => {
