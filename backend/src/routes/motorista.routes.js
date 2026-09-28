@@ -286,6 +286,19 @@ router.post('/postos', asyncHandler(async (req, res) => {
   res.status(201).json(criado);
 }));
 
+// Lista de postos favoritos (estrelinha marcada em Fornecedores) desta
+// empresa - usada pela tela "Postos Favoritos" do app, so leitura. Motorista
+// nao edita nada aqui, so consulta pra saber onde abastecer e o combinado
+// (pix/nota, prazo, preco de diesel/arla ja acertado).
+router.get('/postos-favoritos', asyncHandler(async (req, res) => {
+  const postos = db.prepare(`
+    SELECT id, nome, localizacao, telefone, posto_assina_nota, posto_prazo_dias,
+           posto_forma_pagamento, posto_preco_diesel, posto_preco_arla
+    FROM fornecedores WHERE empresa_id = ? AND favorito = 1 AND ativo = 1 ORDER BY nome
+  `).all(req.empresaId);
+  res.json(postos);
+}));
+
 function buscarCategoriaAbastecimentoId() {
   const categoria = db.prepare("SELECT id FROM categorias_despesa WHERE lower(trim(nome)) = 'abastecimento'").get();
   if (!categoria) throw new ApiError(400, 'Categoria "Abastecimento" nao encontrada no cadastro.');

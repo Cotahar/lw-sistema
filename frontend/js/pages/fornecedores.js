@@ -14,6 +14,12 @@ async function camposFormulario() {
     },
     { nome: 'telefone', label: 'Telefone', tipo: 'texto' },
     { nome: 'localizacao', label: 'Localizacao', tipo: 'texto' },
+    { nome: 'favorito', label: 'Favorito (posto) - aparece no app do motorista', tipo: 'checkbox' },
+    { nome: 'posto_assina_nota', label: 'Posto assina nota (fatura, nao paga na hora)', tipo: 'checkbox' },
+    { nome: 'posto_prazo_dias', label: 'Prazo p/ vencimento em dias (quando assina nota)', tipo: 'numero' },
+    { nome: 'posto_forma_pagamento', label: 'Forma de pagamento acertada (ex.: Pix, Dinheiro)', tipo: 'texto' },
+    { nome: 'posto_preco_diesel', label: 'Preco acertado - Diesel (R$/L)', tipo: 'moeda' },
+    { nome: 'posto_preco_arla', label: 'Preco acertado - Arla (R$/L)', tipo: 'moeda' },
   ];
 }
 
@@ -24,6 +30,7 @@ export const render = criarPaginaCrud({
   modulo: 'fornecedores',
   campos: camposFormulario,
   colunas: [
+    { chave: 'favorito', titulo: '', render: (r) => (r.favorito ? '<span title="Favorito" class="text-amber-500">★</span>' : '') },
     { chave: 'nome', titulo: 'Nome' },
     { chave: 'cnpj', titulo: 'CPF/CNPJ', render: (r) => (r.cnpj ? comCopiar(formatarCpfCnpj(r.cnpj)) : '-') },
     { chave: 'tipo_nome', titulo: 'Tipo' },

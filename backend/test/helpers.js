@@ -64,9 +64,14 @@ function criarFornecedorTipo(nome = 'Posto') {
   return db.prepare('INSERT INTO fornecedor_tipos (nome) VALUES (?)').run(nome).lastInsertRowid;
 }
 
-function criarFornecedor(empresaId, { nome = 'Fornecedor Teste', tipo_id } = {}) {
+function criarFornecedor(empresaId, {
+  nome = 'Fornecedor Teste', tipo_id, favorito = 0, posto_assina_nota = 0, posto_prazo_dias = null,
+} = {}) {
   const tipoId = tipo_id || criarFornecedorTipo();
-  return db.prepare('INSERT INTO fornecedores (empresa_id, nome, tipo_id) VALUES (?, ?, ?)').run(empresaId, nome, tipoId).lastInsertRowid;
+  return db.prepare(`
+    INSERT INTO fornecedores (empresa_id, nome, tipo_id, favorito, posto_assina_nota, posto_prazo_dias)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(empresaId, nome, tipoId, favorito, posto_assina_nota, posto_prazo_dias).lastInsertRowid;
 }
 
 function criarContaBancaria(empresaId, { nome = 'Conta Teste', saldo_atual = 100000000 } = {}) {

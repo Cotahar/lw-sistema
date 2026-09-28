@@ -112,9 +112,11 @@ async function renderizarViagem(conteudo) {
           <button type="button" class="btn-primary" data-lancar>+ Abastecimento</button>
           <button type="button" class="btn-secondary" data-ver-acertos>Meus Acertos</button>
         </div>
+        <button type="button" class="btn-secondary w-full min-h-[48px]" data-ver-postos>★ Postos Favoritos</button>
       ` : `
         <div class="card p-6 text-center text-slate-500">Nenhuma viagem em andamento no momento.</div>
         <button type="button" class="btn-secondary w-full min-h-[48px]" data-ver-acertos>Meus Acertos</button>
+        <button type="button" class="btn-secondary w-full min-h-[48px]" data-ver-postos>★ Postos Favoritos</button>
       `}
       <div data-pendentes></div>
     `;
@@ -123,6 +125,7 @@ async function renderizarViagem(conteudo) {
       conteudo.querySelectorAll('[data-ver-fretes]').forEach((el) => el.addEventListener('click', () => navegar('/motorista/fretes')));
     }
     conteudo.querySelector('[data-ver-acertos]').addEventListener('click', () => navegar('/motorista/acertos'));
+    conteudo.querySelector('[data-ver-postos]').addEventListener('click', () => navegar('/motorista/postos-favoritos'));
   } catch (err) {
     conteudo.innerHTML = `
       <div class="card p-6 text-center text-red-600">Nao foi possivel carregar a viagem. Confira sua conexao e tente novamente.</div>

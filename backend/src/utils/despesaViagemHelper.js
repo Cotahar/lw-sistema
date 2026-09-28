@@ -117,13 +117,27 @@ function criarDespesaViagem({
     }
 
     // Uma so conta a pagar com o total combinado (diesel + arla) - uma
-    // parada/nota so, um pagamento so ao posto. So NAO cria aqui quando o
-    // motorista marcou "Assinar nota": o vencimento real ainda e
-    // desconhecido, fica pra validacao (ver PATCH .../validar).
-    if ((pagoPor === 'Empresa' || pagoPor === 'AdminOutros') && formaPagamentoPosto !== 'AssinarNota') {
+    // parada/nota so, um pagamento so ao posto. Quando o motorista marcou
+    // "Assinar nota", o vencimento real normalmente ainda e desconhecido e
+    // fica pra validacao (ver PATCH .../validar) - EXCETO quando o posto e
+    // um posto favorito cadastrado como "assina nota" com prazo (em dias) ja
+    // acertado: nesse caso o vencimento e sempre calculado (data + prazo) e
+    // a conta a pagar entra direto, sem esperar validacao manual.
+    let dataVencimentoFinal = dataVencimento;
+    let criarContaAgora = (pagoPor === 'Empresa' || pagoPor === 'AdminOutros') && formaPagamentoPosto !== 'AssinarNota';
+    if ((pagoPor === 'Empresa' || pagoPor === 'AdminOutros') && formaPagamentoPosto === 'AssinarNota' && postoFornecedorId) {
+      const posto = db.prepare('SELECT posto_assina_nota, posto_prazo_dias FROM fornecedores WHERE id = ?').get(postoFornecedorId);
+      if (posto && posto.posto_assina_nota && posto.posto_prazo_dias != null) {
+        criarContaAgora = true;
+        dataVencimentoFinal = db
+          .prepare("SELECT date(COALESCE(?, date('now', '-3 hours')), '+' || ? || ' days') AS venc")
+          .get(data || null, posto.posto_prazo_dias).venc;
+      }
+    }
+    if (criarContaAgora) {
       criarContaPagarCombinada({
         empresaId, viagemId: viagem.id, despesa: novaDespesa, arlaDespesa, categoriaId, pagoPor, pagoPorUsuarioId,
-        postoFornecedorId, dataVencimento, data, valorPagoDinheiro,
+        postoFornecedorId, dataVencimento: dataVencimentoFinal, data, valorPagoDinheiro,
       });
     }
 

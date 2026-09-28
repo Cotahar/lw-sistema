@@ -158,6 +158,19 @@ CREATE TABLE fornecedores (
     -- so um texto pra ajudar o escritorio a identificar o posto depois.
     localizacao     TEXT,
     ativo           INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1)),
+    -- Campos de "posto favorito" (so fazem sentido pra fornecedores tipo
+    -- Posto, mas ficam genericos aqui pra nao exigir tabela nova - ver
+    -- migracao 030). favorito = estrelinha que aparece na lista de postos
+    -- favoritos do app do motorista. Quando assina_nota=1 e prazo_dias
+    -- esta preenchido, a despesa de abastecimento no posto ja gera a conta
+    -- a pagar direto (vencimento = data + prazo), sem esperar validacao -
+    -- ver despesaViagemHelper.js.
+    favorito             INTEGER NOT NULL DEFAULT 0 CHECK (favorito IN (0, 1)),
+    posto_assina_nota    INTEGER NOT NULL DEFAULT 0 CHECK (posto_assina_nota IN (0, 1)),
+    posto_prazo_dias     INTEGER,
+    posto_forma_pagamento TEXT,
+    posto_preco_diesel   INTEGER,
+    posto_preco_arla     INTEGER,
     criado_em       TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     atualizado_em   TEXT
 );

@@ -431,6 +431,10 @@ registrar('/motorista/fretes', () => {
   shellConstruido = false;
   import('./pages/motorista/fretes.js').then((m) => m.render(appEl));
 });
+registrar('/motorista/postos-favoritos', () => {
+  shellConstruido = false;
+  import('./pages/motorista/postosFavoritos.js').then((m) => m.render(appEl));
+});
 registrar('/motorista/acertos', () => {
   shellConstruido = false;
   import('./pages/motorista/acertos.js').then((m) => m.render(appEl));

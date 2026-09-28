@@ -719,11 +719,14 @@ router.delete('/despesas/:despesaId', requerAcessoModulo('viagens', 'Gerenciar')
 }));
 
 // Valida uma despesa lancada pelo app do motorista (validado_em nulo).
-// Despesas "Assinar nota" so ganham a Conta a Pagar aqui, porque so agora o
-// vencimento real (informado pelo posto na fatura, nao pelo motorista) e
-// conhecido - ver despesaViagemHelper.js. Despesas "Imediato" (ou lancadas
-// pelo escritorio) ja tem a conta a pagar desde a criacao; validar aqui so
-// confirma a revisao, sem pedir nada a mais.
+// Despesas "Assinar nota" normalmente so ganham a Conta a Pagar aqui, porque
+// so agora o vencimento real (informado pelo posto na fatura, nao pelo
+// motorista) e conhecido - ver despesaViagemHelper.js. Excecao: posto
+// favorito cadastrado com "assina nota" + prazo em dias ja gera a conta a
+// pagar direto na criacao (vencimento calculado); nesse caso contas_pagar_id
+// ja vem preenchido e `precisaContaPagar` abaixo da false, entao validar aqui
+// so confirma a revisao. Despesas "Imediato" (ou lancadas pelo escritorio)
+// tambem ja tem a conta a pagar desde a criacao.
 router.patch('/despesas/:despesaId/validar', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const despesa = db.prepare('SELECT * FROM despesas_viagem WHERE id = ? AND empresa_id = ?').get(req.params.despesaId, req.empresaId);
   if (!despesa) throw new ApiError(404, 'Despesa nao encontrada.');
