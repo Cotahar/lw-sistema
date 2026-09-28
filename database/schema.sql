@@ -580,6 +580,7 @@ CREATE TABLE fretes (
     peso_carga_kg               INTEGER,
     frete_bruto                 INTEGER NOT NULL,  -- centavos; valor base do recebivel (ver contas_receber_baixas)
     data_carregamento           TEXT,  -- data em que a carga foi carregada (distinta de criado_em)
+    data_descarga               TEXT,  -- data em que a carga foi descarregada/entregue no destino
     criado_em                    TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
 );
 CREATE INDEX idx_fretes_viagem ON fretes(viagem_id);

@@ -1,10 +1,10 @@
-import { get, post, del } from '../api.js';
+import { get, post, put, del } from '../api.js';
 import { abrirModal, confirmarAcao } from './modal.js';
 import { mostrarToast, mostrarErro } from './toast.js';
 import { criarSearchableSelect } from './searchableSelect.js';
 import { criarOcorrencias } from './ocorrencias.js';
 import { criarAnexos } from './anexos.js';
-import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, formatarDataBr, attachUppercaseInput } from '../masks.js';
+import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, formatarDataBr, attachDataMask, parseDataBrParaIso, attachUppercaseInput } from '../masks.js';
 
 const TIPOS_BAIXA = ['Adiantamento', 'Pedagio', 'Saldo', 'Desconto', 'Outro'];
 
@@ -21,11 +21,17 @@ export async function buscarContasBancarias(termo) {
 // ir ate a tela da viagem).
 export async function abrirBaixasFrete(frete, recarregar, gerenciar) {
   try {
-    const { contaReceber, baixas } = await get(`/viagens/fretes/${frete.id}/baixas`);
+    const { frete: freteAtual, contaReceber, baixas } = await get(`/viagens/fretes/${frete.id}/baixas`);
     const ocorrencias = criarOcorrencias({ entidadeTipo: 'Frete', entidadeId: frete.id, podeGerenciar: gerenciar });
     const anexos = criarAnexos({ entidadeTipo: 'Frete', entidadeId: frete.id, podeGerenciar: gerenciar });
 
-    function montarConteudo(cr, listaBaixas) {
+    // Guardado fora do montarConteudo() para o attachDataMask do input de
+    // descarga (chamado em ligarEventos, depois do render) saber o valor
+    // atual sem precisar reler o DOM.
+    let freteRowAtual = freteAtual;
+
+    function montarConteudo(freteRow, cr, listaBaixas) {
+      freteRowAtual = freteRow;
       const saldoEmAberto = cr.valor - cr.valor_recebido - cr.valor_descontado;
       const wrapper = document.createElement('div');
       wrapper.innerHTML = `
@@ -35,6 +41,13 @@ export async function abrirBaixasFrete(frete, recarregar, gerenciar) {
           <p><span class="font-medium">Recebido (dinheiro):</span> ${formatarMoeda(cr.valor_recebido)}</p>
           <p><span class="font-medium">Descontado:</span> ${formatarMoeda(cr.valor_descontado)}</p>
           <p class="col-span-2"><span class="font-medium">Saldo em aberto:</span> ${formatarMoeda(saldoEmAberto)}</p>
+        </div>
+        <div class="mb-4 flex items-center gap-2 text-sm">
+          <span class="font-medium">Data de descarga:</span>
+          ${gerenciar
+            ? `<input type="text" class="input w-36" data-input-descarga placeholder="dd/mm/aaaa" />
+               <button type="button" class="btn-secondary btn-sm" data-salvar-descarga>Salvar</button>`
+            : `<span>${freteRow.data_descarga ? formatarDataBr(freteRow.data_descarga) : '-'}</span>`}
         </div>
         <table class="mb-4 w-full text-sm">
           <thead><tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500"><th class="py-1">Data</th><th class="py-1">Tipo</th><th class="py-1 text-right">Valor</th><th class="py-1">Obs.</th>${gerenciar ? '<th></th>' : ''}</tr></thead>
@@ -71,11 +84,11 @@ export async function abrirBaixasFrete(frete, recarregar, gerenciar) {
       return wrapper;
     }
 
-    const overlay = abrirModal({ titulo: `Recebivel - Frete ${frete.origem_cidade}/${frete.origem_uf} -> ${frete.destino_cidade}/${frete.destino_uf}`, conteudo: montarConteudo(contaReceber, baixas), largura: 'max-w-2xl' });
+    const overlay = abrirModal({ titulo: `Recebivel - Frete ${frete.origem_cidade}/${frete.origem_uf} -> ${frete.destino_cidade}/${frete.destino_uf}`, conteudo: montarConteudo(freteAtual, contaReceber, baixas), largura: 'max-w-2xl' });
 
     async function religar() {
       const atualizado = await get(`/viagens/fretes/${frete.id}/baixas`);
-      const novoConteudo = montarConteudo(atualizado.contaReceber, atualizado.baixas);
+      const novoConteudo = montarConteudo(atualizado.frete, atualizado.contaReceber, atualizado.baixas);
       const corpoModal = overlay.querySelector('[data-modal-corpo]');
       corpoModal.innerHTML = '';
       corpoModal.appendChild(novoConteudo);
@@ -95,6 +108,22 @@ export async function abrirBaixasFrete(frete, recarregar, gerenciar) {
           } catch (err) { mostrarErro(err); }
         });
       });
+
+      const inputDescarga = overlay.querySelector('[data-input-descarga]');
+      const btnSalvarDescarga = overlay.querySelector('[data-salvar-descarga]');
+      if (inputDescarga && btnSalvarDescarga) {
+        attachDataMask(inputDescarga, freteRowAtual.data_descarga);
+        btnSalvarDescarga.addEventListener('click', async () => {
+          try {
+            await put(`/viagens/fretes/${frete.id}`, {
+              data_descarga: inputDescarga.value ? parseDataBrParaIso(inputDescarga.value) : null,
+            });
+            mostrarToast('Data de descarga atualizada.');
+            await religar();
+            recarregar();
+          } catch (err) { mostrarErro(err); }
+        });
+      }
 
       const formBaixa = overlay.querySelector('[data-form-baixa]');
       if (!formBaixa) return;

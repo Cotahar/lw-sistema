@@ -84,8 +84,9 @@ function montarFormularioFrete(aoSalvar, frete, transportadoraLabelInicial) {
       <div><label class="label">Peso da carga</label><input type="text" name="peso_carga_kg" class="input" /></div>
       <div><label class="label">Frete Bruto *</label><input type="text" name="frete_bruto" class="input" required /></div>
     </div>
-    <div class="grid grid-cols-2 gap-3">
+    <div class="grid grid-cols-3 gap-3">
       <div><label class="label">Data de carregamento</label><input type="text" name="data_carregamento" class="input" /></div>
+      <div><label class="label">Data de descarga</label><input type="text" name="data_descarga" class="input" /></div>
       <div><label class="label">Data prevista de recebimento</label><input type="text" name="data_prevista_recebimento" class="input" /></div>
     </div>
     <p class="hidden text-sm text-red-600" data-erro></p>
@@ -106,6 +107,7 @@ function montarFormularioFrete(aoSalvar, frete, transportadoraLabelInicial) {
   attachPesoMask(form.peso_carga_kg, frete ? frete.peso_carga_kg : undefined);
   attachMoedaMaskReais(form.frete_bruto, frete ? frete.frete_bruto : 0);
   attachDataMask(form.data_carregamento, frete ? frete.data_carregamento : undefined);
+  attachDataMask(form.data_descarga, frete ? frete.data_descarga : undefined);
   attachDataMask(form.data_prevista_recebimento, frete ? frete.data_prevista_recebimento : undefined);
   const erro = form.querySelector('[data-erro]');
   form.addEventListener('submit', async (ev) => {
@@ -126,6 +128,7 @@ function montarFormularioFrete(aoSalvar, frete, transportadoraLabelInicial) {
         peso_carga_kg: getPesoValue(form.peso_carga_kg) || null,
         frete_bruto: getMoedaValue(form.frete_bruto),
         data_carregamento: form.data_carregamento.value ? parseDataBrParaIso(form.data_carregamento.value) : null,
+        data_descarga: form.data_descarga.value ? parseDataBrParaIso(form.data_descarga.value) : null,
         data_prevista_recebimento: form.data_prevista_recebimento.value ? parseDataBrParaIso(form.data_prevista_recebimento.value) : null,
       });
     } catch (err) {
@@ -1118,6 +1121,7 @@ export async function render(container, params) {
         { chave: 'transportadora', titulo: 'Transportadora', render: (r) => (r.transportadora_id ? nomeFornecedoresPorId[r.transportadora_id] || `#${r.transportadora_id}` : '-') },
         { chave: 'rota', titulo: 'Rota', render: (r) => `${r.origem_cidade}/${r.origem_uf} &rarr; ${r.destino_cidade}/${r.destino_uf}` },
         { chave: 'data_carregamento', titulo: 'Carregamento', render: (r) => (r.data_carregamento ? formatarDataBr(r.data_carregamento) : '-') },
+        { chave: 'data_descarga', titulo: 'Descarga', render: (r) => (r.data_descarga ? formatarDataBr(r.data_descarga) : '-') },
         { chave: 'peso_carga_kg', titulo: 'Peso', render: (r) => (r.peso_carga_kg ? `${r.peso_carga_kg.toLocaleString('pt-BR')} kg` : '-') },
         { chave: 'frete_bruto', titulo: 'Frete Bruto', render: (r) => formatarMoeda(r.frete_bruto) },
         { chave: 'recebimento_status', titulo: 'Recebimento', render: (r) => badgeRecebimentoFrete(r) },

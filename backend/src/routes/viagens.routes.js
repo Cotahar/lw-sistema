@@ -266,7 +266,7 @@ router.post('/:id/fretes', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmp
 
   const {
     transportadora_id, origem_cidade, origem_uf, destino_cidade, destino_uf, peso_carga_kg, frete_bruto,
-    data_prevista_recebimento, data_carregamento,
+    data_prevista_recebimento, data_carregamento, data_descarga,
   } = req.body;
   if (!origem_cidade || !origem_uf || !destino_cidade || !destino_uf || frete_bruto === undefined) {
     throw new ApiError(400, 'Preencha origem, destino e frete_bruto.');
@@ -277,10 +277,10 @@ router.post('/:id/fretes', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmp
 
   const frete = withTransaction(db, () => {
     const info = db.prepare(`
-      INSERT INTO fretes (empresa_id, viagem_id, transportadora_id, origem_cidade, origem_uf, destino_cidade, destino_uf, peso_carga_kg, frete_bruto, data_carregamento)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO fretes (empresa_id, viagem_id, transportadora_id, origem_cidade, origem_uf, destino_cidade, destino_uf, peso_carga_kg, frete_bruto, data_carregamento, data_descarga)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      req.empresaId, req.params.id, transportadora_id || null, origem_cidade, origem_uf, destino_cidade, destino_uf, peso_carga_kg || null, frete_bruto, data_carregamento || null,
+      req.empresaId, req.params.id, transportadora_id || null, origem_cidade, origem_uf, destino_cidade, destino_uf, peso_carga_kg || null, frete_bruto, data_carregamento || null, data_descarga || null,
     );
     const novoFrete = db.prepare('SELECT * FROM fretes WHERE id = ?').get(info.lastInsertRowid);
 
@@ -313,7 +313,7 @@ router.put('/fretes/:freteId', requerAcessoModulo('viagens', 'Gerenciar'), exigi
   const viagemDoFrete = db.prepare('SELECT status FROM viagens WHERE id = ?').get(antes.viagem_id);
   if (viagemDoFrete && viagemDoFrete.status === 'Finalizada') throw new ApiError(400, 'Viagem ja finalizada nao aceita edicao de fretes.');
 
-  const campos = ['transportadora_id', 'origem_cidade', 'origem_uf', 'destino_cidade', 'destino_uf', 'peso_carga_kg', 'frete_bruto'];
+  const campos = ['transportadora_id', 'origem_cidade', 'origem_uf', 'destino_cidade', 'destino_uf', 'peso_carga_kg', 'frete_bruto', 'data_carregamento', 'data_descarga'];
   const sets = [];
   const valores = [];
   for (const campo of campos) {
@@ -369,12 +369,16 @@ router.delete('/fretes/:freteId', requerAcessoModulo('viagens', 'Gerenciar'), ex
 // ---- Baixas do recebivel do frete (adiantamento/pedagio/saldo/desconto, em varias parcelas) ----
 
 router.get('/fretes/:freteId/baixas', requerAcessoModulo('viagens', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const frete = db.prepare('SELECT id FROM fretes WHERE id = ? AND empresa_id = ?').get(req.params.freteId, req.empresaId);
+  // Traz a linha inteira do frete (nao so o id) - o modal de Recebivel/Baixas
+  // passou a mostrar/editar data_descarga tambem, e assim fica sempre com o
+  // dado atual do servidor em vez de depender do que quem chamou a funcao
+  // (viagemDetalhe ou Contas a Receber) ja tinha em maos.
+  const frete = db.prepare('SELECT * FROM fretes WHERE id = ? AND empresa_id = ?').get(req.params.freteId, req.empresaId);
   if (!frete) throw new ApiError(404, 'Frete nao encontrado.');
   const receber = db.prepare('SELECT * FROM contas_receber WHERE frete_id = ?').get(req.params.freteId);
   if (!receber) throw new ApiError(404, 'Recebivel deste frete nao encontrado.');
   const baixas = db.prepare('SELECT * FROM contas_receber_baixas WHERE contas_receber_id = ? ORDER BY data, id').all(receber.id);
-  res.json({ contaReceber: receber, baixas });
+  res.json({ frete, contaReceber: receber, baixas });
 }));
 
 const TIPOS_BAIXA = ['Adiantamento', 'Pedagio', 'Saldo', 'Desconto', 'Outro'];

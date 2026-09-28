@@ -44,7 +44,10 @@ export const GRUPOS_MENU = [
   },
   {
     titulo: 'Relatorios',
-    itens: [{ chave: 'dre', label: 'DRE', rota: '/dre' }],
+    itens: [
+      { chave: 'dre', label: 'DRE', rota: '/dre' },
+      { chave: 'dre', label: 'Saldos em Aberto', rota: '/relatorios/saldos-em-aberto' },
+    ],
   },
 ];
 

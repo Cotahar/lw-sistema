@@ -419,6 +419,7 @@ registrarPagina('/contas-receber', () => import('./pages/financeiro/contasRecebe
 registrarPagina('/despesas-fixas', () => import('./pages/financeiro/despesasFixas.js'), 'despesas_fixas');
 registrarPagina('/financiamentos', () => import('./pages/financeiro/financiamentos.js'), 'financiamentos');
 registrarPagina('/dre', () => import('./pages/dre.js'), 'dre');
+registrarPagina('/relatorios/saldos-em-aberto', () => import('./pages/relatorios/saldosEmAberto.js'), 'dre');
 registrarPagina('/usuarios', () => import('./pages/usuarios.js'));
 registrarPagina('/auditoria', () => import('./pages/auditoria.js'));
 registrarPagina('/config/empresas', () => import('./pages/config/empresas.js'));
