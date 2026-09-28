@@ -7,7 +7,7 @@ import { renderLogin } from './pages/login.js';
 import { renderRelatorio } from './pages/acertoRelatorio.js';
 import { renderDreRelatorio } from './pages/dreRelatorio.js';
 import { render as renderImpressaoGenerica } from './pages/relatorios/imprimir.js';
-import { GRUPOS_MENU, ROTA_PAINEL, ITEM_ADMIN, ITEM_AUDITORIA, ITENS_CONFIGURACAO } from './modulosConfig.js';
+import { GRUPOS_MENU, ROTA_PAINEL, ITEM_ADMIN, ITEM_AUDITORIA, ITEM_ATIVIDADE_USUARIOS, ITENS_CONFIGURACAO } from './modulosConfig.js';
 
 const appEl = document.getElementById('app');
 let shellConstruido = false;
@@ -84,7 +84,7 @@ function montarSidebarHtml() {
   )).join('');
 
   const admin = usuario && usuario.perfil === 'Admin'
-    ? renderGrupoAccordion('administracao', 'Administracao', [ITEM_ADMIN, ITEM_AUDITORIA, ...ITENS_CONFIGURACAO])
+    ? renderGrupoAccordion('administracao', 'Administracao', [ITEM_ADMIN, ITEM_AUDITORIA, ITEM_ATIVIDADE_USUARIOS, ...ITENS_CONFIGURACAO])
     : '';
 
   return `
@@ -430,6 +430,16 @@ registrarPagina('/financiamentos', () => import('./pages/financeiro/financiament
 registrarPagina('/dre', () => import('./pages/dre.js'), 'dre');
 registrarPagina('/relatorios/saldos-em-aberto', () => import('./pages/relatorios/saldosEmAberto.js'), 'dre');
 registrarPagina('/relatorios/despesas', () => import('./pages/relatorios/despesasPersonalizado.js'), 'dre');
+registrarPagina('/relatorios/fretes', () => import('./pages/relatorios/fretes.js'), 'dre');
+registrarPagina('/relatorios/conta-corrente-motorista', () => import('./pages/relatorios/contaCorrenteMotorista.js'), 'dre');
+registrarPagina('/relatorios/despesas-fixas', () => import('./pages/relatorios/despesasFixas.js'), 'dre');
+registrarPagina('/relatorios/parcelas-financiamento', () => import('./pages/relatorios/parcelasFinanciamento.js'), 'dre');
+registrarPagina('/relatorios/multas', () => import('./pages/relatorios/multas.js'), 'dre');
+// Sem modulo de permissao (undefined) - mesmo padrao de /usuarios e
+// /auditoria abaixo: a tela so aparece no menu para Admin (ver
+// modulosConfig.js/main.js, grupo "Administracao"), e a API (requerAdmin)
+// e quem de fato garante o acesso.
+registrarPagina('/relatorios/atividade-usuarios', () => import('./pages/relatorios/atividadeUsuarios.js'));
 registrarPagina('/usuarios', () => import('./pages/usuarios.js'));
 registrarPagina('/auditoria', () => import('./pages/auditoria.js'));
 registrarPagina('/config/empresas', () => import('./pages/config/empresas.js'));

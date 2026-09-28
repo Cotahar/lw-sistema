@@ -48,6 +48,11 @@ export const GRUPOS_MENU = [
       { chave: 'dre', label: 'DRE', rota: '/dre' },
       { chave: 'dre', label: 'Saldos em Aberto', rota: '/relatorios/saldos-em-aberto' },
       { chave: 'dre', label: 'Relatorio de Despesas', rota: '/relatorios/despesas' },
+      { chave: 'dre', label: 'Relatorio de Fretes/Receitas', rota: '/relatorios/fretes' },
+      { chave: 'dre', label: 'Extrato Conta Corrente Motorista', rota: '/relatorios/conta-corrente-motorista' },
+      { chave: 'dre', label: 'Despesas Fixas por Categoria', rota: '/relatorios/despesas-fixas' },
+      { chave: 'dre', label: 'Parcelas de Financiamento', rota: '/relatorios/parcelas-financiamento' },
+      { chave: 'dre', label: 'Multas por Motorista/Veiculo', rota: '/relatorios/multas' },
     ],
   },
 ];
@@ -55,6 +60,7 @@ export const GRUPOS_MENU = [
 export const ROTA_PAINEL = '/dashboard';
 export const ITEM_ADMIN = { label: 'Usuarios e Permissoes', rota: '/usuarios' };
 export const ITEM_AUDITORIA = { label: 'Auditoria e Reversao', rota: '/auditoria' };
+export const ITEM_ATIVIDADE_USUARIOS = { label: 'Atividade por Usuario', rota: '/relatorios/atividade-usuarios' };
 
 // Telas de configuracao/taxonomia do sistema: restritas ao Admin, fora da
 // matriz de permissoes por modulo (ver crudGenerico.js: somenteAdmin).
