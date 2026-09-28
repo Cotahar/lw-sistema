@@ -3,7 +3,9 @@ const db = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const { requerAcessoModulo, requerAdmin } = require('../middleware/auth');
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
-const { buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
+const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
+const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
+const { periodoOuTudo, resultadoDoVeiculo } = require('../utils/dreHelper');
 
 const router = express.Router();
 
@@ -459,6 +461,161 @@ router.get('/aging-contas-pagar', requerAcessoModulo('dre', 'Visualizar'), exigi
   `).all(...params);
 
   res.json(linhas.map((r) => ({ ...r, saldo_pendente: r.valor - r.valor_pago - r.valor_descontado })));
+}));
+
+// Ranking de Veiculos: mesma conta da DRE (receita/custo/lucro por veiculo),
+// so que numa lista comparavel/ordenavel em vez de tela por veiculo -
+// reusa resultadoDoVeiculo (dreHelper.js) pra nunca divergir da DRE.
+router.get('/ranking-veiculos', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { inicio, fim } = periodoOuTudo(req.query.data_de, req.query.data_ate);
+  const veiculos = db.prepare('SELECT id, placa, tipo FROM veiculos WHERE empresa_id = ?').all(req.empresaId);
+  const linhas = veiculos.map((v) => {
+    const resultado = resultadoDoVeiculo(v, inicio, fim);
+    if (!resultado) return null;
+    return {
+      veiculo_id: v.id, placa: v.placa, tipo: v.tipo,
+      receita: resultado.receita, custo: resultado.custoTotal, lucro: resultado.lucro,
+      margem_pct: resultado.receita > 0 ? (resultado.lucro / resultado.receita) * 100 : null,
+    };
+  }).filter(Boolean);
+  res.json(linhas);
+}));
+
+// Ranking de Motoristas: faturamento gerado (fretes das viagens dele),
+// comissao paga e media de consumo media (acertos fechados) das viagens
+// que ele fez no periodo - as tres usam vg.data_inicio (nao a data real do
+// fechamento do acerto, que so reflete quando o escritorio processou, nao
+// a viagem em si), pra nao misturar dois sentidos diferentes de "periodo"
+// no mesmo relatorio. Multas usam a data da propria infracao/notificacao.
+router.get('/ranking-motoristas', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { inicio, fim } = periodoOuTudo(req.query.data_de, req.query.data_ate);
+  const linhas = db.prepare(`
+    SELECT mo.id AS motorista_id, mo.nome AS motorista_nome,
+      (SELECT COALESCE(SUM(f.frete_bruto), 0) FROM fretes f JOIN viagens vg ON vg.id = f.viagem_id
+        WHERE vg.motorista_id = mo.id AND vg.data_inicio BETWEEN ? AND ?) AS faturamento_gerado,
+      (SELECT COALESCE(SUM(av.valor_comissao), 0) FROM acertos_viagem av JOIN viagens vg2 ON vg2.id = av.viagem_id
+        WHERE vg2.motorista_id = mo.id AND vg2.data_inicio BETWEEN ? AND ?) AS comissao_total,
+      (SELECT AVG(av2.media_consumo_km_l) FROM acertos_viagem av2 JOIN viagens vg3 ON vg3.id = av2.viagem_id
+        WHERE vg3.motorista_id = mo.id AND vg3.data_inicio BETWEEN ? AND ? AND av2.media_consumo_km_l IS NOT NULL) AS media_consumo_km_l,
+      (SELECT COUNT(*) FROM multas m WHERE m.motorista_id = mo.id AND COALESCE(m.data_infracao, m.data_notificacao) BETWEEN ? AND ?) AS qtd_multas
+    FROM motoristas mo
+    WHERE mo.empresa_id = ? AND mo.ativo = 1
+    ORDER BY mo.nome
+  `).all(inicio, fim, inicio, fim, inicio, fim, inicio, fim, req.empresaId);
+  res.json(linhas);
+}));
+
+// Comparativo de Consumo: media "tanque cheio a tanque cheio" de cada
+// veiculo (tratora), usando TODO o historico de abastecimentos dele - a
+// media de consumo neste sistema e sempre por janela de KM (nao por
+// calendario, ver mediaConsumoHelper.js), entao nao ha filtro de periodo
+// aqui, so de veiculo. Motorista atual e so informativo (viagem em
+// andamento mais recente daquele veiculo, se houver).
+router.get('/comparativo-consumo', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { veiculo_id } = req.query;
+  const veiculos = veiculo_id
+    ? db.prepare('SELECT id, placa FROM veiculos WHERE id = ? AND empresa_id = ?').all(veiculo_id, req.empresaId)
+    : db.prepare("SELECT id, placa FROM veiculos WHERE empresa_id = ? AND tipo IN ('Cavalo', 'Truck', 'Toco')").all(req.empresaId);
+  const categoriaAbastecimentoId = buscarCategoriaAbastecimentoId();
+
+  const linhas = veiculos.map((v) => {
+    const centroCusto = buscarCentroCustoDoVeiculo(v.id);
+    if (!centroCusto) return null;
+    const abastecimentos = buscarAbastecimentosDoVeiculo(centroCusto.id, 0, null);
+    const { mediaViagemKmL, mediaUltimaAbastecidaKmL } = calcularMediasConsumo(abastecimentos, categoriaAbastecimentoId);
+    const viagemAtual = db.prepare(`
+      SELECT mo.nome AS motorista_nome FROM viagens vg
+      JOIN conjunto_itens ci ON ci.conjunto_id = vg.conjunto_id
+      JOIN motoristas mo ON mo.id = vg.motorista_id
+      WHERE ci.veiculo_id = ? AND vg.status = 'EmAndamento'
+      ORDER BY vg.id DESC LIMIT 1
+    `).get(v.id);
+    const litrosNoHistorico = abastecimentos.filter((a) => a.categoria_id === categoriaAbastecimentoId).reduce((t, a) => t + (a.litragem || 0), 0);
+    return {
+      veiculo_id: v.id, placa: v.placa, motorista_atual: viagemAtual ? viagemAtual.motorista_nome : null,
+      media_consumo_km_l: mediaViagemKmL, media_ultima_abastecida_km_l: mediaUltimaAbastecidaKmL, litros_no_historico: litrosNoHistorico,
+    };
+  }).filter(Boolean);
+  res.json(linhas);
+}));
+
+// Divergencia de Consumo: compara a media "tanque cheio a tanque cheio" DE
+// CADA VIAGEM com a media historica (todo o historico) do MESMO veiculo -
+// um desvio grande (positivo = melhor que o normal, negativo = pior, ou
+// seja consumindo mais diesel que o historico do veiculo sustenta) e o
+// sinal que fica pra investigar. So considera viagens ja finalizadas (com
+// km_final) e so entra na lista quando da pra calcular as duas medias.
+// Usa dados que ja existem (abastecimentos lancados) - fica mais forte
+// ainda quando cruzado com telemetria/GPS no futuro, mas ja funciona hoje.
+router.get('/divergencia-consumo', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { veiculo_id, motorista_id, data_de, data_ate, limite } = req.query;
+  const limitePct = Number(limite) || 15;
+  const condicoes = ['vg.empresa_id = ?', 'vg.km_final IS NOT NULL'];
+  const params = [req.empresaId];
+  if (motorista_id) { condicoes.push('vg.motorista_id = ?'); params.push(motorista_id); }
+  if (data_de) { condicoes.push('vg.data_inicio >= ?'); params.push(data_de); }
+  if (data_ate) { condicoes.push('vg.data_inicio <= ?'); params.push(data_ate); }
+  const viagens = db.prepare(`SELECT vg.* FROM viagens vg WHERE ${condicoes.join(' AND ')} ORDER BY vg.data_inicio DESC`).all(...params);
+  const categoriaAbastecimentoId = buscarCategoriaAbastecimentoId();
+
+  const linhas = [];
+  for (const viagem of viagens) {
+    const tratora = buscarUnidadeTratora(viagem.conjunto_id);
+    if (!tratora) continue;
+    if (veiculo_id && String(tratora.id) !== String(veiculo_id)) continue;
+    const centroCusto = buscarCentroCustoDoVeiculo(tratora.id);
+    if (!centroCusto) continue;
+
+    const abastecimentosViagem = buscarAbastecimentosDoVeiculo(centroCusto.id, viagem.km_inicial, viagem.km_final);
+    const { mediaViagemKmL: mediaDaViagem } = calcularMediasConsumo(abastecimentosViagem, categoriaAbastecimentoId);
+    if (mediaDaViagem === null) continue;
+
+    const abastecimentosHistorico = buscarAbastecimentosDoVeiculo(centroCusto.id, 0, null);
+    const { mediaViagemKmL: mediaHistorica } = calcularMediasConsumo(abastecimentosHistorico, categoriaAbastecimentoId);
+    if (mediaHistorica === null) continue;
+
+    const desvioPct = ((mediaDaViagem - mediaHistorica) / mediaHistorica) * 100;
+    const motorista = db.prepare('SELECT nome FROM motoristas WHERE id = ?').get(viagem.motorista_id);
+    linhas.push({
+      viagem_id: viagem.id, data_inicio: viagem.data_inicio, data_fim: viagem.data_fim,
+      veiculo_placa: tratora.placa, motorista_nome: motorista ? motorista.nome : null,
+      media_viagem_km_l: mediaDaViagem, media_historica_km_l: mediaHistorica,
+      desvio_pct: desvioPct, divergente: Math.abs(desvioPct) >= limitePct,
+    });
+  }
+  res.json(linhas);
+}));
+
+// Rentabilidade por Rota: agrupa os fretes por origem->destino (texto exato
+// das cidades/UF - nao ha normalizacao/distancia cadastrada, entao nao da
+// pra calcular R$/km aqui, so frequencia e faturamento). Agregacao ja sai
+// pronta do backend (nao ha "linha" individual fazendo sentido pro
+// frontend agrupar de novo).
+router.get('/rentabilidade-rota', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { data_de, data_ate, transportadora_id } = req.query;
+  const condicoes = ['f.empresa_id = ?'];
+  const params = [req.empresaId];
+  if (transportadora_id) { condicoes.push('f.transportadora_id = ?'); params.push(transportadora_id); }
+  if (data_de) { condicoes.push('f.data_carregamento >= ?'); params.push(data_de); }
+  if (data_ate) { condicoes.push('f.data_carregamento <= ?'); params.push(data_ate); }
+
+  const fretes = db.prepare(`
+    SELECT f.origem_cidade, f.origem_uf, f.destino_cidade, f.destino_uf, f.frete_bruto
+    FROM fretes f WHERE ${condicoes.join(' AND ')}
+  `).all(...params);
+
+  const mapa = new Map();
+  for (const f of fretes) {
+    const chave = `${f.origem_cidade}/${f.origem_uf} -> ${f.destino_cidade}/${f.destino_uf}`;
+    if (!mapa.has(chave)) mapa.set(chave, { rota: chave, qtd: 0, total: 0 });
+    const item = mapa.get(chave);
+    item.qtd += 1;
+    item.total += f.frete_bruto;
+  }
+  const linhas = [...mapa.values()]
+    .map((r) => ({ ...r, ticket_medio: Math.round(r.total / r.qtd) }))
+    .sort((a, b) => b.total - a.total);
+  res.json(linhas);
 }));
 
 module.exports = router;
