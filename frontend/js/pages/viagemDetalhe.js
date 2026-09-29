@@ -1153,6 +1153,10 @@ export async function render(container, params) {
     const selectFiltroCategoria = container.querySelector('[data-filtro-categoria-despesa]');
     const tabelaDespesas = criarDataTable({
       colunas: [
+        // Codigo da despesa (o proprio id) - por pedido do usuario, pra
+        // conseguir localizar esta mesma despesa em Contas a Pagar (que
+        // agora mostra o mesmo numero na coluna "Despesa") sem adivinhar.
+        { chave: 'codigo', titulo: 'Cod.', render: (d) => `#${d.id}` },
         { chave: 'data', titulo: 'Data', render: (d) => formatarDataBr(d.data) },
         { chave: 'categoria', titulo: 'Categoria', render: (d) => nomeCategoriasPorId[d.categoria_id] || d.categoria_id },
         { chave: 'fornecedor', titulo: 'Fornecedor', render: (d) => (d.posto_fornecedor_id ? nomeFornecedoresPorId[d.posto_fornecedor_id] || `#${d.posto_fornecedor_id}` : '-') },

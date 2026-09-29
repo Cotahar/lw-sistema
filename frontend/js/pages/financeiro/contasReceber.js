@@ -97,6 +97,7 @@ export async function render(container) {
       { chave: 'transportadora_nome', titulo: 'Transportadora', render: (r) => r.transportadora_nome || '-' },
       { chave: 'valor', titulo: 'Valor', render: (r) => formatarMoeda(r.valor), exportar: (r) => r.valor / 100 },
       { chave: 'saldo', titulo: 'Saldo em Aberto', render: (r) => `<span class="${saldoEmAberto(r) > 0 ? 'font-semibold text-amber-400' : ''}">${formatarMoeda(saldoEmAberto(r))}</span>`, exportar: (r) => saldoEmAberto(r) / 100 },
+      { chave: 'criado_em', titulo: 'Cadastro', render: (r) => formatarDataBr(r.criado_em) },
       { chave: 'data_prevista', titulo: 'Previsto', render: (r) => `${formatarDataBr(r.data_prevista)}${badgePrazo(r)}`, exportar: (r) => formatarDataBr(r.data_prevista) },
       { chave: 'status', titulo: 'Status', render: (r) => `<span class="${STATUS_BADGE[r.status]}">${r.status}</span>`, exportar: (r) => r.status },
     ],

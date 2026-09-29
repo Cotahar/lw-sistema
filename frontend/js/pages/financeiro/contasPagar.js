@@ -397,10 +397,22 @@ export async function render(container, params, query) {
   const tabela = criarDataTable({
     colunas: [
       { chave: 'descricao', titulo: 'Descricao', truncar: true, render: (r) => (r.viagem_id ? `${r.descricao} <a href="#/viagens/${r.viagem_id}" class="ml-1 text-xs text-gray-900 hover:underline">(viagem #${r.viagem_id})</a>` : r.descricao) },
+      // Codigo da despesa de origem (quando a conta veio de um abastecimento/
+      // despesa de viagem) - por pedido do usuario, pra bater com o mesmo
+      // numero ja mostrado na lista de despesas da viagem (viagemDetalhe.js)
+      // e nao precisar adivinhar qual despesa gerou qual conta.
+      {
+        chave: 'despesa_codigo',
+        titulo: 'Despesa',
+        render: (r) => (r.origem_tipo === 'DespesaViagem' ? `<a href="#/viagens/${r.viagem_id}" class="text-gray-900 hover:underline">#${r.origem_id}</a>` : '-'),
+        exportar: (r) => (r.origem_tipo === 'DespesaViagem' ? `#${r.origem_id}` : '-'),
+      },
       { chave: 'categoria_nome', titulo: 'Categoria', render: (r) => r.categoria_nome || '-' },
+      { chave: 'fornecedor_nome', titulo: 'Fornecedor', render: (r) => r.fornecedor_nome || '-' },
       { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => r.veiculo_placa || '-' },
       { chave: 'valor', titulo: 'Valor', render: (r) => formatarMoeda(r.valor), exportar: (r) => r.valor / 100 },
       { chave: 'valor_pago', titulo: 'Pago', render: (r) => formatarMoeda(r.valor_pago + r.valor_descontado), exportar: (r) => (r.valor_pago + r.valor_descontado) / 100 },
+      { chave: 'criado_em', titulo: 'Cadastro', render: (r) => formatarDataBr(r.criado_em) },
       { chave: 'data_vencimento', titulo: 'Vencimento', render: (r) => `${formatarDataBr(r.data_vencimento)}${badgePrazo(r)}`, exportar: (r) => formatarDataBr(r.data_vencimento) },
       { chave: 'status', titulo: 'Status', render: (r) => `<span class="${STATUS_BADGE[r.status]}">${r.status}</span>`, exportar: (r) => r.status },
     ],
