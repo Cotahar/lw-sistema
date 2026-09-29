@@ -163,7 +163,10 @@ test('12. comparativo de periodo reflete o acerto fechado no mes (data_acerto e 
   // nao as datas ficticias (abril/2026) usadas na viagem em si.
   const hoje = new Date();
   const inicioMes = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-01`;
-  const fimMes = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-28`;
+  // Ultimo dia do mes de verdade (nao "28" fixo) - senao o teste quebra
+  // sempre que roda a partir do dia 29 em meses de 29-31 dias.
+  const ultimoDiaMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).getDate();
+  const fimMes = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(ultimoDiaMes).padStart(2, '0')}`;
   const comp = await admin().get(`/api/dre/comparativo?data_inicio=${inicioMes}&data_fim=${fimMes}`);
   assert.equal(comp.status, 200, JSON.stringify(comp.body));
   assert.equal(comp.body.atual.acertos.quantidade, 1);

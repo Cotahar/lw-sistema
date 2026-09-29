@@ -3,6 +3,7 @@ import { criarDataTable } from '../../components/dataTable.js';
 import { criarMultiSearchableSelect } from '../../components/multiSearchableSelect.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
+import { periodoAnteriorEquivalente, renderComparativoPeriodo } from '../../components/comparativoPeriodo.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
 
 const STATUS_LABEL = { EmAndamento: 'Em Andamento', AguardandoAcerto: 'Aguardando Acerto', Finalizada: 'Finalizada' };
@@ -32,8 +33,13 @@ export async function render(container) {
       </div>
       <div><label class="label">Inicio de</label><input type="text" class="input" data-filtro-data-de placeholder="dd/mm/aaaa" /></div>
       <div><label class="label">Inicio ate</label><input type="text" class="input" data-filtro-data-ate placeholder="dd/mm/aaaa" /></div>
+      <div class="flex items-center gap-2 pt-6">
+        <input type="checkbox" id="comparar-periodo" class="h-4 w-4" data-comparar-periodo />
+        <label for="comparar-periodo" class="text-sm text-slate-700">Comparar com periodo anterior</label>
+      </div>
     </div>
     <div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3" data-resumo></div>
+    <div data-comparativo-periodo></div>
     <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
       <div data-relatorios-salvos></div>
       <button type="button" class="btn-secondary btn-sm" data-exportar-pdf>Exportar PDF</button>
@@ -49,11 +55,41 @@ export async function render(container) {
   const selectStatus = container.querySelector('[data-filtro-status]');
   const inputDataDe = container.querySelector('[data-filtro-data-de]');
   const inputDataAte = container.querySelector('[data-filtro-data-ate]');
+  const checkComparar = container.querySelector('[data-comparar-periodo]');
   const resumoEl = container.querySelector('[data-resumo]');
+  const comparativoEl = container.querySelector('[data-comparativo-periodo]');
   selectStatus.addEventListener('change', () => tabela.recarregar());
+  checkComparar.addEventListener('change', () => tabela.recarregar());
   for (const input of [inputDataDe, inputDataAte]) {
     attachDataMask(input);
     input.addEventListener('change', () => tabela.recarregar());
+  }
+
+  async function atualizarComparativo(dadosAtuais) {
+    if (!checkComparar.checked) { comparativoEl.innerHTML = ''; return; }
+    const dataDeIso = inputDataDe.value ? parseDataBrParaIso(inputDataDe.value) : null;
+    const dataAteIso = inputDataAte.value ? parseDataBrParaIso(inputDataAte.value) : null;
+    const anterior = periodoAnteriorEquivalente(dataDeIso, dataAteIso);
+    if (!anterior) { comparativoEl.innerHTML = ''; return; }
+    const params = new URLSearchParams();
+    for (const id of veiculoSelect.getValues()) params.append('veiculo_id', id);
+    for (const id of motoristaSelect.getValues()) params.append('motorista_id', id);
+    if (selectStatus.value) params.set('status', selectStatus.value);
+    params.set('data_de', anterior.de);
+    params.set('data_ate', anterior.ate);
+    const dadosAnteriores = await get(`/relatorios/viagens?${params.toString()}`);
+    const faturamentoAnt = dadosAnteriores.reduce((t, r) => t + r.faturamento, 0);
+    const lucroAnt = dadosAnteriores.reduce((t, r) => t + r.lucro, 0);
+    const faturamentoAtual = dadosAtuais.reduce((t, r) => t + r.faturamento, 0);
+    const lucroAtual = dadosAtuais.reduce((t, r) => t + r.lucro, 0);
+    renderComparativoPeriodo(comparativoEl, {
+      periodoAnteriorTexto: `${formatarDataBr(anterior.de)} a ${formatarDataBr(anterior.ate)}`,
+      indicadores: [
+        { label: 'Viagens', atual: dadosAtuais.length, anterior: dadosAnteriores.length, formatador: (v) => v.toLocaleString('pt-BR') },
+        { label: 'Faturamento total', atual: faturamentoAtual, anterior: faturamentoAnt, formatador: formatarMoeda },
+        { label: 'Lucro total', atual: lucroAtual, anterior: lucroAnt, formatador: formatarMoeda },
+      ],
+    });
   }
 
   const tabela = criarDataTable({
@@ -92,6 +128,7 @@ export async function render(container) {
         <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Faturamento total</p><p class="mt-1 text-2xl font-bold text-emerald-500">${formatarMoeda(faturamentoTotal)}</p></div>
         <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Lucro total</p><p class="mt-1 text-2xl font-bold ${lucroTotal >= 0 ? 'text-emerald-500' : 'text-red-500'}">${formatarMoeda(lucroTotal)}</p></div>
       `;
+      atualizarComparativo(dados);
       return dados;
     },
     vazio: 'Nenhuma viagem encontrada com estes filtros.',
@@ -104,6 +141,7 @@ export async function render(container) {
       veiculoIds: veiculoSelect.getValues(), veiculoLabels: veiculoSelect.getLabels(),
       motoristaIds: motoristaSelect.getValues(), motoristaLabels: motoristaSelect.getLabels(),
       status: selectStatus.value, dataDe: inputDataDe.value, dataAte: inputDataAte.value,
+      comparar: checkComparar.checked,
     }),
     aplicarFiltros: (f) => {
       veiculoSelect.setValues(f.veiculoIds || [], f.veiculoLabels || []);
@@ -111,6 +149,7 @@ export async function render(container) {
       selectStatus.value = f.status || '';
       inputDataDe.value = f.dataDe || '';
       inputDataAte.value = f.dataAte || '';
+      checkComparar.checked = Boolean(f.comparar);
       tabela.recarregar();
     },
   });
