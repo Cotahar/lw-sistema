@@ -10,6 +10,17 @@ function linha(rotulo, valor, destaque = false) {
   </div>`;
 }
 
+// status_pagamento vem do backend (ver acertoPagamentoHelper.js) - antes o
+// motorista nao tinha nenhum jeito de saber se o acerto ja tinha sido pago
+// (bug reportado: "fica como pendente inclusive no app do motorista",
+// porque nenhuma tela mostrava status nenhum). null = nada a pagar em
+// dinheiro (saldo ficou em conta corrente, nao gera Conta a Pagar).
+const STATUS_PAGAMENTO_BADGE = { Pago: 'badge-sucesso', Parcial: 'badge-atencao', Pendente: 'badge-critico' };
+function badgePagamento(status) {
+  if (!status) return '';
+  return `<span class="${STATUS_PAGAMENTO_BADGE[status] || 'badge-neutro'} ml-2">${status}</span>`;
+}
+
 export async function render(appEl, params = {}) {
   if (params.id) return renderDetalhe(appEl, params.id);
   return renderLista(appEl);
@@ -46,7 +57,7 @@ async function renderLista(appEl) {
           <p class="font-semibold text-gray-900">Viagem #${a.viagem_id}</p>
           <p class="text-sm text-slate-500">${formatarDataBr(a.data_acerto)}</p>
         </div>
-        <p class="mt-1 text-sm text-slate-500">Saldo: <span class="font-medium text-slate-900">${formatarMoeda(Math.abs(a.saldo_final))} ${a.saldo_final >= 0 ? '(a pagar)' : '(conta corrente)'}</span></p>
+        <p class="mt-1 text-sm text-slate-500">Saldo: <span class="font-medium text-slate-900">${formatarMoeda(Math.abs(a.saldo_final))} ${a.saldo_final >= 0 ? '(a pagar)' : '(conta corrente)'}</span>${badgePagamento(a.status_pagamento)}</p>
       </button>
     `).join('');
     conteudo.querySelectorAll('[data-acerto]').forEach((btn) => {
@@ -85,7 +96,7 @@ async function renderDetalhe(appEl, id) {
     conteudo.innerHTML = `
       <div class="card p-4">
         <p class="text-xs font-medium uppercase text-slate-500">Viagem #${acerto.viagem_id}</p>
-        <p class="text-sm text-slate-500">Fechado em ${formatarDataBr(acerto.data_acerto)}</p>
+        <p class="text-sm text-slate-500">Fechado em ${formatarDataBr(acerto.data_acerto)}${badgePagamento(acerto.status_pagamento)}</p>
         <div class="mt-3">
           ${linha('Frete bruto total', formatarMoeda(acerto.frete_bruto_total))}
           ${acerto.valor_imposto > 0 ? linha(`Imposto (${acerto.percentual_imposto_aplicado}%)`, `- ${formatarMoeda(acerto.valor_imposto)}`) : ''}

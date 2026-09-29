@@ -3,6 +3,18 @@ import { criarDataTable } from '../components/dataTable.js';
 import { formatarMoeda, formatarDataBr } from '../masks.js';
 import { navegar } from '../router.js';
 
+// status_pagamento vem calculado do backend (ver acertoPagamentoHelper.js) a
+// partir das Contas a Pagar vinculadas ao acerto - antes esta tela nunca
+// mostrava se o acerto ja tinha sido pago, mesmo apos a baixa em Contas a
+// Pagar (bug reportado pelo usuario: "acerto pago no contas a pagar mas nao
+// baixa em Acertos"). null = nada a pagar em dinheiro (ficou so em conta
+// corrente do motorista).
+const STATUS_PAGAMENTO_BADGE = { Pago: 'badge-sucesso', Parcial: 'badge-atencao', Pendente: 'badge-critico' };
+function badgePagamento(status) {
+  if (!status) return '<span class="text-xs text-slate-400">-</span>';
+  return `<span class="${STATUS_PAGAMENTO_BADGE[status] || 'badge-neutro'}">${status}</span>`;
+}
+
 export async function render(container) {
   container.innerHTML = `
     <h1 class="mb-4 text-xl font-bold text-slate-900">Acertos de Viagem</h1>
@@ -43,6 +55,7 @@ export async function render(container) {
       { chave: 'valor_comissao', titulo: 'Comissao', render: (r) => formatarMoeda(r.valor_comissao) },
       { chave: 'saldo_final', titulo: 'Saldo Final', render: (r) => formatarMoeda(Math.abs(r.saldo_final)) },
       { chave: 'sentido', titulo: 'Sentido', render: (r) => (r.saldo_final >= 0 ? 'A pagar ao motorista' : 'Fica em conta corrente') },
+      { chave: 'status_pagamento', titulo: 'Pagamento', render: (r) => badgePagamento(r.status_pagamento), exportar: (r) => r.status_pagamento || '-' },
     ],
     buscarDados: () => get('/acertos'),
     acoesExtras: () => [{ label: 'Ver / WhatsApp', onClick: (r) => navegar(`/acertos/${r.viagem_id}`) }],

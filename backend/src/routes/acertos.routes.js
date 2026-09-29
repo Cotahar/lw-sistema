@@ -9,6 +9,7 @@ const { registrarAuditoria } = require('../utils/audit');
 const { withTransaction } = require('../utils/transaction');
 const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
+const { SELECT_STATUS_PAGAMENTO, comStatusPagamento } = require('../utils/acertoPagamentoHelper');
 
 const router = express.Router();
 
@@ -113,6 +114,8 @@ function calcularAcerto(viagemId, empresaId, overrides = {}) {
   };
 }
 
+const SELECT_COM_PAGAMENTO = `SELECT a.*, ${SELECT_STATUS_PAGAMENTO} FROM acertos_viagem a`;
+
 router.get('/', requerAcessoModulo('acertos', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const { motorista_id, status } = req.query;
   const condicoes = [];
@@ -121,13 +124,13 @@ router.get('/', requerAcessoModulo('acertos', 'Visualizar'), exigirEmpresaEspeci
   if (motorista_id) { condicoes.push('viagem_id IN (SELECT id FROM viagens WHERE motorista_id = ?)'); params.push(motorista_id); }
   if (status) { condicoes.push('status = ?'); params.push(status); }
   const where = `WHERE ${condicoes.join(' AND ')}`;
-  res.json(db.prepare(`SELECT * FROM acertos_viagem ${where} ORDER BY id DESC`).all(...params));
+  res.json(comStatusPagamento(db.prepare(`${SELECT_COM_PAGAMENTO} ${where} ORDER BY a.id DESC`).all(...params)));
 }));
 
 router.get('/:id', requerAcessoModulo('acertos', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const acerto = db.prepare('SELECT * FROM acertos_viagem WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
+  const acerto = db.prepare(`${SELECT_COM_PAGAMENTO} WHERE a.id = ? AND a.empresa_id = ?`).get(req.params.id, req.empresaId);
   if (!acerto) throw new ApiError(404, 'Acerto nao encontrado.');
-  res.json(acerto);
+  res.json(comStatusPagamento([acerto])[0]);
 }));
 
 router.get('/viagem/:viagemId/preview', requerAcessoModulo('acertos', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
