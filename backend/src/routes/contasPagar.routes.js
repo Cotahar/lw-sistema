@@ -175,7 +175,26 @@ router.post('/consolidar', requerAcessoModulo('contas_pagar', 'Gerenciar'), exig
 router.get('/:id', requerAcessoModulo('contas_pagar', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const conta = db.prepare('SELECT * FROM contas_pagar WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
   if (!conta) throw new ApiError(404, 'Conta a pagar nao encontrada.');
-  res.json(conta);
+  // Quando a origem e um abastecimento, o "valor" da conta e so o RESTANTE
+  // depois de descontar o que o motorista ja pagou em dinheiro (valor_pago_
+  // dinheiro, ver despesaViagemHelper.js) - sem esse contexto um valor
+  // pequeno (ex.: R$0,60 de um abastecimento de R$4.678) parece um erro.
+  // Devolvido so no detalhe (nao na listagem), por pedido do usuario.
+  let despesa_info = null;
+  if (conta.origem_tipo === 'DespesaViagem') {
+    const despesa = db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(conta.origem_id);
+    if (despesa) {
+      const arla = despesa.despesa_arla_id ? db.prepare('SELECT valor FROM despesas_viagem WHERE id = ?').get(despesa.despesa_arla_id) : null;
+      despesa_info = {
+        despesa_id: despesa.id,
+        valor_diesel: despesa.valor,
+        valor_arla: arla ? arla.valor : 0,
+        valor_total_abastecimento: despesa.valor + (arla ? arla.valor : 0),
+        valor_pago_dinheiro: despesa.valor_pago_dinheiro || 0,
+      };
+    }
+  }
+  res.json({ ...conta, despesa_info });
 }));
 
 // Conta a pagar avulsa (nao gerada automaticamente por outro modulo).

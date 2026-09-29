@@ -167,6 +167,13 @@ async function abrirDetalhes(conta, recarregar, gerenciar) {
         <p><span class="font-medium">Restante:</span> ${formatarMoeda(restante)}</p>
         ${contaAtual.data_pagamento ? `<p><span class="font-medium">Ultimo pagamento:</span> ${formatarDataBr(contaAtual.data_pagamento)}</p>` : ''}
       </div>
+      ${contaAtual.despesa_info && contaAtual.despesa_info.valor_pago_dinheiro > 0 ? `
+        <div class="mb-4 rounded-lg border border-amber-800 bg-amber-950/30 p-3 text-sm">
+          <p class="font-medium text-amber-400">Este valor e so o restante do abastecimento (despesa #${contaAtual.despesa_info.despesa_id})</p>
+          <p class="mt-1 text-slate-600">Total do abastecimento${contaAtual.despesa_info.valor_arla > 0 ? ' + Arla' : ''}: <span class="font-medium text-slate-900">${formatarMoeda(contaAtual.despesa_info.valor_total_abastecimento)}</span></p>
+          <p class="text-slate-600">Pago em dinheiro pelo motorista: <span class="font-medium text-slate-900">${formatarMoeda(contaAtual.despesa_info.valor_pago_dinheiro)}</span></p>
+        </div>
+      ` : ''}
       <p class="mb-2 text-sm font-semibold text-slate-900">Historico de baixas</p>
       <table class="w-full text-sm">
         <thead><tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500"><th class="py-1">Data</th><th class="py-1">Conta bancaria</th><th class="py-1 text-right">Valor</th></tr></thead>
