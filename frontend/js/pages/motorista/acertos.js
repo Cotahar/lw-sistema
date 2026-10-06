@@ -10,6 +10,16 @@ function linha(rotulo, valor, destaque = false) {
   </div>`;
 }
 
+// Descricoes de reembolso/desconto sao texto livre digitado pelo escritorio.
+function esc(texto) {
+  return String(texto ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Reembolsos/descontos linha a linha, recuados sob o total da categoria.
+function linhasItens(itens) {
+  return itens.map((i) => `<div class="flex items-center justify-between py-1 pl-3 text-xs text-slate-500"><span>&bull; ${esc(i.descricao)}</span><span>${formatarMoeda(i.valor)}</span></div>`).join('');
+}
+
 // status_pagamento vem do backend (ver acertoPagamentoHelper.js) - antes o
 // motorista nao tinha nenhum jeito de saber se o acerto ja tinha sido pago
 // (bug reportado: "fica como pendente inclusive no app do motorista",
@@ -93,6 +103,7 @@ async function renderDetalhe(appEl, id) {
     // na URL, nunca bate e cai no catch abaixo (404).
     const acerto = await get(`/motorista/acertos/${id}`);
     const baseCalculoComissao = acerto.frete_bruto_total - (acerto.valor_imposto || 0);
+    const detalhamento = acerto.detalhamento || { reembolsos: [], descontos: [], valorPedagio: 0 };
     conteudo.innerHTML = `
       <div class="card p-4">
         <p class="text-xs font-medium uppercase text-slate-500">Viagem #${acerto.viagem_id}</p>
@@ -103,12 +114,15 @@ async function renderDetalhe(appEl, id) {
           ${acerto.valor_imposto > 0 ? linha('Base de calculo da comissao', formatarMoeda(baseCalculoComissao)) : ''}
           ${linha('Comissao aplicada', `${acerto.percentual_comissao_aplicado}% = ${formatarMoeda(acerto.valor_comissao)}`)}
           ${linha('Reembolsos', formatarMoeda(acerto.valor_reembolsos))}
+          ${acerto.valor_reembolsos > 0 ? linhasItens(detalhamento.reembolsos) : ''}
           ${linha('Adiantamentos', formatarMoeda(acerto.valor_adiantamentos))}
           ${linha('Descontos', formatarMoeda(acerto.valor_descontos))}
+          ${acerto.valor_descontos > 0 ? linhasItens(detalhamento.descontos) : ''}
           ${linha('Saldo conta corrente anterior', formatarMoeda(acerto.saldo_conta_corrente_anterior))}
           ${linha('Saldo final', `${formatarMoeda(Math.abs(acerto.saldo_final))} ${acerto.saldo_final >= 0 ? '(a pagar)' : '(fica em conta corrente)'}`, true)}
+          ${detalhamento.valorPedagio > 0 ? linha('Pedagio da viagem (informativo)', formatarMoeda(detalhamento.valorPedagio)) : ''}
         </div>
-        ${acerto.observacoes_ajustes ? `<p class="mt-3 text-sm text-slate-500">Obs.: ${acerto.observacoes_ajustes}</p>` : ''}
+        ${acerto.observacoes_ajustes ? `<p class="mt-3 text-sm text-slate-500">Obs.: ${esc(acerto.observacoes_ajustes)}</p>` : ''}
       </div>
     `;
   } catch (err) {

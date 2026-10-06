@@ -31,6 +31,11 @@ function estatistica(label, valor, { destaque = false, corValor = 'text-zinc-900
   `;
 }
 
+// Descricoes de reembolso/desconto sao texto livre digitado pelo usuario.
+function esc(texto) {
+  return String(texto ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 function linha(label, valor, destaque = false) {
   return `<div class="flex items-center justify-between py-1 ${destaque ? 'text-base font-bold text-zinc-900' : 'text-sm text-zinc-600'}"><span>${label}</span><span class="${destaque ? '' : 'font-medium text-zinc-900'}">${valor}</span></div>`;
 }
@@ -77,9 +82,10 @@ export async function renderRelatorio(root, params, query) {
   ]);
   const motorista = motoristas.find((m) => m.id === viagem.motorista_id);
   const conjunto = await get(`/conjuntos/${viagem.conjunto_id}`);
-  const [despesas, adiantamentos] = await Promise.all([
+  const [despesas, adiantamentos, detalhamento] = await Promise.all([
     get(`/viagens/${viagemId}/despesas`),
     get(`/viagens/${viagemId}/adiantamentos`),
+    get(`/acertos/viagem/${viagemId}/detalhamento`),
   ]);
   const acerto = todosAcertos.find((a) => a.viagem_id === Number(viagemId));
   const nomeCategoria = Object.fromEntries(categorias.map((c) => [c.id, c.nome]));
@@ -113,8 +119,14 @@ export async function renderRelatorio(root, params, query) {
   const despesasAbastecimento = despesas.filter((d) => d.categoria_id === categoriaAbastecimentoId);
   const despesasArla = despesas.filter((d) => d.categoria_id === categoriaArlaId);
   const despesasOutras = despesas.filter((d) => d.categoria_id !== categoriaAbastecimentoId && d.categoria_id !== categoriaArlaId);
-  const despesasMotorista = despesas.filter((d) => d.pago_por === 'Motorista');
-  const totalDescontosMotorista = despesasMotorista.reduce((t, d) => t + d.valor, 0);
+  // Reembolsos e descontos vem do detalhamento do acerto: lancamentos
+  // manuais (ex.: caixinha, reaperto de rodas) + despesas pagas pelo
+  // motorista (so nos descontos). Num acerto fechado a lista e reconciliada
+  // com os totais gravados no fechamento.
+  const totalReembolsos = detalhamento.totalReembolsos;
+  const totalDescontosMotorista = detalhamento.totalDescontos;
+  const valorPedagio = detalhamento.valorPedagio;
+  const receitasMenosDespesas = freteBrutoTotal - totalDespesas;
 
   const custoPorKm = kmRodado ? Math.round(totalDespesas / kmRodado) : null;
   const ticketMedioFrete = fretes.length ? Math.round(freteBrutoTotal / fretes.length) : null;
@@ -215,24 +227,36 @@ export async function renderRelatorio(root, params, query) {
     }).join('');
   }
 
-  function tabelaDescontosMotorista() {
-    const linhas = despesasMotorista.map((d, i) => linhaTabela([
-      { valor: formatarDataBr(d.data) },
-      { valor: nomeCategoria[d.categoria_id] || '-' },
-      { valor: d.descricao || '-' },
-      { valor: formatarMoeda(d.valor), alinhamento: 'right', classe: 'font-medium text-red-700' },
-    ], { zebra: i % 2 === 1 })).join('') || semDados('Nenhuma despesa paga pelo motorista.', 4);
-    const rodape = despesasMotorista.length ? `
-      <tr class="bg-red-50 font-bold text-red-800">
-        <td colspan="3" class="px-2 py-1.5 text-right">Total de descontos</td>
-        <td class="px-2 py-1.5 text-right">${formatarMoeda(totalDescontosMotorista)}</td>
+  // Reembolsos/descontos em lista. `origem` 'Despesa' = despesa paga pelo
+  // motorista (mostra o codigo); 'SemDetalhe' = acerto fechado antes da
+  // listagem existir (so o total ficou gravado).
+  function tabelaItens(linhasItens, { vazio, rotuloTotal, total, classeValor, classeRodape }) {
+    const linhas = linhasItens.map((l, i) => linhaTabela([
+      { valor: `${esc(l.descricao)}${l.origem === 'Despesa' ? ` <span class="text-zinc-400">(despesa #${l.despesa_id})</span>` : ''}` },
+      { valor: formatarMoeda(l.valor), alinhamento: 'right', classe: `font-medium ${classeValor}` },
+    ], { zebra: i % 2 === 1 })).join('') || semDados(vazio, 2);
+    const rodape = linhasItens.length ? `
+      <tr class="${classeRodape} font-bold">
+        <td class="px-2 py-1.5 text-right">${rotuloTotal}</td>
+        <td class="px-2 py-1.5 text-right">${formatarMoeda(total)}</td>
       </tr>
     ` : '';
-    return tabela({
-      colunas: [{ label: 'Data' }, { label: 'Categoria' }, { label: 'Descricao' }, { label: 'Valor', alinhamento: 'right' }],
-      linhasHtml: linhas,
-      rodape,
-    });
+    return tabela({ colunas: [{ label: 'Descricao' }, { label: 'Valor', alinhamento: 'right' }], linhasHtml: linhas, rodape });
+  }
+
+  function tabelaReembolsos() {
+    return tabelaItens(detalhamento.reembolsos, { vazio: 'Nenhum reembolso.', rotuloTotal: 'Total de reembolsos', total: totalReembolsos, classeValor: 'text-emerald-700', classeRodape: 'bg-emerald-50 text-emerald-800' });
+  }
+
+  function tabelaDescontosMotorista() {
+    return tabelaItens(detalhamento.descontos, { vazio: 'Nenhum desconto.', rotuloTotal: 'Total de descontos', total: totalDescontosMotorista, classeValor: 'text-red-700', classeRodape: 'bg-red-50 text-red-800' });
+  }
+
+  // Linhas recuadas sob o total (reembolsos/descontos) nos blocos de
+  // creditos/debitos do resumo financeiro - presentes nos dois tipos de
+  // relatorio.
+  function linhasDetalhe(linhasItens) {
+    return linhasItens.map((l) => `<div class="flex items-center justify-between py-0.5 pl-3 text-xs"><span>&bull; ${esc(l.descricao)}${l.origem === 'Despesa' ? ` (despesa #${l.despesa_id})` : ''}</span><span>${formatarMoeda(l.valor)}</span></div>`).join('');
   }
 
   function tabelaAdiantamentos() {
@@ -257,6 +281,7 @@ export async function renderRelatorio(root, params, query) {
   const saldoFinalValor = acerto ? acerto.saldo_final : null;
   const saldoPositivo = saldoFinalValor !== null ? saldoFinalValor >= 0 : true;
   const totalCreditos = acerto ? acerto.valor_comissao + acerto.valor_reembolsos : null;
+  const classeResultado = receitasMenosDespesas >= 0 ? 'text-emerald-700' : 'text-red-700';
   const totalDebitos = acerto ? acerto.valor_adiantamentos + acerto.valor_descontos : null;
 
   root.innerHTML = `
@@ -294,13 +319,15 @@ export async function renderRelatorio(root, params, query) {
           <p><span class="font-semibold text-zinc-500">KM rodado:</span> <span class="text-zinc-900">${kmRodado !== null ? `${kmRodado.toLocaleString('pt-BR')} km` : '-'}</span></p>
         </div>
 
-        <div class="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        <div class="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
           ${estatistica('Duracao', duracaoDias !== null ? `${duracaoDias} dia${duracaoDias > 1 ? 's' : ''}` : '-')}
           ${estatistica('Media KM/dia', kmPorDia !== null ? `${kmPorDia.toLocaleString('pt-BR')} km` : '-')}
           ${estatistica('Faturamento/dia', faturamentoPorDia !== null ? formatarMoeda(faturamentoPorDia) : '-', { corValor: 'text-emerald-700' })}
           ${estatistica('Media consumo', mediaConsumo ? `${mediaConsumo.toFixed(2)} km/l` : '-', { destaque: true })}
           ${estatistica('Faturamento total', formatarMoeda(freteBrutoTotal), { corValor: 'text-emerald-700' })}
           ${estatistica('Despesas totais', formatarMoeda(totalDespesas), { corValor: 'text-red-700' })}
+          ${estatistica('Receitas - Despesas', formatarMoeda(receitasMenosDespesas), { corValor: classeResultado })}
+          ${estatistica('Pedagio (informativo)', valorPedagio > 0 ? formatarMoeda(valorPedagio) : '-', { sub: valorPedagio > 0 ? 'Nao altera o saldo' : '' })}
         </div>
 
         ${tipo === 'detalhado' ? `
@@ -321,7 +348,10 @@ export async function renderRelatorio(root, params, query) {
             <span>Total geral de despesas</span><span>${formatarMoeda(totalDespesas)}</span>
           </div>
 
-          <h2 class="mb-2 mt-6 flex items-center gap-2 text-base font-bold text-zinc-900"><span class="h-4 w-1.5 rounded-full bg-red-500"></span>Descontos do motorista (despesas pagas por ele)</h2>
+          <h2 class="mb-2 mt-6 flex items-center gap-2 text-base font-bold text-zinc-900"><span class="h-4 w-1.5 rounded-full bg-emerald-500"></span>Reembolsos ao motorista</h2>
+          ${tabelaReembolsos()}
+
+          <h2 class="mb-2 mt-6 flex items-center gap-2 text-base font-bold text-zinc-900"><span class="h-4 w-1.5 rounded-full bg-red-500"></span>Descontos do motorista (despesas pagas por ele e lancamentos)</h2>
           ${tabelaDescontosMotorista()}
 
           <h2 class="mb-2 mt-6 flex items-center gap-2 text-base font-bold text-zinc-900"><span class="h-4 w-1.5 rounded-full bg-red-500"></span>Adiantamentos ao motorista</h2>
@@ -339,9 +369,12 @@ export async function renderRelatorio(root, params, query) {
 
         <h2 class="mb-2 mt-6 text-base font-bold text-zinc-900">Resumo financeiro (romaneio ao motorista)</h2>
         <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
-          ${linha('Frete bruto total', formatarMoeda(freteBrutoTotal))}
+          ${linha('Receitas (frete bruto total)', formatarMoeda(freteBrutoTotal))}
+          ${linha('Despesas da viagem', formatarMoeda(totalDespesas))}
+          <div class="flex items-center justify-between border-t border-zinc-200 py-1 text-base font-bold text-zinc-900"><span>Receitas - Despesas</span><span class="${classeResultado}">${formatarMoeda(receitasMenosDespesas)}</span></div>
           ${acerto && acerto.valor_imposto > 0 ? linha(`Imposto (${acerto.percentual_imposto_aplicado}%)`, `- ${formatarMoeda(acerto.valor_imposto)}`) : ''}
           ${acerto && acerto.valor_imposto > 0 ? linha('Base de calculo da comissao (bruto - imposto)', formatarMoeda(freteBrutoTotal - acerto.valor_imposto)) : ''}
+          ${valorPedagio > 0 ? linha('Pedagio da viagem (informativo - nao altera o saldo)', formatarMoeda(valorPedagio)) : ''}
         </div>
 
         ${acerto ? `
@@ -351,6 +384,7 @@ export async function renderRelatorio(root, params, query) {
               <div class="space-y-0.5 text-sm text-emerald-900">
                 ${linha(`Comissao (${acerto.percentual_comissao_aplicado}%)`, formatarMoeda(acerto.valor_comissao))}
                 ${acerto.valor_reembolsos > 0 ? linha('Reembolsos', formatarMoeda(acerto.valor_reembolsos)) : ''}
+                ${acerto.valor_reembolsos > 0 ? linhasDetalhe(detalhamento.reembolsos) : ''}
                 ${acerto.valor_reembolsos === 0 && acerto.valor_comissao === 0 ? '<p class="text-sm text-emerald-700/60">Nenhum.</p>' : ''}
               </div>
               <div class="mt-2 flex items-center justify-between border-t border-emerald-200 pt-2 text-sm font-bold text-emerald-800">
@@ -362,6 +396,7 @@ export async function renderRelatorio(root, params, query) {
               <div class="space-y-0.5 text-sm text-red-900">
                 ${acerto.valor_adiantamentos > 0 ? linha('Adiantamentos tomados na viagem', formatarMoeda(acerto.valor_adiantamentos)) : ''}
                 ${acerto.valor_descontos > 0 ? linha('Descontos (multas/avarias/despesas)', formatarMoeda(acerto.valor_descontos)) : ''}
+                ${acerto.valor_descontos > 0 ? linhasDetalhe(detalhamento.descontos) : ''}
                 ${totalDebitos === 0 ? '<p class="text-sm text-red-700/60">Nenhum.</p>' : ''}
               </div>
               <div class="mt-2 flex items-center justify-between border-t border-red-200 pt-2 text-sm font-bold text-red-800">
@@ -376,10 +411,12 @@ export async function renderRelatorio(root, params, query) {
             <span class="text-sm font-bold uppercase tracking-wide text-zinc-700">Saldo final ${saldoPositivo ? '(a pagar ao motorista)' : '(fica em conta corrente)'}</span>
             <span class="text-xl font-extrabold ${saldoPositivo ? 'text-emerald-700' : 'text-red-700'}">${formatarMoeda(Math.abs(acerto.saldo_final))}</span>
           </div>
-          ${acerto.observacoes_ajustes ? `<p class="mt-3 rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800"><strong>Obs.:</strong> ${acerto.observacoes_ajustes}</p>` : ''}
+          ${acerto.observacoes_ajustes ? `<p class="mt-3 rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800"><strong>Obs.:</strong> ${esc(acerto.observacoes_ajustes)}</p>` : ''}
         ` : `
           <div class="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            ${linha('Reembolsos ao motorista', formatarMoeda(totalReembolsos))}
             ${linha('Adiantamentos tomados', formatarMoeda(totalAdiantamentos))}
+            ${linha('Descontos ao motorista', formatarMoeda(totalDescontosMotorista))}
             <p class="mt-2 font-medium">Acerto ainda nao fechado - valores sujeitos a alteracao.</p>
           </div>
         `}

@@ -532,6 +532,9 @@ CREATE TABLE viagens (
     -- Cavalo (resolvido pela API no momento da criacao), mas editavel.
     km_inicial      INTEGER NOT NULL,
     km_final        INTEGER,   -- preenchido no fechamento; diferenca = km_total (absorve trechos vazios)
+    -- Pedagio da viagem (centavos): so INFORMATIVO, informado na tela do
+    -- Acerto - nao gera lancamento nem entra no saldo (ver migracao 032).
+    valor_pedagio   INTEGER NOT NULL DEFAULT 0,
     criado_por      INTEGER REFERENCES usuarios(id),
     criado_em       TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     CHECK (km_final IS NULL OR km_final >= km_inicial)
@@ -1096,6 +1099,23 @@ CREATE TABLE calculo_frete_preferencias (
     comissao_pct    REAL,
     atualizado_em   TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
 );
+
+-- Reembolsos e descontos ao motorista no Acerto, como lista de itens com
+-- descricao e valor (ver migracao 032). Presos a viagem (nao ao acerto): sao
+-- montados antes do acerto existir; so mudam enquanto a viagem nao for
+-- Finalizada. valor_reembolsos/valor_descontos de acertos_viagem seguem
+-- guardando os totais congelados no fechamento.
+CREATE TABLE acerto_itens (
+    id          INTEGER PRIMARY KEY,
+    empresa_id  INTEGER NOT NULL REFERENCES empresas(id),
+    viagem_id   INTEGER NOT NULL REFERENCES viagens(id) ON DELETE CASCADE,
+    tipo        TEXT NOT NULL CHECK (tipo IN ('Reembolso', 'Desconto')),
+    descricao   TEXT NOT NULL,
+    valor       INTEGER NOT NULL CHECK (valor > 0),  -- centavos
+    criado_por  INTEGER REFERENCES usuarios(id),
+    criado_em   TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
+);
+CREATE INDEX idx_acerto_itens_viagem ON acerto_itens(viagem_id);
 
 -- Filtros de relatorio salvos com um nome pelo proprio usuario, pra reabrir
 -- depois sem re-montar tudo (ver migracao 031). Um usuario so ve/gerencia os

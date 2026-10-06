@@ -10,12 +10,9 @@ const { withTransaction } = require('../utils/transaction');
 const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
 const { SELECT_STATUS_PAGAMENTO, comStatusPagamento } = require('../utils/acertoPagamentoHelper');
+const { somar, listarItensManuais, montarDetalhamentoAcerto } = require('../utils/acertoDetalhamentoHelper');
 
 const router = express.Router();
-
-function somar(lista) {
-  return lista.reduce((total, valor) => total + (valor || 0), 0);
-}
 
 function formatarMoeda(centavos) {
   return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -29,8 +26,12 @@ function formatarData(iso) {
 }
 
 // Calcula os valores do acerto (usado tanto na previa quanto no fechamento).
-// "overrides" permite ao operador sobrescrever o percentual sugerido e as
-// deducoes/reembolsos antes de fechar (Fechamento Livre, sem travas).
+// "overrides" permite ao operador sobrescrever o percentual sugerido antes de
+// fechar (Fechamento Livre, sem travas). Reembolsos e descontos NAO sao mais
+// um valor digitado: vem da lista de itens da viagem (acerto_itens) - os
+// reembolsos sao a soma dos itens "Reembolso"; os descontos sao as despesas
+// por conta do motorista + a soma dos itens "Desconto". O pedagio e so
+// informativo (viagens.valor_pedagio) e nunca entra na formula do saldo.
 function calcularAcerto(viagemId, empresaId, overrides = {}) {
   const viagem = db.prepare('SELECT * FROM viagens WHERE id = ? AND empresa_id = ?').get(viagemId, empresaId);
   if (!viagem) throw new ApiError(404, 'Viagem nao encontrada.');
@@ -47,10 +48,11 @@ function calcularAcerto(viagemId, empresaId, overrides = {}) {
   const percentualImposto = empresa.percentual_desconto_geral || null;
   const valorImposto = percentualImposto ? Math.round(freteBrutoTotal * (percentualImposto / 100)) : 0;
   const baseCalculoComissao = freteBrutoTotal - valorImposto;
-  const adiantamentos = db.prepare('SELECT * FROM viagem_adiantamentos WHERE viagem_id = ?').all(viagemId);
+  const adiantamentos = db.prepare('SELECT * FROM viagem_adiantamentos WHERE viagem_id = ? ORDER BY data, id').all(viagemId);
   const adiantamentosTotal = somar(adiantamentos.map((a) => a.valor));
 
   const despesas = db.prepare('SELECT * FROM despesas_viagem WHERE viagem_id = ?').all(viagemId);
+  const despesasTotal = somar(despesas.map((d) => d.valor));
   const kmTotal = viagem.km_final - viagem.km_inicial;
   // Media "tanque cheio a tanque cheio" (ver mediaConsumoHelper.js) - unica
   // forma confiavel de saber litros/km real quando existem abastecimentos
@@ -88,9 +90,13 @@ function calcularAcerto(viagemId, empresaId, overrides = {}) {
   const percentualAplicado = overrides.percentual_comissao_aplicado ?? percentualSugerido ?? 0;
   const valorComissao = Math.round(baseCalculoComissao * (percentualAplicado / 100));
 
+  const itens = listarItensManuais(viagemId);
+  const itensReembolso = itens.filter((i) => i.tipo === 'Reembolso');
+  const itensDesconto = itens.filter((i) => i.tipo === 'Desconto');
   const valorDescontosSugerido = somar(despesas.filter((d) => d.pago_por === 'Motorista').map((d) => d.valor));
-  const valorDescontos = overrides.valor_descontos ?? valorDescontosSugerido;
-  const valorReembolsos = overrides.valor_reembolsos ?? 0;
+  const valorDescontosManuais = somar(itensDesconto.map((i) => i.valor));
+  const valorDescontos = valorDescontosSugerido + valorDescontosManuais;
+  const valorReembolsos = somar(itensReembolso.map((i) => i.valor));
 
   const motorista = db.prepare('SELECT * FROM motoristas WHERE id = ?').get(viagem.motorista_id);
   const saldoContaCorrenteAnterior = motorista.saldo_conta_corrente;
@@ -105,11 +111,16 @@ function calcularAcerto(viagemId, empresaId, overrides = {}) {
   const despesasPendentes = despesas.filter((d) => !d.validado_em).length;
 
   return {
-    viagem, motorista, fretes, despesas, empresa,
+    viagem, motorista, fretes, despesas, adiantamentos, empresa,
     freteBrutoTotal, kmTotal, litrosTotal, mediaConsumoKmL, mediaUltimaAbastecidaKmL,
     percentualSugerido, percentualAplicado, valorComissao,
     percentualImposto, valorImposto, baseCalculoComissao,
-    valorReembolsos, adiantamentosTotal, valorDescontosSugerido, valorDescontos,
+    valorReembolsos, adiantamentosTotal, valorDescontosSugerido, valorDescontosManuais, valorDescontos,
+    itensReembolso, itensDesconto,
+    // Receitas (frete bruto) - despesas da viagem: so informativo, pro
+    // escritorio enxergar o resultado da viagem (nao entra no saldo).
+    despesasTotal, receitasMenosDespesas: freteBrutoTotal - despesasTotal,
+    valorPedagio: viagem.valor_pedagio || 0,
     saldoContaCorrenteAnterior, saldoFinal, despesasPendentes,
   };
 }
@@ -134,13 +145,94 @@ router.get('/:id', requerAcessoModulo('acertos', 'Visualizar'), exigirEmpresaEsp
 }));
 
 router.get('/viagem/:viagemId/preview', requerAcessoModulo('acertos', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const { percentual_comissao_aplicado, valor_reembolsos, valor_descontos } = req.query;
+  const { percentual_comissao_aplicado } = req.query;
   const calculo = calcularAcerto(req.params.viagemId, req.empresaId, {
     percentual_comissao_aplicado: percentual_comissao_aplicado !== undefined ? Number(percentual_comissao_aplicado) : undefined,
-    valor_reembolsos: valor_reembolsos !== undefined ? Number(valor_reembolsos) : undefined,
-    valor_descontos: valor_descontos !== undefined ? Number(valor_descontos) : undefined,
   });
   res.json(calculo);
+}));
+
+// ---- Itens do acerto (reembolsos e descontos ao motorista, em lista) e pedagio ----
+// Montados antes do acerto existir (ele so nasce no "Fechar Acerto"), por
+// isso presos a viagem. So mudam enquanto a viagem nao esta Finalizada
+// (acerto fechado = valores congelados).
+
+function viagemAbertaParaAjustes(viagemId, empresaId) {
+  const viagem = db.prepare('SELECT * FROM viagens WHERE id = ? AND empresa_id = ?').get(viagemId, empresaId);
+  if (!viagem) throw new ApiError(404, 'Viagem nao encontrada.');
+  if (viagem.status === 'Finalizada') throw new ApiError(400, 'O acerto desta viagem ja foi fechado - valores congelados.');
+  return viagem;
+}
+
+function validarItem({ tipo, descricao, valor }, exigirTipo) {
+  if (exigirTipo && !['Reembolso', 'Desconto'].includes(tipo)) throw new ApiError(400, "Informe o tipo: 'Reembolso' ou 'Desconto'.");
+  if (!descricao || !String(descricao).trim()) throw new ApiError(400, 'Informe a descricao do item.');
+  if (!Number.isInteger(valor) || valor <= 0) throw new ApiError(400, 'Informe um valor maior que zero.');
+}
+
+router.get('/viagem/:viagemId/itens', requerAcessoModulo('acertos', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const viagem = db.prepare('SELECT id FROM viagens WHERE id = ? AND empresa_id = ?').get(req.params.viagemId, req.empresaId);
+  if (!viagem) throw new ApiError(404, 'Viagem nao encontrada.');
+  res.json(listarItensManuais(viagem.id));
+}));
+
+router.post('/viagem/:viagemId/itens', requerAcessoModulo('acertos', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const viagem = viagemAbertaParaAjustes(req.params.viagemId, req.empresaId);
+  validarItem(req.body, true);
+  const info = db.prepare(`
+    INSERT INTO acerto_itens (empresa_id, viagem_id, tipo, descricao, valor, criado_por) VALUES (?, ?, ?, ?, ?, ?)
+  `).run(req.empresaId, viagem.id, req.body.tipo, String(req.body.descricao).trim().toUpperCase(), req.body.valor, req.usuario.id);
+  const item = db.prepare('SELECT * FROM acerto_itens WHERE id = ?').get(info.lastInsertRowid);
+  registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'acerto_itens', registroId: item.id, acao: 'INSERT', depois: item });
+  res.status(201).json(item);
+}));
+
+router.put('/itens/:itemId', requerAcessoModulo('acertos', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const antes = db.prepare('SELECT * FROM acerto_itens WHERE id = ? AND empresa_id = ?').get(req.params.itemId, req.empresaId);
+  if (!antes) throw new ApiError(404, 'Item nao encontrado.');
+  viagemAbertaParaAjustes(antes.viagem_id, req.empresaId);
+  const novo = {
+    descricao: req.body.descricao !== undefined ? req.body.descricao : antes.descricao,
+    valor: req.body.valor !== undefined ? req.body.valor : antes.valor,
+  };
+  validarItem(novo, false);
+  db.prepare('UPDATE acerto_itens SET descricao = ?, valor = ? WHERE id = ?').run(String(novo.descricao).trim().toUpperCase(), novo.valor, antes.id);
+  const depois = db.prepare('SELECT * FROM acerto_itens WHERE id = ?').get(antes.id);
+  registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'acerto_itens', registroId: depois.id, acao: 'UPDATE', antes, depois });
+  res.json(depois);
+}));
+
+router.delete('/itens/:itemId', requerAcessoModulo('acertos', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const antes = db.prepare('SELECT * FROM acerto_itens WHERE id = ? AND empresa_id = ?').get(req.params.itemId, req.empresaId);
+  if (!antes) throw new ApiError(404, 'Item nao encontrado.');
+  viagemAbertaParaAjustes(antes.viagem_id, req.empresaId);
+  db.prepare('DELETE FROM acerto_itens WHERE id = ?').run(antes.id);
+  registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'acerto_itens', registroId: antes.id, acao: 'DELETE', antes });
+  res.status(204).send();
+}));
+
+// Pedagio da viagem: so informativo (nao gera lancamento nem entra no saldo) -
+// o lancamento do pedagio de verdade vem depois (um boleto agrupa varios
+// veiculos), por isso aqui e so um numero salvo na viagem pra constar nos
+// relatorios do acerto.
+router.put('/viagem/:viagemId/pedagio', requerAcessoModulo('acertos', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const antes = viagemAbertaParaAjustes(req.params.viagemId, req.empresaId);
+  const { valor } = req.body;
+  if (!Number.isInteger(valor) || valor < 0) throw new ApiError(400, 'Informe o valor do pedagio (zero ou mais).');
+  db.prepare('UPDATE viagens SET valor_pedagio = ? WHERE id = ?').run(valor, antes.id);
+  const depois = db.prepare('SELECT * FROM viagens WHERE id = ?').get(antes.id);
+  registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'viagens', registroId: depois.id, acao: 'UPDATE', antes, depois });
+  res.json({ valor_pedagio: depois.valor_pedagio });
+}));
+
+// Reembolsos/descontos em lista + pedagio, prontos pra exibir (relatorio do
+// acerto, tela do acerto fechado). Com acerto fechado, a listagem e
+// reconciliada com os totais gravados (ver acertoDetalhamentoHelper.js).
+router.get('/viagem/:viagemId/detalhamento', requerAcessoModulo('acertos', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const viagem = db.prepare('SELECT id FROM viagens WHERE id = ? AND empresa_id = ?').get(req.params.viagemId, req.empresaId);
+  if (!viagem) throw new ApiError(404, 'Viagem nao encontrada.');
+  const acerto = db.prepare('SELECT * FROM acertos_viagem WHERE viagem_id = ?').get(viagem.id) || null;
+  res.json(montarDetalhamentoAcerto(viagem.id, acerto));
 }));
 
 router.post('/viagem/:viagemId/fechar', requerAcessoModulo('acertos', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
@@ -157,12 +249,10 @@ router.post('/viagem/:viagemId/fechar', requerAcessoModulo('acertos', 'Gerenciar
     throw new ApiError(400, `Existem ${despesasPendentes} despesa(s) pendente(s) de validacao nesta viagem. Valide todas antes de fechar o acerto.`);
   }
 
-  const { percentual_comissao_aplicado, valor_reembolsos, valor_descontos, observacoes_ajustes } = req.body;
+  const { percentual_comissao_aplicado, observacoes_ajustes } = req.body;
 
   const resultado = withTransaction(db, () => {
-    const calculo = calcularAcerto(req.params.viagemId, req.empresaId, {
-      percentual_comissao_aplicado, valor_reembolsos, valor_descontos,
-    });
+    const calculo = calcularAcerto(req.params.viagemId, req.empresaId, { percentual_comissao_aplicado });
 
     const info = db.prepare(`
       INSERT INTO acertos_viagem (
@@ -229,6 +319,10 @@ router.get('/:id/whatsapp', requerAcessoModulo('acertos', 'Visualizar'), exigirE
   const motorista = db.prepare('SELECT * FROM motoristas WHERE id = ?').get(viagem.motorista_id);
   const fretes = db.prepare('SELECT * FROM fretes WHERE viagem_id = ?').all(viagem.id);
   const freteBrutoTotal = somar(fretes.map((f) => f.frete_bruto));
+  const detalhamento = montarDetalhamentoAcerto(viagem.id, acerto);
+  // Uma linha por item ("• CAIXINHA: R$ 50,00") logo abaixo do total da
+  // categoria - o motorista confere de onde veio cada valor.
+  const linhasItens = (itens) => itens.map((i) => `   • ${i.descricao}: ${formatarMoeda(i.valor)}`);
 
   const linhas = [
     `🚛 *Acerto de Viagem #${viagem.id}*`,
@@ -243,12 +337,16 @@ router.get('/:id/whatsapp', requerAcessoModulo('acertos', 'Visualizar'), exigirE
     acerto.valor_imposto > 0 ? `Base de calculo da comissao: ${formatarMoeda(freteBrutoTotal - acerto.valor_imposto)}` : null,
     `Comissao (${acerto.percentual_comissao_aplicado}%): ${formatarMoeda(acerto.valor_comissao)}`,
     acerto.valor_reembolsos > 0 ? `Reembolsos: ${formatarMoeda(acerto.valor_reembolsos)}` : null,
+    ...(acerto.valor_reembolsos > 0 ? linhasItens(detalhamento.reembolsos) : []),
     '',
     '📉 *Deducoes*',
     `Adiantamentos tomados na viagem: ${formatarMoeda(acerto.valor_adiantamentos)}`,
     acerto.valor_descontos > 0 ? `Descontos (multas/avarias/despesas por conta do motorista): ${formatarMoeda(acerto.valor_descontos)}` : null,
+    ...(acerto.valor_descontos > 0 ? linhasItens(detalhamento.descontos) : []),
     acerto.saldo_conta_corrente_anterior > 0 ? `Saldo devedor de viagens anteriores: ${formatarMoeda(acerto.saldo_conta_corrente_anterior)}` : null,
     '',
+    detalhamento.valorPedagio > 0 ? `🛣️ Pedagio da viagem (informativo, nao altera o saldo): ${formatarMoeda(detalhamento.valorPedagio)}` : null,
+    detalhamento.valorPedagio > 0 ? '' : null,
     `✅ *Saldo Final: ${formatarMoeda(Math.abs(acerto.saldo_final))}*`,
     acerto.saldo_final >= 0
       ? '💵 Valor a ser pago ao motorista.'

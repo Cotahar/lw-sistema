@@ -12,6 +12,7 @@ const { criarDespesaViagem } = require('../utils/despesaViagemHelper');
 const { registrarAuditoria } = require('../utils/audit');
 const { calcularMediasConsumo, buscarCategoriaAbastecimentoId: buscarCategoriaAbastecimentoIdGlobal, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
 const { SELECT_STATUS_PAGAMENTO, comStatusPagamento } = require('../utils/acertoPagamentoHelper');
+const { montarDetalhamentoAcerto } = require('../utils/acertoDetalhamentoHelper');
 
 const router = express.Router();
 router.use(requerMotorista, exigirEmpresaEspecifica);
@@ -178,7 +179,9 @@ router.get('/acertos/:id', asyncHandler(async (req, res) => {
   `).get(req.params.id, req.usuario.motorista_id, req.empresaId);
   if (!acerto) throw new ApiError(404, 'Acerto nao encontrado.');
   const fretes = db.prepare('SELECT frete_bruto FROM fretes WHERE viagem_id = ?').all(acerto.viagem_id);
-  res.json({ ...comStatusPagamento([acerto])[0], frete_bruto_total: somar(fretes.map((f) => f.frete_bruto)) });
+  const acertoComStatus = comStatusPagamento([acerto])[0];
+  // Reembolsos/descontos em lista + pedagio informativo (ver acertoDetalhamentoHelper.js)
+  res.json({ ...acertoComStatus, frete_bruto_total: somar(fretes.map((f) => f.frete_bruto)), detalhamento: montarDetalhamentoAcerto(acerto.viagem_id, acerto) });
 }));
 
 // Lancamento de abastecimento pelo app do motorista - sempre pago_por

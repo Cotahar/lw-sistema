@@ -509,6 +509,48 @@ router.post('/:id/adiantamentos', requerAcessoModulo('viagens', 'Gerenciar'), ex
   res.status(201).json(resultado);
 }));
 
+// Edicao de adiantamento (valor, data, descricao, conta bancaria): desfaz o
+// efeito antigo em caixa (movimentacao + saldo da conta) e aplica o novo,
+// tudo na mesma transacao - mesmo padrao do POST/DELETE desta secao. Usado
+// pela tela do Acerto, onde da pra ajustar um adiantamento lancado errado.
+router.put('/adiantamentos/:adiantamentoId', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const resultado = withTransaction(db, () => {
+    const antes = db.prepare('SELECT * FROM viagem_adiantamentos WHERE id = ? AND empresa_id = ?').get(req.params.adiantamentoId, req.empresaId);
+    if (!antes) throw new ApiError(404, 'Adiantamento nao encontrado.');
+    const viagem = db.prepare('SELECT status FROM viagens WHERE id = ?').get(antes.viagem_id);
+    if (viagem && viagem.status === 'Finalizada') throw new ApiError(400, 'Viagem ja finalizada nao aceita edicao de adiantamentos.');
+
+    const { valor, data, conta_bancaria_id, descricao } = req.body;
+    const novoValor = valor !== undefined ? valor : antes.valor;
+    if (!Number.isInteger(novoValor) || novoValor <= 0) throw new ApiError(400, 'Informe um valor de adiantamento maior que zero.');
+    const novaData = data !== undefined ? dataOuHoje(data) : antes.data;
+    const novaConta = conta_bancaria_id !== undefined ? (conta_bancaria_id || null) : antes.conta_bancaria_id;
+    const novaDescricao = descricao !== undefined ? (descricao || null) : antes.descricao;
+    if (novaConta) {
+      const contaBancaria = db.prepare('SELECT id FROM contas_bancarias WHERE id = ? AND empresa_id = ?').get(novaConta, req.empresaId);
+      if (!contaBancaria) throw new ApiError(400, 'Conta bancaria nao encontrada.');
+    }
+
+    if (antes.conta_bancaria_id) {
+      db.prepare("DELETE FROM movimentacoes_caixa WHERE origem_tipo = 'ViagemAdiantamento' AND origem_id = ?").run(antes.id);
+      db.prepare('UPDATE contas_bancarias SET saldo_atual = saldo_atual + ? WHERE id = ?').run(antes.valor, antes.conta_bancaria_id);
+    }
+    db.prepare('UPDATE viagem_adiantamentos SET valor = ?, data = ?, conta_bancaria_id = ?, descricao = ? WHERE id = ?')
+      .run(novoValor, novaData, novaConta, novaDescricao, antes.id);
+    if (novaConta) {
+      db.prepare(`
+        INSERT INTO movimentacoes_caixa (empresa_id, conta_bancaria_id, tipo, valor, data, descricao, origem_tipo, origem_id, criado_por)
+        VALUES (?, ?, 'Saida', ?, ?, ?, 'ViagemAdiantamento', ?, ?)
+      `).run(req.empresaId, novaConta, novoValor, novaData, novaDescricao || `Adiantamento ao motorista - viagem #${antes.viagem_id}`, antes.id, req.usuario.id);
+      db.prepare('UPDATE contas_bancarias SET saldo_atual = saldo_atual - ? WHERE id = ?').run(novoValor, novaConta);
+    }
+    return { antes, depois: db.prepare('SELECT * FROM viagem_adiantamentos WHERE id = ?').get(antes.id) };
+  });
+
+  registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'viagem_adiantamentos', registroId: resultado.depois.id, acao: 'UPDATE', antes: resultado.antes, depois: resultado.depois });
+  res.json(resultado.depois);
+}));
+
 router.delete('/adiantamentos/:adiantamentoId', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const resultado = withTransaction(db, () => {
     const adiantamento = db.prepare('SELECT * FROM viagem_adiantamentos WHERE id = ? AND empresa_id = ?').get(req.params.adiantamentoId, req.empresaId);

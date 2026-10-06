@@ -139,7 +139,7 @@ function montarFormularioFrete(aoSalvar, frete, transportadoraLabelInicial) {
   return form;
 }
 
-async function abrirNovoFrete(viagemId, recarregar) {
+export async function abrirNovoFrete(viagemId, recarregar) {
   const form = montarFormularioFrete(async (valores) => {
     await post(`/viagens/${viagemId}/fretes`, valores);
     fecharModal();
@@ -152,7 +152,7 @@ async function abrirNovoFrete(viagemId, recarregar) {
 // PUT /viagens/fretes/:freteId ja existe no backend ha tempos (bloqueia so
 // alterar frete_bruto se ja houver baixas lancadas, e alterar qualquer campo
 // se a viagem ja estiver Finalizada) - so faltava o botao pra chegar nele.
-function abrirEditarFrete(frete, transportadoraLabelInicial, recarregar) {
+export function abrirEditarFrete(frete, transportadoraLabelInicial, recarregar) {
   const form = montarFormularioFrete(async (valores) => {
     await put(`/viagens/fretes/${frete.id}`, valores);
     fecharModal();
@@ -187,7 +187,7 @@ function recalcularTrio(formPreco, formLitragem, formValor, campoEditado) {
   }
 }
 
-async function abrirNovaDespesa(viagemId, recarregar, centroCustoPadrao) {
+export async function abrirNovaDespesa(viagemId, recarregar, centroCustoPadrao) {
   const todasCategorias = await get('/categorias-despesa');
   const categorias = todasCategorias.filter((c) => !c.oculta_na_busca);
   const categoriaAbastecimentoId = todasCategorias.find((c) => c.nome.trim().toLowerCase() === 'abastecimento')?.id ?? null;
@@ -570,7 +570,7 @@ function montarFormularioDespesaExistente({ despesa, arlaDespesa, categoriaNome,
 // motorista antes de confirmar (em vez de so aceitar como esta). So pede
 // vencimento quando "Assinar nota" e a conta a pagar ainda nao existe (o
 // backend so cria ela agora, com essa data - ver PATCH .../validar).
-function abrirValidarDespesa(despesa, arlaDespesa, categoriaNome, fornecedorLabelInicial, centroCustoLabelInicial, recarregar) {
+export function abrirValidarDespesa(despesa, arlaDespesa, categoriaNome, fornecedorLabelInicial, centroCustoLabelInicial, recarregar) {
   const { form, postoSelect, centroCustoSelect } = montarFormularioDespesaExistente({
     despesa, arlaDespesa, categoriaNome, fornecedorLabelInicial, centroCustoLabelInicial,
     incluirFormaPagamento: true, textoSubmit: 'Validar',
@@ -627,7 +627,7 @@ function abrirValidarDespesa(despesa, arlaDespesa, categoriaNome, fornecedorLabe
 // pagar, se existir, ja foi criada e nao muda de tipo depois). Se o valor
 // mudar e ja existir uma conta a pagar vinculada, o backend resincroniza o
 // valor dela automaticamente (mesma logica de PATCH .../validar).
-function abrirEditarDespesa(despesa, arlaDespesa, categoriaNome, fornecedorLabelInicial, centroCustoLabelInicial, recarregar) {
+export function abrirEditarDespesa(despesa, arlaDespesa, categoriaNome, fornecedorLabelInicial, centroCustoLabelInicial, recarregar) {
   const { form, postoSelect, centroCustoSelect } = montarFormularioDespesaExistente({
     despesa, arlaDespesa, categoriaNome, fornecedorLabelInicial, centroCustoLabelInicial,
     incluirFormaPagamento: false, textoSubmit: 'Salvar alteracoes',
@@ -684,7 +684,11 @@ function abrirDetalhesDespesa(despesa, arlaDespesa, categoriaNome, fornecedorLab
 
 // ---- Adiantamentos ao motorista ----
 
-async function abrirNovoAdiantamento(viagemId, recarregar) {
+// Mesmo formulario pra criar e editar (adiantamento != null = edicao). A
+// edicao desfaz o efeito antigo em caixa e aplica o novo no backend (PUT
+// /viagens/adiantamentos/:id) - da pra trocar valor, data, descricao e a
+// conta bancaria (ou tirar a conta, virando adiantamento "em especie").
+async function abrirFormAdiantamento({ viagemId, adiantamento = null, recarregar }) {
   const form = document.createElement('form');
   form.className = 'space-y-4';
   form.innerHTML = `
@@ -693,36 +697,57 @@ async function abrirNovoAdiantamento(viagemId, recarregar) {
     <div><label class="label">Conta bancaria (se saiu de verdade do caixa)</label><div data-conta-select></div></div>
     <div><label class="label">Descricao</label><input type="text" name="descricao" class="input" /></div>
     <p class="hidden text-sm text-red-600" data-erro></p>
-    <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Lancar adiantamento</button></div>
+    <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">${adiantamento ? 'Salvar alteracoes' : 'Lancar adiantamento'}</button></div>
   `;
-  attachMoedaMaskReais(form.valor, 0);
-  attachDataMask(form.data);
+  attachMoedaMaskReais(form.valor, adiantamento ? adiantamento.valor : 0);
+  attachDataMask(form.data, adiantamento ? adiantamento.data : undefined);
+  form.descricao.value = adiantamento?.descricao || '';
   attachUppercaseInput(form.descricao);
-  const contaSelect = criarSearchableSelect({ buscar: buscarContasBancarias, placeholder: 'Pesquisar conta (opcional)...' });
+  let labelConta = '';
+  if (adiantamento?.conta_bancaria_id) {
+    const contas = await buscarContasBancarias('');
+    labelConta = contas.find((c) => c.value === adiantamento.conta_bancaria_id)?.label || '';
+  }
+  const contaSelect = criarSearchableSelect({
+    buscar: buscarContasBancarias,
+    placeholder: 'Pesquisar conta (opcional)...',
+    valorInicial: adiantamento ? adiantamento.conta_bancaria_id : null,
+    labelInicial: labelConta,
+  });
   form.querySelector('[data-conta-select]').appendChild(contaSelect.el);
   const erro = form.querySelector('[data-erro]');
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     erro.classList.add('hidden');
     try {
-      await post(`/viagens/${viagemId}/adiantamentos`, {
+      const payload = {
         valor: getMoedaValue(form.valor),
         data: form.data.value ? parseDataBrParaIso(form.data.value) : null,
         conta_bancaria_id: contaSelect.getValue(),
         descricao: form.descricao.value || null,
-      });
+      };
+      if (adiantamento) await put(`/viagens/adiantamentos/${adiantamento.id}`, payload);
+      else await post(`/viagens/${viagemId}/adiantamentos`, payload);
       fecharModal();
-      mostrarToast('Adiantamento lancado.');
+      mostrarToast(adiantamento ? 'Adiantamento atualizado.' : 'Adiantamento lancado.');
       recarregar();
     } catch (err) {
       erro.textContent = err.message;
       erro.classList.remove('hidden');
     }
   });
-  abrirModal({ titulo: 'Novo adiantamento ao motorista', conteudo: form });
+  abrirModal({ titulo: adiantamento ? 'Editar adiantamento ao motorista' : 'Novo adiantamento ao motorista', conteudo: form });
 }
 
-async function removerAdiantamento(adiantamento, recarregar) {
+export async function abrirNovoAdiantamento(viagemId, recarregar) {
+  return abrirFormAdiantamento({ viagemId, recarregar });
+}
+
+export async function abrirEditarAdiantamento(adiantamento, recarregar) {
+  return abrirFormAdiantamento({ viagemId: adiantamento.viagem_id, adiantamento, recarregar });
+}
+
+export async function removerAdiantamento(adiantamento, recarregar) {
   const ok = await confirmarAcao({ titulo: 'Remover adiantamento', mensagem: `Remover este adiantamento de ${formatarMoeda(adiantamento.valor)}?`, textoConfirmar: 'Remover' });
   if (!ok) return;
   try {
@@ -1066,7 +1091,7 @@ export async function render(container, params) {
               <th class="table-th">Data</th><th class="table-th">Valor</th><th class="table-th">Descricao</th><th class="table-th"></th>
             </tr></thead>
             <tbody>
-              ${adiantamentos.map((a) => `<tr class="border-b border-slate-100"><td class="table-td">${formatarDataBr(a.data)}</td><td class="table-td">${formatarMoeda(a.valor)}${a.conta_bancaria_id ? '' : ' (sem caixa)'}</td><td class="table-td">${a.descricao || '-'}</td><td class="table-td text-right">${gerenciar && viagem.status !== 'Finalizada' ? `<button type="button" class="text-xs text-red-600 hover:underline" data-remover-adiantamento="${a.id}">Remover</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="4" class="table-td py-6 text-center text-slate-400">Nenhum adiantamento lancado.</td></tr>'}
+              ${adiantamentos.map((a) => `<tr class="border-b border-slate-100"><td class="table-td">${formatarDataBr(a.data)}</td><td class="table-td">${formatarMoeda(a.valor)}${a.conta_bancaria_id ? '' : ' (sem caixa)'}</td><td class="table-td">${a.descricao || '-'}</td><td class="table-td text-right">${gerenciar && viagem.status !== 'Finalizada' ? `<button type="button" class="mr-3 text-xs text-gray-900 hover:underline" data-editar-adiantamento="${a.id}">Editar</button><button type="button" class="text-xs text-red-600 hover:underline" data-remover-adiantamento="${a.id}">Remover</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="4" class="table-td py-6 text-center text-slate-400">Nenhum adiantamento lancado.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -1105,6 +1130,10 @@ export async function render(container, params) {
     }
     const btnNovoAdiantamento = container.querySelector('[data-novo-adiantamento]');
     if (btnNovoAdiantamento) btnNovoAdiantamento.addEventListener('click', () => abrirNovoAdiantamento(viagemId, recarregarPagina));
+    container.querySelectorAll('[data-editar-adiantamento]').forEach((btn) => {
+      const adiantamento = adiantamentos.find((a) => String(a.id) === btn.dataset.editarAdiantamento);
+      btn.addEventListener('click', () => abrirEditarAdiantamento(adiantamento, recarregarPagina));
+    });
     container.querySelectorAll('[data-remover-adiantamento]').forEach((btn) => {
       const adiantamento = adiantamentos.find((a) => String(a.id) === btn.dataset.removerAdiantamento);
       btn.addEventListener('click', () => removerAdiantamento(adiantamento, recarregarPagina));
