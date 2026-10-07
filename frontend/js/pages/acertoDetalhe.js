@@ -208,8 +208,11 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
     }
     resumoEl.innerHTML = [
       linha('Receitas (frete bruto total)', formatarMoeda(p.freteBrutoTotal)),
-      linha('Despesas da viagem', formatarMoeda(p.despesasTotal)),
+      linha(p.valorPedagio > 0 ? 'Despesas lancadas' : 'Despesas da viagem', formatarMoeda(p.despesasLancadasTotal)),
+      p.valorPedagio > 0 ? linha('Pedagio da viagem (custo; nao altera o saldo do motorista)', formatarMoeda(p.valorPedagio)) : '',
+      p.valorPedagio > 0 ? linha('Despesas da viagem (total)', formatarMoeda(p.despesasTotal)) : '',
       linha('Receitas &minus; Despesas', valorResultado(p.receitasMenosDespesas), true, 'resultado'),
+      linha('% de sobra (do faturamento)', p.percentualSobra !== null ? `<span class="${p.percentualSobra >= 0 ? 'text-emerald-500' : 'text-red-500'}">${p.percentualSobra.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</span>` : '-'),
       '<hr class="my-2 border-slate-200" />',
       p.valorImposto > 0 ? linha(`Imposto (${p.empresa.razao_social})`, `- ${formatarMoeda(p.valorImposto)}`) : '',
       p.valorImposto > 0 ? linha('Base de calculo da comissao (bruto - imposto)', formatarMoeda(p.baseCalculoComissao)) : '',
@@ -222,7 +225,6 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
       linha('Saldo conta corrente anterior', formatarMoeda(p.saldoContaCorrenteAnterior)),
       '<hr class="my-2 border-slate-200" />',
       linha('Saldo final', `${formatarMoeda(Math.abs(p.saldoFinal))} ${p.saldoFinal >= 0 ? '(a pagar)' : '(fica em conta corrente)'}`, true, 'saldoFinal'),
-      p.valorPedagio > 0 ? linha('Pedagio da viagem (informativo - nao altera o saldo)', formatarMoeda(p.valorPedagio)) : '',
     ].join('');
 
     // Destaca (flash amarelo) so os valores que dependem do que o usuario
@@ -309,7 +311,8 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
       colunas: [{ titulo: 'Cod.' }, { titulo: 'Data' }, { titulo: 'Categoria' }, { titulo: 'Fornecedor' }, { titulo: 'Valor', direita: true }, { titulo: 'Pago por' }, { titulo: 'Status' }, { titulo: '' }],
       linhas,
       vazio: 'Nenhuma despesa lancada nesta viagem.',
-      rodape: linhaTotal(7, 'Total (Despesas)', formatarMoeda(p.despesasTotal)),
+      rodape: linhaTotal(7, p.valorPedagio > 0 ? 'Total (despesas lancadas)' : 'Total (Despesas)', formatarMoeda(p.despesasLancadasTotal))
+        + (p.valorPedagio > 0 ? linhaTotal(7, 'Pedagio da viagem (informativo no saldo)', formatarMoeda(p.valorPedagio)) + linhaTotal(7, 'Total das despesas', formatarMoeda(p.despesasTotal)) : ''),
     }), 'Despesas pagas pelo motorista viram desconto no acerto.');
   }
 
@@ -625,7 +628,11 @@ async function renderFechado(container, viagem, motorista, acerto, gerenciar) {
     get(`/viagens/${viagem.id}/despesas`),
   ]);
   const freteBrutoTotal = (viagem.fretes || []).reduce((t, f) => t + f.frete_bruto, 0);
-  const despesasTotal = despesas.reduce((t, d) => t + d.valor, 0);
+  const valorPedagio = detalhamento.valorPedagio || 0;
+  const despesasLancadasTotal = despesas.reduce((t, d) => t + d.valor, 0);
+  // Pedagio: informativo no acerto (nao altera o saldo), mas e custo da viagem.
+  const despesasTotal = despesasLancadasTotal + valorPedagio;
+  const percentualSobra = freteBrutoTotal > 0 ? ((freteBrutoTotal - despesasTotal) / freteBrutoTotal) * 100 : null;
   const baseCalculoComissao = freteBrutoTotal - (acerto.valor_imposto || 0);
 
   // Split-pane creditos/debitos (sem rodape fixo): agrupa o que aumenta o
@@ -640,12 +647,15 @@ async function renderFechado(container, viagem, motorista, acerto, gerenciar) {
   container.querySelector('[data-resumo]').innerHTML = `
     <div class="mb-4 space-y-1">
       ${linha('Receitas (frete bruto total)', formatarMoeda(freteBrutoTotal))}
-      ${linha('Despesas da viagem', formatarMoeda(despesasTotal))}
+      ${linha(valorPedagio > 0 ? 'Despesas lancadas' : 'Despesas da viagem', formatarMoeda(despesasLancadasTotal))}
+      ${valorPedagio > 0 ? linha('Pedagio da viagem (custo; nao altera o saldo do motorista)', formatarMoeda(valorPedagio)) : ''}
+      ${valorPedagio > 0 ? linha('Despesas da viagem (total)', formatarMoeda(despesasTotal)) : ''}
       ${linha('Receitas &minus; Despesas', valorResultado(freteBrutoTotal - despesasTotal), true)}
+      ${linha('% de sobra (do faturamento)', percentualSobra !== null ? `<span class="${percentualSobra >= 0 ? 'text-emerald-500' : 'text-red-500'}">${percentualSobra.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</span>` : '-')}
       ${acerto.valor_imposto > 0 ? linha(`Imposto (${acerto.percentual_imposto_aplicado}%)`, `- ${formatarMoeda(acerto.valor_imposto)}`) : ''}
       ${acerto.valor_imposto > 0 ? linha('Base de calculo da comissao (bruto - imposto)', formatarMoeda(baseCalculoComissao)) : ''}
       <div class="flex flex-wrap items-center justify-between gap-2 py-1.5 text-sm text-slate-600" data-linha-pedagio>
-        <span>Pedagio da viagem (informativo - nao altera o saldo)</span>
+        <span>Pedagio da viagem (custo da viagem; nao altera o saldo do motorista)</span>
         <span class="flex items-center gap-2">
           <span class="font-medium" data-pedagio-valor>${formatarMoeda(detalhamento.valorPedagio)}</span>
           ${gerenciar ? '<button type="button" class="text-xs text-gray-900 hover:underline" data-editar-pedagio>Informar/editar</button>' : ''}
@@ -701,10 +711,9 @@ async function renderFechado(container, viagem, motorista, acerto, gerenciar) {
         erro.classList.add('hidden');
         try {
           const res = await put(`/acertos/viagem/${viagem.id}/pedagio`, { valor: getMoedaValue(form.valor) });
-          detalhamento.valorPedagio = res.valor_pedagio;
-          container.querySelector('[data-pedagio-valor]').textContent = formatarMoeda(res.valor_pedagio);
           fecharModal();
-          mostrarToast('Pedagio salvo (informativo).');
+          mostrarToast('Pedagio salvo.');
+          await renderFechado(container, viagem, motorista, acerto, gerenciar);
         } catch (err) {
           erro.textContent = err.message;
           erro.classList.remove('hidden');

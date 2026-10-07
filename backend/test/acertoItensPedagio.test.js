@@ -98,6 +98,11 @@ test('preview: reembolsos/descontos vem dos itens, pedagio nao entra no saldo, R
   const depois = await admin().get(`/api/acertos/viagem/${viagemId}/preview?percentual_comissao_aplicado=20`);
   assert.equal(depois.body.valorPedagio, 123456);
   assert.equal(depois.body.saldoFinal, 36000, 'pedagio e so informativo: saldo nao muda');
+  // ...mas e custo da viagem: entra no total de despesas, em Receitas - Despesas e no % de sobra.
+  assert.equal(depois.body.despesasLancadasTotal, 120000);
+  assert.equal(depois.body.despesasTotal, 120000 + 123456);
+  assert.equal(depois.body.receitasMenosDespesas, 500000 - 243456);
+  assert.ok(Math.abs(depois.body.percentualSobra - ((500000 - 243456) / 500000) * 100) < 1e-9);
 
   assert.equal((await admin().put(`/api/acertos/viagem/${viagemId}/pedagio`).send({ valor: -1 })).status, 400);
   assert.equal((await admin().put(`/api/acertos/viagem/${viagemId}/pedagio`).send({ valor: 'abc' })).status, 400);

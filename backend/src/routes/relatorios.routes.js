@@ -753,7 +753,8 @@ router.get('/viagens', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEsp
     if (veiculoIds.length && (!tratora || !veiculoIds.includes(String(tratora.id)))) continue;
     const motorista = db.prepare('SELECT nome FROM motoristas WHERE id = ?').get(viagem.motorista_id);
     const freteBruto = db.prepare('SELECT COALESCE(SUM(frete_bruto), 0) AS t FROM fretes WHERE viagem_id = ?').get(viagem.id).t;
-    const despesasTotal = db.prepare('SELECT COALESCE(SUM(valor), 0) AS t FROM despesas_viagem WHERE viagem_id = ?').get(viagem.id).t;
+    // Despesas lancadas + pedagio informado no acerto (custo da viagem).
+    const despesasTotal = db.prepare('SELECT COALESCE(SUM(valor), 0) AS t FROM despesas_viagem WHERE viagem_id = ?').get(viagem.id).t + (viagem.valor_pedagio || 0);
     const kmRodado = viagem.km_final !== null ? viagem.km_final - viagem.km_inicial : null;
     const duracaoDias = viagem.data_fim
       ? Math.max(1, Math.round((new Date(`${viagem.data_fim}T00:00:00Z`) - new Date(`${viagem.data_inicio}T00:00:00Z`)) / 86400000))

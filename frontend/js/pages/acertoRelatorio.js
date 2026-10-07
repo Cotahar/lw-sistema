@@ -94,7 +94,7 @@ export async function renderRelatorio(root, params, query) {
   const fretes = viagem.fretes || [];
   const freteBrutoTotal = fretes.reduce((t, f) => t + f.frete_bruto, 0);
   const pesoTotal = fretes.reduce((t, f) => t + (f.peso_carga_kg || 0), 0);
-  const totalDespesas = despesas.reduce((t, d) => t + d.valor, 0);
+  const totalDespesasLancadas = despesas.reduce((t, d) => t + d.valor, 0);
   const totalAdiantamentos = adiantamentos.reduce((t, a) => t + a.valor, 0);
   const kmRodado = viagem.km_final ? viagem.km_final - viagem.km_inicial : null;
   const usuario = getUsuario();
@@ -126,11 +126,14 @@ export async function renderRelatorio(root, params, query) {
   const totalReembolsos = detalhamento.totalReembolsos;
   const totalDescontosMotorista = detalhamento.totalDescontos;
   const valorPedagio = detalhamento.valorPedagio;
+  // Pedagio: informativo no acerto (nao altera o saldo do motorista), mas e custo
+  // da viagem - entra nas despesas, em Receitas - Despesas e no % de sobra.
+  const totalDespesas = totalDespesasLancadas + valorPedagio;
   const receitasMenosDespesas = freteBrutoTotal - totalDespesas;
+  const percentualSobra = freteBrutoTotal ? (receitasMenosDespesas / freteBrutoTotal) * 100 : null;
 
   const custoPorKm = kmRodado ? Math.round(totalDespesas / kmRodado) : null;
   const ticketMedioFrete = fretes.length ? Math.round(freteBrutoTotal / fretes.length) : null;
-  const percentualDespesasSobreFaturamento = freteBrutoTotal ? (totalDespesas / freteBrutoTotal) * 100 : null;
   const percentualComissaoSobreFaturamento = acerto && freteBrutoTotal ? (acerto.valor_comissao / freteBrutoTotal) * 100 : null;
   const percentualDescontosSobreFaturamento = freteBrutoTotal ? (totalDescontosMotorista / freteBrutoTotal) * 100 : null;
 
@@ -326,7 +329,7 @@ export async function renderRelatorio(root, params, query) {
           ${estatistica('Media consumo', mediaConsumo ? `${mediaConsumo.toFixed(2)} km/l` : '-', { destaque: true })}
           ${estatistica('Faturamento total', formatarMoeda(freteBrutoTotal), { corValor: 'text-emerald-700' })}
           ${estatistica('Despesas totais', formatarMoeda(totalDespesas), { corValor: 'text-red-700' })}
-          ${estatistica('Receitas - Despesas', formatarMoeda(receitasMenosDespesas), { corValor: classeResultado })}
+          ${estatistica('Receitas - Despesas', formatarMoeda(receitasMenosDespesas), { corValor: classeResultado, sub: percentualSobra !== null ? `${percentualSobra.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}% de sobra` : '' })}
           ${estatistica('Pedagio (informativo)', valorPedagio > 0 ? formatarMoeda(valorPedagio) : '-', { sub: valorPedagio > 0 ? 'Nao altera o saldo' : '' })}
         </div>
 
@@ -345,8 +348,12 @@ export async function renderRelatorio(root, params, query) {
           <h2 class="mb-2 mt-6 flex items-center gap-2 text-base font-bold text-zinc-900"><span class="h-4 w-1.5 rounded-full bg-zinc-400"></span>Demais despesas</h2>
           ${tabelaOutrasDespesas()}
           <div class="mb-4 flex items-center justify-between border-t-2 border-zinc-300 pt-2 text-sm font-bold text-zinc-900">
-            <span>Total geral de despesas</span><span>${formatarMoeda(totalDespesas)}</span>
+            <span>${valorPedagio > 0 ? 'Despesas lancadas' : 'Total geral de despesas'}</span><span>${formatarMoeda(totalDespesasLancadas)}</span>
           </div>
+          ${valorPedagio > 0 ? `
+            <div class="flex items-center justify-between py-1 text-sm text-zinc-700"><span>Pedagio da viagem (informado no acerto; nao altera o saldo do motorista)</span><span>${formatarMoeda(valorPedagio)}</span></div>
+            <div class="mb-4 flex items-center justify-between border-t-2 border-zinc-300 pt-2 text-sm font-bold text-zinc-900"><span>Total geral de despesas</span><span>${formatarMoeda(totalDespesas)}</span></div>
+          ` : ''}
 
           <h2 class="mb-2 mt-6 flex items-center gap-2 text-base font-bold text-zinc-900"><span class="h-4 w-1.5 rounded-full bg-emerald-500"></span>Reembolsos ao motorista</h2>
           ${tabelaReembolsos()}
@@ -361,7 +368,7 @@ export async function renderRelatorio(root, params, query) {
           <div class="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
             ${estatistica('Valor medio por frete', ticketMedioFrete !== null ? formatarMoeda(ticketMedioFrete) : '-')}
             ${estatistica('Custo por KM (despesas)', custoPorKm !== null ? formatarMoeda(custoPorKm) : '-')}
-            ${estatistica('Despesas / Faturamento', percentualDespesasSobreFaturamento !== null ? `${percentualDespesasSobreFaturamento.toFixed(1)}%` : '-')}
+            ${estatistica('% de sobra (receitas - despesas)', percentualSobra !== null ? `${percentualSobra.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%` : '-', { corValor: classeResultado, sub: 'do faturamento' })}
             ${percentualComissaoSobreFaturamento !== null ? estatistica('Comissao / Faturamento', `${percentualComissaoSobreFaturamento.toFixed(1)}%`, { corValor: 'text-emerald-700' }) : ''}
             ${percentualDescontosSobreFaturamento !== null ? estatistica('Descontos motorista / Faturamento', `${percentualDescontosSobreFaturamento.toFixed(1)}%`, { corValor: 'text-red-700' }) : ''}
           </div>
@@ -370,11 +377,13 @@ export async function renderRelatorio(root, params, query) {
         <h2 class="mb-2 mt-6 text-base font-bold text-zinc-900">Resumo financeiro (romaneio ao motorista)</h2>
         <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
           ${linha('Receitas (frete bruto total)', formatarMoeda(freteBrutoTotal))}
+          ${valorPedagio > 0 ? linha('Despesas lancadas', formatarMoeda(totalDespesasLancadas)) : ''}
+          ${valorPedagio > 0 ? linha('Pedagio da viagem (nao altera o saldo do motorista)', formatarMoeda(valorPedagio)) : ''}
           ${linha('Despesas da viagem', formatarMoeda(totalDespesas))}
           <div class="flex items-center justify-between border-t border-zinc-200 py-1 text-base font-bold text-zinc-900"><span>Receitas - Despesas</span><span class="${classeResultado}">${formatarMoeda(receitasMenosDespesas)}</span></div>
+          ${linha('% de sobra (do faturamento)', percentualSobra !== null ? `<span class="${classeResultado}">${percentualSobra.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</span>` : '-')}
           ${acerto && acerto.valor_imposto > 0 ? linha(`Imposto (${acerto.percentual_imposto_aplicado}%)`, `- ${formatarMoeda(acerto.valor_imposto)}`) : ''}
           ${acerto && acerto.valor_imposto > 0 ? linha('Base de calculo da comissao (bruto - imposto)', formatarMoeda(freteBrutoTotal - acerto.valor_imposto)) : ''}
-          ${valorPedagio > 0 ? linha('Pedagio da viagem (informativo - nao altera o saldo)', formatarMoeda(valorPedagio)) : ''}
         </div>
 
         ${acerto ? `

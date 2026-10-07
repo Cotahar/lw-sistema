@@ -53,7 +53,12 @@ function calcularAcerto(viagemId, empresaId, overrides = {}) {
   const adiantamentosTotal = somar(adiantamentos.map((a) => a.valor));
 
   const despesas = db.prepare('SELECT * FROM despesas_viagem WHERE viagem_id = ?').all(viagemId);
-  const despesasTotal = somar(despesas.map((d) => d.valor));
+  // O pedagio e informativo NO ACERTO (nao altera o saldo do motorista, ver
+  // saldoFinal abaixo), mas e custo da viagem: entra no total de despesas e,
+  // por consequencia, em Receitas - Despesas e no % de sobra.
+  const despesasLancadasTotal = somar(despesas.map((d) => d.valor));
+  const valorPedagio = viagem.valor_pedagio || 0;
+  const despesasTotal = despesasLancadasTotal + valorPedagio;
   const kmTotal = viagem.km_final - viagem.km_inicial;
   // Media "tanque cheio a tanque cheio" (ver mediaConsumoHelper.js) - unica
   // forma confiavel de saber litros/km real quando existem abastecimentos
@@ -118,10 +123,12 @@ function calcularAcerto(viagemId, empresaId, overrides = {}) {
     percentualImposto, valorImposto, baseCalculoComissao,
     valorReembolsos, adiantamentosTotal, valorDescontosSugerido, valorDescontosManuais, valorDescontos,
     itensReembolso, itensDesconto,
-    // Receitas (frete bruto) - despesas da viagem: so informativo, pro
-    // escritorio enxergar o resultado da viagem (nao entra no saldo).
-    despesasTotal, receitasMenosDespesas: freteBrutoTotal - despesasTotal,
-    valorPedagio: viagem.valor_pedagio || 0,
+    // Receitas (frete bruto) - despesas da viagem (lancadas + pedagio): so
+    // informativo, pro escritorio enxergar o resultado da viagem (nao entra no
+    // saldo). percentualSobra = quanto do faturamento sobra depois das despesas.
+    despesasLancadasTotal, despesasTotal, receitasMenosDespesas: freteBrutoTotal - despesasTotal,
+    percentualSobra: freteBrutoTotal > 0 ? ((freteBrutoTotal - despesasTotal) / freteBrutoTotal) * 100 : null,
+    valorPedagio,
     saldoContaCorrenteAnterior, saldoFinal, despesasPendentes,
   };
 }

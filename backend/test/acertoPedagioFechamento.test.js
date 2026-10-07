@@ -52,6 +52,12 @@ test('o pedagio enviado junto com o fechamento fica gravado e aparece em todo lu
   const whatsapp = await admin().get(`/api/acertos/${acertoId}/whatsapp`);
   assert.match(whatsapp.text, /520,68/);
   assert.equal(saldoFinal, 50000, '10% de 5.000 - o pedagio nao entra no saldo');
+
+  // Mas e despesa da viagem: aparece no relatorio de viagens (faturamento 5.000 - pedagio 520,68).
+  const relatorio = await admin().get('/api/relatorios/viagens');
+  const linha = relatorio.body.find((r) => r.viagem_id === viagemId);
+  assert.equal(linha.despesas, 52068);
+  assert.equal(linha.lucro, 500000 - 52068);
 });
 
 test('depois de fechado o pedagio ainda pode ser informado/corrigido, sem alterar o saldo do acerto', async () => {

@@ -938,7 +938,9 @@ export async function render(container, params) {
     const diasDecorridos = Math.max(1, Math.round((new Date(dataFimOuHoje) - new Date(viagem.data_inicio)) / 86400000));
     const distanciaDiaria = kmPercorrido !== null ? kmPercorrido / diasDecorridos : null;
     const totalFaturado = (viagem.fretes || []).reduce((t, f) => t + f.frete_bruto, 0);
-    const totalDespesas = despesas.reduce((t, d) => t + d.valor, 0);
+    // Pedagio informado no acerto e custo da viagem (nao altera o saldo do motorista).
+    const pedagioViagem = viagem.valor_pedagio || 0;
+    const totalDespesas = despesas.reduce((t, d) => t + d.valor, 0) + pedagioViagem;
     const lucroAteAgora = totalFaturado - totalDespesas;
     // Soma so das despesas "principais" (despesasPrincipais ja exclui as
     // linhas de Arla, que tem litragem propria em outra unidade/proposito -
@@ -1044,6 +1046,7 @@ export async function render(container, params) {
           <div>
             <p class="text-xs font-medium uppercase text-slate-500">Despesas</p>
             <p class="text-sm font-semibold text-slate-900">${formatarMoeda(totalDespesas)}</p>
+            ${pedagioViagem > 0 ? `<p class="text-[11px] text-slate-400">inclui pedagio ${formatarMoeda(pedagioViagem)}</p>` : ''}
           </div>
           <div>
             <p class="text-xs font-medium uppercase text-slate-500">Lucro</p>
