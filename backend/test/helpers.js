@@ -47,6 +47,7 @@ function api(token, empresaId) {
     get: (url) => comHeaders(request(app).get(url)),
     post: (url) => comHeaders(request(app).post(url)),
     put: (url) => comHeaders(request(app).put(url)),
+    patch: (url) => comHeaders(request(app).patch(url)),
     delete: (url) => comHeaders(request(app).delete(url)),
   };
 }

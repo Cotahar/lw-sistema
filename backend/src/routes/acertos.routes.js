@@ -37,7 +37,7 @@ function calcularAcerto(viagemId, empresaId, overrides = {}) {
   if (!viagem) throw new ApiError(404, 'Viagem nao encontrada.');
   if (viagem.km_final === null) throw new ApiError(400, 'A viagem ainda nao foi finalizada (falta o km final).');
 
-  const fretes = db.prepare('SELECT * FROM fretes WHERE viagem_id = ?').all(viagemId);
+  const fretes = db.prepare('SELECT f.*, cr.data_prevista AS data_prevista_recebimento FROM fretes f LEFT JOIN contas_receber cr ON cr.frete_id = f.id WHERE f.viagem_id = ?').all(viagemId);
   const freteBrutoTotal = somar(fretes.map((f) => f.frete_bruto));
 
   // Imposto da empresa sobre o frete bruto (variavel por empresa, cadastro

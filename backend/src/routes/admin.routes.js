@@ -4,6 +4,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const { requerAdmin } = require('../middleware/auth');
 const { withTransaction } = require('../utils/transaction');
+const { desfazerTransferencia } = require('../utils/transferenciaHelper');
 
 const router = express.Router();
 router.use(requerAdmin);
@@ -38,6 +39,7 @@ router.get('/logs', asyncHandler(async (req, res) => {
 const HANDLERS_ESPECIFICOS = {
   acertos_viagem: reverterAcertoViagem,
   movimentacoes_caixa: reverterMovimentacaoCaixa,
+  transferencias_contas: reverterTransferencia,
   contas_pagar: reverterContasPagar,
   ordens_servico: reverterOrdensServico,
   financiamentos: reverterFinanciamentos,
@@ -109,6 +111,16 @@ function reverterMovimentacaoCaixa(log) {
   const delta = mov.tipo === 'Entrada' ? -mov.valor : mov.valor;
   db.prepare('UPDATE contas_bancarias SET saldo_atual = saldo_atual + ? WHERE id = ?').run(delta, mov.conta_bancaria_id);
   db.prepare('DELETE FROM movimentacoes_caixa WHERE id = ?').run(mov.id);
+}
+
+// Transferencia entre contas: reverter o lancamento devolve os dois saldos e
+// apaga as duas movimentacoes de caixa. Restaurar uma transferencia EXCLUIDA
+// nao e suportado (ela recriaria so o cabecalho, sem o caixa) - lanca-se de novo.
+function reverterTransferencia(log) {
+  if (log.acao !== 'INSERT') {
+    throw new ApiError(400, 'Uma transferencia excluida nao pode ser restaurada pela auditoria. Lance a transferencia novamente em Contas Bancarias.');
+  }
+  desfazerTransferencia(log.registro_id);
 }
 
 // Uma baixa de conta a pagar e so um UPDATE na propria linha (valor_pago sobe),

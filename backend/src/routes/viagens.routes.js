@@ -9,8 +9,10 @@ const { registrarAuditoria } = require('../utils/audit');
 const { withTransaction } = require('../utils/transaction');
 const { verificarAlertasDoVeiculo } = require('../utils/alertaEngine');
 const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
-const { hojeIsoBrasilia, agoraDataHoraIsoBrasilia } = require('../utils/dataHora');
-const { criarDespesaViagem, criarContaPagarCombinada, resolverContaPagarAposEdicao } = require('../utils/despesaViagemHelper');
+const {
+  hojeIsoBrasilia, agoraDataHoraIsoBrasilia, dataPrevistaRecebimentoPadrao, somarDiasIso, PRAZO_RECEBIMENTO_DIAS,
+} = require('../utils/dataHora');
+const { criarDespesaViagem, criarContaPagarCombinada, resolverContaPagarAposEdicao, exigirKmAbastecimento } = require('../utils/despesaViagemHelper');
 const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
 
 const router = express.Router();
@@ -52,7 +54,7 @@ router.get('/', requerAcessoModulo('viagens', 'Visualizar'), exigirEmpresaEspeci
 router.get('/:id', requerAcessoModulo('viagens', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const viagem = db.prepare('SELECT * FROM viagens WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
   if (!viagem) throw new ApiError(404, 'Viagem nao encontrada.');
-  const fretes = db.prepare('SELECT * FROM fretes WHERE viagem_id = ?').all(req.params.id);
+  const fretes = db.prepare('SELECT f.*, cr.data_prevista AS data_prevista_recebimento FROM fretes f LEFT JOIN contas_receber cr ON cr.frete_id = f.id WHERE f.viagem_id = ?').all(req.params.id);
   const tratora = buscarUnidadeTratora(viagem.conjunto_id);
   const centroCusto = tratora ? buscarCentroCustoDoVeiculo(tratora.id) : null;
   // Media "tanque cheio a tanque cheio" olha pro historico do VEICULO (nao so
@@ -248,7 +250,8 @@ router.get('/:id/fretes', requerAcessoModulo('viagens', 'Visualizar'), exigirEmp
   // Status do recebivel (quitado/em aberto/parcial/atrasado) direto na lista
   // de fretes - antes so dava pra ver abrindo "Recebivel/Baixas" de cada um.
   res.json(db.prepare(`
-    SELECT f.*, cr.status AS recebimento_status, cr.valor_recebido AS recebimento_valor_recebido, cr.valor_descontado AS recebimento_valor_descontado
+    SELECT f.*, cr.status AS recebimento_status, cr.valor_recebido AS recebimento_valor_recebido, cr.valor_descontado AS recebimento_valor_descontado,
+           cr.data_prevista AS data_prevista_recebimento
     FROM fretes f
     LEFT JOIN contas_receber cr ON cr.frete_id = f.id
     WHERE f.viagem_id = ? ORDER BY f.id
@@ -290,7 +293,7 @@ router.post('/:id/fretes', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmp
       db.prepare(`
         INSERT INTO contas_receber (empresa_id, frete_id, centro_custo_id, valor, data_prevista, status)
         VALUES (?, ?, ?, ?, ?, 'Pendente')
-      `).run(req.empresaId, novoFrete.id, centroCusto.id, novoFrete.frete_bruto, dataOuHoje(data_prevista_recebimento || viagem.data_inicio));
+      `).run(req.empresaId, novoFrete.id, centroCusto.id, novoFrete.frete_bruto, data_prevista_recebimento || dataPrevistaRecebimentoPadrao(novoFrete.data_descarga));
     }
 
     // Se este e o primeiro frete da viagem, despesas lancadas antes dele
@@ -319,7 +322,9 @@ router.put('/fretes/:freteId', requerAcessoModulo('viagens', 'Gerenciar'), exigi
   for (const campo of campos) {
     if (req.body[campo] !== undefined) { sets.push(`${campo} = ?`); valores.push(req.body[campo]); }
   }
-  if (!sets.length) throw new ApiError(400, 'Nenhum campo valido informado.');
+  // A previsao de recebimento mora na conta a receber, mas tambem e editada
+  // por este endpoint (formulario do frete) - sozinha ela ja e um corpo valido.
+  if (!sets.length && !req.body.data_prevista_recebimento) throw new ApiError(400, 'Nenhum campo valido informado.');
 
   // O formulario de edicao sempre reenvia TODOS os campos (nao so os que
   // mudaram) - reprovar toda edicao so porque frete_bruto veio no corpo,
@@ -334,10 +339,37 @@ router.put('/fretes/:freteId', requerAcessoModulo('viagens', 'Gerenciar'), exigi
         throw new ApiError(400, 'Este frete ja possui baixas lancadas: nao e possivel alterar o frete_bruto (exclua as baixas primeiro).');
       }
     }
-    db.prepare(`UPDATE fretes SET ${sets.join(', ')} WHERE id = ?`).run(...valores, req.params.freteId);
+    if (sets.length) db.prepare(`UPDATE fretes SET ${sets.join(', ')} WHERE id = ?`).run(...valores, req.params.freteId);
     const freteAtualizado = db.prepare('SELECT * FROM fretes WHERE id = ?').get(req.params.freteId);
     if (freteBrutoMudou) {
       db.prepare('UPDATE contas_receber SET valor = ? WHERE frete_id = ?').run(freteAtualizado.frete_bruto, req.params.freteId);
+    }
+
+    // Data prevista de recebimento (mora na conta a receber, nao no frete):
+    //  - informada no corpo -> vale o que o usuario escolheu;
+    //  - nao informada, mas a data de descarga mudou e a previsao ainda era a
+    //    padrao (descarga antiga + 3 dias) -> acompanha a nova descarga;
+    //  - qualquer outro caso (previsao ajustada a mao) -> nao mexe.
+    // Conta ja totalmente recebida nao muda de data.
+    const receberAtual = db.prepare('SELECT * FROM contas_receber WHERE frete_id = ?').get(req.params.freteId);
+    if (receberAtual && receberAtual.status !== 'Recebido') {
+      const previstaInformada = typeof req.body.data_prevista_recebimento === 'string' && req.body.data_prevista_recebimento
+        ? req.body.data_prevista_recebimento
+        : null;
+      const descargaMudou = req.body.data_descarga !== undefined && (req.body.data_descarga || null) !== (antes.data_descarga || null);
+      if (previstaInformada) {
+        if (previstaInformada !== receberAtual.data_prevista) {
+          db.prepare('UPDATE contas_receber SET data_prevista = ? WHERE id = ?').run(previstaInformada, receberAtual.id);
+        }
+      } else if (descargaMudou) {
+        // Sem descarga na criacao, o padrao foi "dia do cadastro + 3 dias".
+        const padraoAntigo = antes.data_descarga
+          ? somarDiasIso(antes.data_descarga, PRAZO_RECEBIMENTO_DIAS)
+          : somarDiasIso(String(antes.criado_em).slice(0, 10), PRAZO_RECEBIMENTO_DIAS);
+        if (receberAtual.data_prevista === padraoAntigo) {
+          db.prepare('UPDATE contas_receber SET data_prevista = ? WHERE id = ?').run(dataPrevistaRecebimentoPadrao(freteAtualizado.data_descarga), receberAtual.id);
+        }
+      }
     }
     return freteAtualizado;
   });
@@ -605,6 +637,7 @@ router.post('/:id/despesas', requerAcessoModulo('viagens', 'Gerenciar'), exigirE
   const arlaValor = arla && arla.valor > 0 ? Number(arla.valor) : 0;
   if (ehAbastecimento) {
     if (dieselValor <= 0 && arlaValor <= 0) throw new ApiError(400, 'Informe o valor do diesel ou do Arla.');
+    exigirKmAbastecimento(km_abastecimento);
   } else if (valor === undefined || Number(valor) <= 0) {
     throw new ApiError(400, 'Preencha o valor.');
   }
@@ -692,6 +725,13 @@ router.put('/despesas/:despesaId', requerAcessoModulo('viagens', 'Gerenciar'), e
     if (valorCampo !== undefined) { setsArla.push(`${campo} = ?`); valoresArla.push(valorCampo); }
   }
   if (!sets.length && !setsArla.length) throw new ApiError(400, 'Nenhum campo valido informado.');
+
+  // Abastecimento sempre precisa de KM: a edicao nao pode deixar (ou
+  // continuar deixando) o campo vazio.
+  const categoriaFinal = req.body.categoria_id !== undefined ? Number(req.body.categoria_id) : antes.categoria_id;
+  if (categoriaFinal === buscarCategoriaAbastecimentoId()) {
+    exigirKmAbastecimento(req.body.km_abastecimento !== undefined ? req.body.km_abastecimento : antes.km_abastecimento);
+  }
 
   withTransaction(db, () => {
     if (sets.length) {
@@ -817,6 +857,10 @@ router.patch('/despesas/:despesaId/validar', requerAcessoModulo('viagens', 'Gere
 
   if (precisaContaPagar && formaPagamentoFinal === 'AssinarNota' && !data_vencimento) {
     throw new ApiError(400, 'Informe a data de vencimento para validar uma despesa "Assinar nota".');
+  }
+  // Mesma regra da criacao: abastecimento nao e validado sem KM.
+  if (despesa.categoria_id === buscarCategoriaAbastecimentoId()) {
+    exigirKmAbastecimento(km_abastecimento !== undefined ? km_abastecimento : despesa.km_abastecimento);
   }
 
   withTransaction(db, () => {

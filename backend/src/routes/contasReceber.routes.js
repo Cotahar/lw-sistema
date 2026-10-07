@@ -63,9 +63,13 @@ router.get('/:id', requerAcessoModulo('contas_receber', 'Visualizar'), exigirEmp
 router.put('/:id', requerAcessoModulo('contas_receber', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const antes = db.prepare('SELECT * FROM contas_receber WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
   if (!antes) throw new ApiError(404, 'Conta a receber nao encontrada.');
-  if (antes.status !== 'Pendente') throw new ApiError(400, 'So e possivel editar contas ainda Pendentes.');
+  // Saldo parcialmente recebido tambem pode ter a previsao do restante
+  // reagendada; so uma conta totalmente recebida fica travada.
+  if (antes.status === 'Recebido') throw new ApiError(400, 'Esta conta ja foi totalmente recebida e nao pode ser alterada.');
   const { data_prevista } = req.body;
-  if (!data_prevista) throw new ApiError(400, 'Informe data_prevista.');
+  if (!data_prevista || !/^\d{4}-\d{2}-\d{2}$/.test(data_prevista) || Number.isNaN(Date.parse(`${data_prevista}T00:00:00Z`))) {
+    throw new ApiError(400, 'Informe uma data_prevista valida (AAAA-MM-DD).');
+  }
   db.prepare('UPDATE contas_receber SET data_prevista = ? WHERE id = ?').run(data_prevista, req.params.id);
   const depois = db.prepare('SELECT * FROM contas_receber WHERE id = ?').get(req.params.id);
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'contas_receber', registroId: depois.id, acao: 'UPDATE', antes, depois });

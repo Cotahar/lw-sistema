@@ -887,11 +887,29 @@ CREATE TABLE movimentacoes_caixa (
     valor               INTEGER NOT NULL,  -- centavos
     data                TEXT NOT NULL DEFAULT (date('now', '-3 hours')),
     descricao           TEXT,
-    origem_tipo         TEXT CHECK (origem_tipo IN ('ContaPagar', 'ContaReceber', 'ViagemAdiantamento', 'Ajuste')),
+    origem_tipo         TEXT CHECK (origem_tipo IN ('ContaPagar', 'ContaReceber', 'ViagemAdiantamento', 'Ajuste', 'Transferencia')),
     origem_id           INTEGER,
     criado_por          INTEGER REFERENCES usuarios(id)
 );
 CREATE INDEX idx_movimentacoes_caixa_conta ON movimentacoes_caixa(conta_bancaria_id, data);
+
+-- Transferencia de saldo entre duas contas bancarias da mesma empresa. Cada
+-- transferencia gera DUAS movimentacoes_caixa (origem_tipo = 'Transferencia',
+-- origem_id = transferencias_contas.id): uma Saida na conta de origem e uma
+-- Entrada na de destino. O resultado liquido no caixa total e zero.
+CREATE TABLE transferencias_contas (
+    id                  INTEGER PRIMARY KEY,
+    empresa_id          INTEGER NOT NULL REFERENCES empresas(id),
+    conta_origem_id     INTEGER NOT NULL REFERENCES contas_bancarias(id),
+    conta_destino_id    INTEGER NOT NULL REFERENCES contas_bancarias(id),
+    valor               INTEGER NOT NULL CHECK (valor > 0),  -- centavos
+    data                TEXT NOT NULL DEFAULT (date('now', '-3 hours')),
+    descricao           TEXT,
+    criado_por          INTEGER REFERENCES usuarios(id),
+    criado_em           TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
+    CHECK (conta_origem_id != conta_destino_id)
+);
+CREATE INDEX idx_transferencias_contas_empresa ON transferencias_contas(empresa_id, data);
 
 -- =====================================================================
 -- 8. ACERTO DE VIAGEM E CONTA CORRENTE DO MOTORISTA

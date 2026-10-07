@@ -8,7 +8,7 @@ import { criarOcorrencias } from '../components/ocorrencias.js';
 import { criarAnexos } from '../components/anexos.js';
 import { criarCidadeUfInput } from '../components/cidadeUfSelect.js';
 import { abrirBaixasFrete, buscarContasBancarias } from '../components/baixasFrete.js';
-import { formatarMoeda, attachMoedaMask, attachMoedaMaskReais, getMoedaValue, setMoedaValue, attachPesoMask, getPesoValue, attachDataMask, parseDataBrParaIso, formatarDataBr, formatarDataHoraBr, hojeIsoLocal, attachUppercaseInput } from '../masks.js';
+import { formatarMoeda, attachMoedaMask, attachMoedaMaskReais, getMoedaValue, setMoedaValue, attachPesoMask, getPesoValue, attachDataMask, parseDataBrParaIso, formatarDataBr, formatarDataHoraBr, hojeIsoLocal, attachUppercaseInput, somarDiasIso } from '../masks.js';
 import { navegar } from '../router.js';
 import { criarBotaoSincronizarOnixsat } from '../components/onixsatSync.js';
 import { esqueletoPagina } from '../components/skeleton.js';
@@ -87,8 +87,9 @@ function montarFormularioFrete(aoSalvar, frete, transportadoraLabelInicial) {
     <div class="grid grid-cols-3 gap-3">
       <div><label class="label">Data de carregamento</label><input type="text" name="data_carregamento" class="input" /></div>
       <div><label class="label">Data de descarga</label><input type="text" name="data_descarga" class="input" /></div>
-      <div><label class="label">Data prevista de recebimento</label><input type="text" name="data_prevista_recebimento" class="input" /></div>
+      <div><label class="label">Previsao de recebimento</label><input type="text" name="data_prevista_recebimento" class="input" /></div>
     </div>
+    <p class="-mt-2 text-xs text-slate-400">A previsao de recebimento sugere a data de descarga + 3 dias; pode ser alterada aqui ou depois em Contas a Receber.</p>
     <p class="hidden text-sm text-red-600" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">${frete ? 'Salvar alteracoes' : 'Cadastrar frete'}</button></div>
   `;
@@ -109,6 +110,18 @@ function montarFormularioFrete(aoSalvar, frete, transportadoraLabelInicial) {
   attachDataMask(form.data_carregamento, frete ? frete.data_carregamento : undefined);
   attachDataMask(form.data_descarga, frete ? frete.data_descarga : undefined);
   attachDataMask(form.data_prevista_recebimento, frete ? frete.data_prevista_recebimento : undefined);
+
+  // A previsao acompanha a data de descarga (+3 dias) enquanto ainda for a
+  // sugerida: frete novo, ou editado cuja previsao atual ainda e a padrao.
+  // Digitou a previsao a mao -> para de acompanhar (nao sobrescreve a escolha).
+  let previsaoSeguePadrao = !frete || !frete.data_prevista_recebimento
+    || (Boolean(frete.data_descarga) && frete.data_prevista_recebimento === somarDiasIso(frete.data_descarga, 3));
+  form.data_descarga.addEventListener('input', () => {
+    if (!previsaoSeguePadrao) return;
+    const descarga = parseDataBrParaIso(form.data_descarga.value);
+    form.data_prevista_recebimento.value = descarga ? formatarDataBr(somarDiasIso(descarga, 3)) : '';
+  });
+  form.data_prevista_recebimento.addEventListener('input', () => { previsaoSeguePadrao = false; });
   const erro = form.querySelector('[data-erro]');
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
@@ -231,7 +244,7 @@ export async function abrirNovaDespesa(viagemId, recarregar, centroCustoPadrao) 
           Encheu o tanque completamente?
         </label>
       </div>
-      <div class="mt-3 max-w-[12rem]"><label class="label">KM no abastecimento</label><input type="number" name="km_abastecimento" class="input" /></div>
+      <div class="mt-3 max-w-[12rem]"><label class="label">KM no abastecimento *</label><input type="number" min="1" name="km_abastecimento" class="input" /></div>
 
       <details class="mt-3 rounded-lg border border-slate-200 p-2" data-arla-bloco>
         <summary class="cursor-pointer text-sm font-medium text-slate-700">+ Arla (opcional)</summary>
@@ -295,6 +308,9 @@ export async function abrirNovaDespesa(viagemId, recarregar, centroCustoPadrao) 
     // o valor do diesel deixa de ser obrigatorio aqui; o submit exige pelo
     // menos um dos dois preenchidos (ver validacao no listener de submit).
     form.valor.required = !ativo;
+    // KM do hodometro e obrigatorio em todo abastecimento (media de consumo,
+    // alertas e conferencia com o Onixsat dependem dele).
+    form.km_abastecimento.required = ativo;
   }
   form.categoria_id.addEventListener('change', () => {
     const agoraAbastecimento = categoriaEhAbastecimento();
@@ -464,7 +480,7 @@ function montarFormularioDespesaExistente({ despesa, arlaDespesa, categoriaNome,
         Encheu o tanque completamente?
       </label>
     ` : ''}
-    <div class="max-w-[12rem]"><label class="label">KM no abastecimento</label><input type="number" name="km_abastecimento" class="input" /></div>
+    <div class="max-w-[12rem]"><label class="label">KM no abastecimento${ehDiesel ? ' *' : ''}</label><input type="number" min="1" name="km_abastecimento" class="input" ${ehDiesel ? 'required' : ''} /></div>
     <div><label class="label">Posto</label><div data-posto-select></div></div>
     <div><label class="label">Centro de custo</label><div data-centro-custo-select></div></div>
     ${despesa.pago_por === 'Empresa' ? `

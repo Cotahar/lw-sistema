@@ -50,7 +50,7 @@ test('GET /contas-pagar/:id traz despesa_info com o total real (diesel+Arla) e o
   const despesa = await admin().post(`/api/viagens/${viagemId}/despesas`).send({
     categoria_id: categoria.id, valor: 467854, data: '2026-09-28', pago_por: 'Empresa',
     posto_fornecedor_id: fornecedorId, arla: { valor: 12886, preco_litro: 379, litragem: 34 },
-    valor_pago_dinheiro: 480680, tanque_completo: 1,
+    valor_pago_dinheiro: 480680, tanque_completo: 1, km_abastecimento: 120000,
   });
   assert.equal(despesa.status, 201, JSON.stringify(despesa.body));
   assert.ok(despesa.body.contas_pagar_id, 'deveria ter gerado conta a pagar (480740 - 480680 = 60, maior que zero)');

@@ -1,4 +1,4 @@
-import { get, post, podeGerenciar, getUsuario } from '../../api.js';
+import { get, post, put, podeGerenciar, getUsuario } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { criarNovoFornecedor } from '../../components/fornecedorQuickCreate.js';
@@ -39,6 +39,42 @@ function badgePrazo(conta) {
   const cor = dias < 0 ? 'badge-critico' : dias <= 5 ? 'badge-atencao' : 'badge-neutro';
   const texto = dias < 0 ? `${Math.abs(dias)} dia(s) vencido` : dias === 0 ? 'vence hoje' : `${dias} dia(s)`;
   return `<span class="${cor} ml-1">${texto}</span>`;
+}
+
+// Reagenda o vencimento (qualquer conta nao paga - inclusive com pagamento
+// parcial). O backend mantem a data da origem (parcela, despesa de viagem)
+// igual a da conta.
+function abrirEditarVencimento(conta, recarregar) {
+  const form = document.createElement('form');
+  form.className = 'space-y-4';
+  form.innerHTML = `
+    <p class="text-sm text-slate-500">${conta.descricao}</p>
+    <div class="max-w-[12rem]"><label class="label">Vencimento *</label><input type="text" name="data_vencimento" class="input" required /></div>
+    <p class="hidden text-sm text-red-600" data-erro></p>
+    <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Salvar vencimento</button></div>
+  `;
+  attachDataMask(form.data_vencimento, conta.data_vencimento);
+  const erro = form.querySelector('[data-erro]');
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    erro.classList.add('hidden');
+    const iso = parseDataBrParaIso(form.data_vencimento.value);
+    if (!iso) {
+      erro.textContent = 'Informe uma data valida (dd/mm/aaaa).';
+      erro.classList.remove('hidden');
+      return;
+    }
+    try {
+      await put(`/contas-pagar/${conta.id}`, { data_vencimento: iso });
+      fecharModal();
+      mostrarToast('Vencimento atualizado.');
+      recarregar();
+    } catch (err) {
+      erro.textContent = err.message;
+      erro.classList.remove('hidden');
+    }
+  });
+  abrirModal({ titulo: 'Editar vencimento', conteudo: form, largura: 'max-w-sm' });
 }
 
 async function abrirNovaConta(recarregar) {
@@ -449,7 +485,10 @@ export async function render(container, params, query) {
         { label: 'Detalhes', onClick: (c) => abrirDetalhes(c, tabela.recarregar, gerenciar) },
         { label: 'Ocorrencias', onClick: (c) => abrirOcorrencias(c, gerenciar) },
       ];
-      if (gerenciar && (r.status === 'Pendente' || r.status === 'Parcial')) acoes.push({ label: 'Baixar', onClick: (c) => abrirBaixa(c, tabela.recarregar) });
+      if (gerenciar && (r.status === 'Pendente' || r.status === 'Parcial')) {
+        acoes.push({ label: 'Baixar', onClick: (c) => abrirBaixa(c, tabela.recarregar) });
+        acoes.push({ label: 'Editar vencimento', onClick: (c) => abrirEditarVencimento(c, tabela.recarregar) });
+      }
       return acoes;
     },
     tituloNovo: 'Conta a Pagar',

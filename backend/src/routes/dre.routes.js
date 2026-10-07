@@ -7,7 +7,10 @@ const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 const { hojeIsoBrasilia } = require('../utils/dataHora');
 const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
-const { somar, periodoOuTudo, custosDoCentroCusto, receitaECustosDaViagemPorCentro, custosDiretosDoVeiculo, totaisGeraisDoPeriodo } = require('../utils/dreHelper');
+const {
+  somar, periodoOuTudo, custosDoCentroCusto, receitaECustosDaViagemPorCentro, custosDiretosDoVeiculo, totaisGeraisDoPeriodo,
+  DATA_RECEITA_SQL, CATEGORIAS_CUSTO, conjuntoDonoPorVeiculo, resultadoDoConjunto, custosDeVeiculosSemComposicao,
+} = require('../utils/dreHelper');
 
 const router = express.Router();
 
@@ -84,156 +87,223 @@ router.get('/veiculo/:veiculoId', requerAcessoModulo('dre', 'Visualizar'), exigi
   });
 }));
 
-// Drill-down: os lancamentos individuais por tras de cada linha do
-// "Detalhamento de custos" da DRE do veiculo. Reusa exatamente os mesmos
-// filtros (centro de custo/veiculo + periodo) das funcoes acima, pra nunca
-// divergir do total mostrado. Sem grafico - so a lista, como pedido.
-const CATEGORIAS_DETALHE = ['viagem', 'pecasDireto', 'ordensServico', 'pneus', 'despesasFixas', 'financiamento'];
-router.get('/veiculo/:veiculoId/detalhe/:categoria', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const veiculo = db.prepare('SELECT * FROM veiculos WHERE id = ? AND empresa_id = ?').get(req.params.veiculoId, req.empresaId);
-  if (!veiculo) throw new ApiError(404, 'Veiculo nao encontrado.');
-  const centroCusto = buscarCentroCustoDoVeiculo(veiculo.id);
-  if (!centroCusto) throw new ApiError(400, 'Centro de custo do veiculo nao encontrado.');
-  const { categoria } = req.params;
-  if (!CATEGORIAS_DETALHE.includes(categoria)) throw new ApiError(400, `Categoria invalida. Use uma de: ${CATEGORIAS_DETALHE.join(', ')}`);
-  const { inicio, fim } = periodoOuTudo(req.query.data_inicio, req.query.data_fim);
-
-  let linhas;
+// Lancamentos individuais por tras de cada linha de custo de UM veiculo.
+// Reusa exatamente os mesmos filtros (centro de custo/veiculo + periodo) dos
+// totais, pra o drill-down nunca divergir do que e somado na DRE. Usado pela
+// DRE do veiculo e pela DRE do conjunto (que soma o drill-down de cada
+// unidade da composicao).
+function lancamentosDoVeiculo(veiculo, centroCusto, categoria, inicio, fim) {
   if (categoria === 'viagem') {
-    linhas = db.prepare(`
+    return db.prepare(`
       SELECT dv.id, dv.data, dv.valor, dv.viagem_id, cat.nome AS categoria_nome
       FROM despesas_viagem dv
       LEFT JOIN categorias_despesa cat ON cat.id = dv.categoria_id
       WHERE dv.centro_custo_id = ? AND dv.data BETWEEN ? AND ?
       ORDER BY dv.data DESC
     `).all(centroCusto.id, inicio, fim);
-  } else if (categoria === 'pecasDireto') {
-    linhas = db.prepare(`
+  }
+  if (categoria === 'pecasDireto') {
+    return db.prepare(`
       SELECT em.id, em.data, (em.quantidade * em.custo_unitario) AS valor, em.quantidade, ei.nome AS item_nome
       FROM estoque_movimentacoes em
       JOIN estoque_itens ei ON ei.id = em.item_id
       WHERE em.tipo = 'Saida' AND em.veiculo_destino_id = ? AND em.os_id IS NULL AND em.data BETWEEN ? AND ?
       ORDER BY em.data DESC
     `).all(veiculo.id, inicio, fim);
-  } else if (categoria === 'ordensServico') {
-    linhas = db.prepare(`
+  }
+  if (categoria === 'ordensServico') {
+    return db.prepare(`
       SELECT id, data, (valor_pecas + valor_mao_obra) AS valor, tipo, descricao
       FROM ordens_servico
       WHERE veiculo_id = ? AND data BETWEEN ? AND ?
       ORDER BY data DESC
     `).all(veiculo.id, inicio, fim);
-  } else if (categoria === 'pneus') {
-    linhas = db.prepare(`
+  }
+  if (categoria === 'pneus') {
+    return db.prepare(`
       SELECT pe.id, pe.data, pe.custo AS valor, p.numero_fogo
       FROM pneu_eventos pe
       JOIN pneus p ON p.id = pe.pneu_id
       WHERE pe.tipo_evento = 'Instalacao' AND pe.veiculo_id = ? AND pe.data BETWEEN ? AND ?
       ORDER BY pe.data DESC
     `).all(veiculo.id, inicio, fim);
-  } else if (categoria === 'despesasFixas') {
-    linhas = db.prepare(`
+  }
+  if (categoria === 'despesasFixas') {
+    return db.prepare(`
       SELECT df.id, df.data, df.valor, cat.nome AS categoria_nome, df.descricao
       FROM despesas_fixas df
       LEFT JOIN categorias_despesa cat ON cat.id = df.categoria_id
       WHERE df.centro_custo_id = ? AND df.data BETWEEN ? AND ?
       ORDER BY df.data DESC
     `).all(centroCusto.id, inicio, fim);
-  } else {
-    linhas = db.prepare(`
-      SELECT fp.id, fp.data_vencimento AS data, fp.valor_parcela AS valor, fp.numero_parcela, f.descricao
-      FROM financiamento_parcelas fp
-      JOIN financiamentos f ON f.id = fp.financiamento_id
-      WHERE f.centro_custo_id = ? AND fp.data_vencimento BETWEEN ? AND ?
-      ORDER BY fp.data_vencimento DESC
-    `).all(centroCusto.id, inicio, fim);
   }
-  res.json(linhas);
+  return db.prepare(`
+    SELECT fp.id, fp.data_vencimento AS data, fp.valor_parcela AS valor, fp.numero_parcela, f.descricao
+    FROM financiamento_parcelas fp
+    JOIN financiamentos f ON f.id = fp.financiamento_id
+    WHERE f.centro_custo_id = ? AND fp.data_vencimento BETWEEN ? AND ?
+    ORDER BY fp.data_vencimento DESC
+  `).all(centroCusto.id, inicio, fim);
+}
+
+// Drill-down: os lancamentos individuais por tras de cada linha do
+// "Detalhamento de custos" da DRE do veiculo. Sem grafico - so a lista, como pedido.
+router.get('/veiculo/:veiculoId/detalhe/:categoria', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const veiculo = db.prepare('SELECT * FROM veiculos WHERE id = ? AND empresa_id = ?').get(req.params.veiculoId, req.empresaId);
+  if (!veiculo) throw new ApiError(404, 'Veiculo nao encontrado.');
+  const centroCusto = buscarCentroCustoDoVeiculo(veiculo.id);
+  if (!centroCusto) throw new ApiError(400, 'Centro de custo do veiculo nao encontrado.');
+  const { categoria } = req.params;
+  if (!CATEGORIAS_CUSTO.includes(categoria)) throw new ApiError(400, `Categoria invalida. Use uma de: ${CATEGORIAS_CUSTO.join(', ')}`);
+  const { inicio, fim } = periodoOuTudo(req.query.data_inicio, req.query.data_fim);
+  res.json(lancamentosDoVeiculo(veiculo, centroCusto, categoria, inicio, fim));
+}));
+
+// ---- DRE do Conjunto (composicao) ----
+// Receita e custo do CONJUNTO inteiro (cavalo + carreta...), com o custo de
+// cada unidade detalhado em porVeiculo. A receita vem dos fretes das viagens
+// do conjunto; o custo, da soma dos custos das placas que o compoem.
+function buscarConjuntoDaEmpresa(id, empresaId) {
+  const conjunto = db.prepare('SELECT * FROM conjuntos WHERE id = ? AND empresa_id = ?').get(id, empresaId);
+  if (!conjunto) throw new ApiError(404, 'Conjunto nao encontrado.');
+  return conjunto;
+}
+
+router.get('/conjunto/:conjuntoId', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const conjunto = buscarConjuntoDaEmpresa(req.params.conjuntoId, req.empresaId);
+  const { inicio, fim } = periodoOuTudo(req.query.data_inicio, req.query.data_fim);
+  const resultado = resultadoDoConjunto(conjunto, inicio, fim);
+  res.json({ conjunto, periodo: { inicio, fim }, ...resultado });
+}));
+
+const CATEGORIAS_DETALHE_CONJUNTO = ['receita', ...CATEGORIAS_CUSTO];
+router.get('/conjunto/:conjuntoId/detalhe/:categoria', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const conjunto = buscarConjuntoDaEmpresa(req.params.conjuntoId, req.empresaId);
+  const { categoria } = req.params;
+  if (!CATEGORIAS_DETALHE_CONJUNTO.includes(categoria)) throw new ApiError(400, `Categoria invalida. Use uma de: ${CATEGORIAS_DETALHE_CONJUNTO.join(', ')}`);
+  const { inicio, fim } = periodoOuTudo(req.query.data_inicio, req.query.data_fim);
+
+  if (categoria === 'receita') {
+    const fretes = db.prepare(`
+      SELECT f.id, ${DATA_RECEITA_SQL} AS data, f.frete_bruto AS valor, f.viagem_id,
+             f.origem_cidade, f.origem_uf, f.destino_cidade, f.destino_uf
+      FROM fretes f JOIN viagens vg ON vg.id = f.viagem_id
+      WHERE vg.conjunto_id = ? AND ${DATA_RECEITA_SQL} BETWEEN ? AND ?
+      ORDER BY data DESC, f.id DESC
+    `).all(conjunto.id, inicio, fim);
+    return res.json(fretes);
+  }
+
+  // Mesma regra de "dono" do resultado: custo de um veiculo so aparece no
+  // conjunto ao qual ele e contabilizado.
+  const dono = conjuntoDonoPorVeiculo(conjunto.empresa_id);
+  const linhas = [];
+  for (const item of resultadoDoConjunto(conjunto, inicio, fim, dono).porVeiculo) {
+    if (item.contabilizadoEmOutroConjunto) continue;
+    const veiculo = db.prepare('SELECT * FROM veiculos WHERE id = ?').get(item.veiculo_id);
+    const centroCusto = buscarCentroCustoDoVeiculo(veiculo.id);
+    if (!centroCusto) continue;
+    for (const l of lancamentosDoVeiculo(veiculo, centroCusto, categoria, inicio, fim)) {
+      linhas.push({ ...l, veiculo_id: veiculo.id, placa: veiculo.placa, veiculo_tipo: veiculo.tipo });
+    }
+  }
+  linhas.sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : 0));
+  return res.json(linhas);
 }));
 
 // ---- DRE Geral da Empresa ----
 // Sem exigirEmpresaEspecifica: no modo "Todas" (req.empresaId === null) calcula
 // o total consolidado E a quebra por empresa (porEmpresa), ja que agregar o
 // centro Base de varias empresas num so ".get()" seria nao-deterministico.
+//
+// A linha de resultado e o CONJUNTO (porConjunto), com o custo de cada placa
+// da composicao dentro dele. Custos de veiculos que nao estao em nenhuma
+// composicao entram na linha "Sem composicao".
 router.get('/geral', requerAcessoModulo('dre', 'Visualizar'), asyncHandler(async (req, res) => {
   const { inicio, fim } = periodoOuTudo(req.query.data_inicio, req.query.data_fim);
-  const veiculos = req.empresaId
-    ? db.prepare('SELECT id, placa, empresa_id FROM veiculos WHERE empresa_id = ?').all(req.empresaId)
-    : db.prepare('SELECT id, placa, empresa_id FROM veiculos').all();
+
+  const empresas = req.empresaId
+    ? db.prepare('SELECT id, razao_social FROM empresas WHERE id = ?').all(req.empresaId)
+    : db.prepare('SELECT id, razao_social FROM empresas').all();
 
   let receitaTotal = 0;
   let custoTotalVeiculos = 0;
-  const porVeiculo = [];
-  const porEmpresaMap = new Map();
-
-  const acumularEmpresa = (empresaId) => {
-    if (!porEmpresaMap.has(empresaId)) {
-      porEmpresaMap.set(empresaId, { receitaTotal: 0, custoTotalVeiculos: 0, despesasBase: { despesasFixas: 0, financiamento: 0, total: 0 } });
-    }
-    return porEmpresaMap.get(empresaId);
-  };
-
-  for (const veiculo of veiculos) {
-    const centroCusto = buscarCentroCustoDoVeiculo(veiculo.id);
-    const { receita, custosViagem } = receitaECustosDaViagemPorCentro(centroCusto.id, inicio, fim);
-    const { custoPecasDireto, custoOrdensServico, custoPneus } = custosDiretosDoVeiculo(veiculo.id, inicio, fim);
-    const fixosEFinanciamento = custosDoCentroCusto(centroCusto.id, inicio, fim);
-
-    const custoTotal = custosViagem + custoPecasDireto + custoOrdensServico + custoPneus + fixosEFinanciamento.total;
-    const lucro = receita - custoTotal;
-
-    receitaTotal += receita;
-    custoTotalVeiculos += custoTotal;
-    porVeiculo.push({ veiculo_id: veiculo.id, placa: veiculo.placa, empresa_id: veiculo.empresa_id, receita, custoTotal, lucro });
-
-    const acc = acumularEmpresa(veiculo.empresa_id);
-    acc.receitaTotal += receita;
-    acc.custoTotalVeiculos += custoTotal;
-  }
-
-  // Uma linha "Base" por empresa (garantido pelo indice unico parcial em
-  // centros_custo) - agrupar aqui evita o .get() sem filtro que era
-  // nao-deterministico assim que existisse mais de uma empresa.
-  const centrosBase = req.empresaId
-    ? db.prepare("SELECT * FROM centros_custo WHERE tipo = 'Base' AND empresa_id = ?").all(req.empresaId)
-    : db.prepare("SELECT * FROM centros_custo WHERE tipo = 'Base'").all();
-
   let custosBaseTotal = 0;
-  for (const centroBase of centrosBase) {
-    const custosBase = custosDoCentroCusto(centroBase.id, inicio, fim);
-    custosBaseTotal += custosBase.total;
-    const acc = acumularEmpresa(centroBase.empresa_id);
-    acc.despesasBase = custosBase;
-  }
+  const porConjunto = [];
+  const porEmpresa = [];
 
-  const lucroLiquido = (receitaTotal - custoTotalVeiculos) - custosBaseTotal;
+  for (const empresa of empresas) {
+    const dono = conjuntoDonoPorVeiculo(empresa.id);
+    let receitaEmpresa = 0;
+    let custoEmpresa = 0;
+
+    const conjuntos = db.prepare('SELECT * FROM conjuntos WHERE empresa_id = ? ORDER BY id').all(empresa.id);
+    for (const conjunto of conjuntos) {
+      const r = resultadoDoConjunto(conjunto, inicio, fim, dono);
+      receitaEmpresa += r.receita;
+      custoEmpresa += r.custos.total;
+      // Composicao desativada e sem movimento no periodo nao polui a tabela.
+      if (!conjunto.ativo && r.receita === 0 && r.custos.total === 0) continue;
+      porConjunto.push({
+        conjunto_id: conjunto.id,
+        nome: conjunto.nome,
+        ativo: conjunto.ativo,
+        empresa_id: empresa.id,
+        placas: r.porVeiculo.map((v) => v.placa),
+        receita: r.receita,
+        custoTotal: r.custos.total,
+        lucro: r.lucro,
+        custoPorVeiculo: r.porVeiculo.map((v) => ({ veiculo_id: v.veiculo_id, placa: v.placa, tipo: v.tipo, custoTotal: v.custos.total })),
+      });
+    }
+
+    const semComposicao = custosDeVeiculosSemComposicao(empresa.id, inicio, fim, dono);
+    custoEmpresa += semComposicao.custos.total;
+    if (semComposicao.custos.total !== 0) {
+      porConjunto.push({
+        conjunto_id: null,
+        nome: 'Sem composicao',
+        empresa_id: empresa.id,
+        placas: semComposicao.porVeiculo.map((v) => v.placa),
+        receita: 0,
+        custoTotal: semComposicao.custos.total,
+        lucro: -semComposicao.custos.total,
+        custoPorVeiculo: semComposicao.porVeiculo.map((v) => ({ veiculo_id: v.veiculo_id, placa: v.placa, tipo: v.tipo, custoTotal: v.custos.total })),
+      });
+    }
+
+    // Uma linha "Base" por empresa (garantido pelo indice unico parcial em
+    // centros_custo).
+    const centroBase = db.prepare("SELECT * FROM centros_custo WHERE tipo = 'Base' AND empresa_id = ?").get(empresa.id);
+    const despesasBase = centroBase ? custosDoCentroCusto(centroBase.id, inicio, fim) : { despesasFixas: 0, financiamento: 0, total: 0 };
+
+    receitaTotal += receitaEmpresa;
+    custoTotalVeiculos += custoEmpresa;
+    custosBaseTotal += despesasBase.total;
+    porEmpresa.push({
+      empresa_id: empresa.id,
+      razao_social: empresa.razao_social,
+      receitaTotal: receitaEmpresa,
+      custoTotalVeiculos: custoEmpresa,
+      lucroFrota: receitaEmpresa - custoEmpresa,
+      despesasBase,
+      lucroLiquido: receitaEmpresa - custoEmpresa - despesasBase.total,
+    });
+  }
 
   const resposta = {
     periodo: { inicio, fim },
     receitaTotal,
     custoTotalVeiculos,
     lucroFrota: receitaTotal - custoTotalVeiculos,
-    lucroLiquido,
-    porVeiculo,
+    lucroLiquido: (receitaTotal - custoTotalVeiculos) - custosBaseTotal,
+    porConjunto,
   };
 
   if (req.empresaId) {
-    const acc = porEmpresaMap.get(req.empresaId) || acumularEmpresa(req.empresaId);
-    resposta.despesasBase = acc.despesasBase;
+    resposta.despesasBase = porEmpresa[0] ? porEmpresa[0].despesasBase : { despesasFixas: 0, financiamento: 0, total: 0 };
   } else {
-    const empresas = db.prepare('SELECT id, razao_social FROM empresas').all();
-    resposta.porEmpresa = empresas.map((e) => {
-      const acc = acumularEmpresa(e.id);
-      const lucroFrotaEmpresa = acc.receitaTotal - acc.custoTotalVeiculos;
-      return {
-        empresa_id: e.id,
-        razao_social: e.razao_social,
-        receitaTotal: acc.receitaTotal,
-        custoTotalVeiculos: acc.custoTotalVeiculos,
-        lucroFrota: lucroFrotaEmpresa,
-        despesasBase: acc.despesasBase,
-        lucroLiquido: lucroFrotaEmpresa - acc.despesasBase.total,
-      };
-    });
+    resposta.porEmpresa = porEmpresa;
   }
 
   res.json(resposta);

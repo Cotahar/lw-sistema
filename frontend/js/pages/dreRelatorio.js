@@ -24,7 +24,7 @@ export async function renderDreRelatorio(root, params, query) {
     navegar('/login');
     return;
   }
-  const { data_inicio, data_fim, veiculo_id } = query;
+  const { data_inicio, data_fim, conjunto_id } = query;
   root.innerHTML = `<div class="p-8">${esqueletoPagina()}</div>`;
   const usuario = getUsuario();
 
@@ -32,8 +32,8 @@ export async function renderDreRelatorio(root, params, query) {
   if (data_inicio) qs.set('data_inicio', data_inicio);
   if (data_fim) qs.set('data_fim', data_fim);
 
-  const corpo = veiculo_id
-    ? await renderizarVeiculo(await get(`/dre/veiculo/${veiculo_id}?${qs.toString()}`))
+  const corpo = conjunto_id
+    ? await renderizarConjunto(await get(`/dre/conjunto/${conjunto_id}?${qs.toString()}`))
     : await renderizarGeral(await get(`/dre/geral?${qs.toString()}`));
 
   root.innerHTML = `
@@ -49,7 +49,7 @@ export async function renderDreRelatorio(root, params, query) {
       </div>
       <div class="rounded-xl border border-zinc-200 bg-white p-8 text-zinc-900 print:border-0 print:p-0">
         <div class="mb-6 border-b-4 border-brand-yellow pb-4">
-          <h1 class="text-2xl font-extrabold text-zinc-900">DRE Detalhado ${veiculo_id ? '- Veiculo' : '- Geral'}</h1>
+          <h1 class="text-2xl font-extrabold text-zinc-900">DRE Detalhado ${conjunto_id ? '- Conjunto' : '- Geral'}</h1>
           <p class="mt-1 text-sm font-medium text-zinc-500">${periodoTexto(data_inicio, data_fim)} &middot; Gerado em ${formatarDataBr(hojeIsoLocal())}${usuario ? ` por ${usuario.nome}` : ''}</p>
         </div>
         ${corpo}
@@ -61,26 +61,41 @@ export async function renderDreRelatorio(root, params, query) {
   root.querySelector('[data-imprimir]').addEventListener('click', () => window.print());
 }
 
+const TIPO_ROTULO = { Cavalo: 'Cavalo', Carreta: 'Carreta', Truck: 'Truck', Toco: 'Toco' };
+
+const CATEGORIAS_CUSTO = [
+  { chave: 'viagem', titulo: 'Despesas de viagem' },
+  { chave: 'pecasDireto', titulo: 'Pecas (estoque direto)' },
+  { chave: 'ordensServico', titulo: 'Ordens de servico' },
+  { chave: 'pneus', titulo: 'Pneus' },
+  { chave: 'despesasFixas', titulo: 'Despesas fixas' },
+  { chave: 'financiamento', titulo: 'Financiamento' },
+];
+
 async function renderizarGeral(dre) {
+  const despesasBaseTotal = dre.despesasBase ? dre.despesasBase.total : (dre.porEmpresa || []).reduce((t, e) => t + e.despesasBase.total, 0);
   return `
     <div class="mb-4 grid grid-cols-2 gap-2">
       ${linha('Receita total', formatarMoeda(dre.receitaTotal))}
       ${linha('Custo total (frota)', formatarMoeda(dre.custoTotalVeiculos))}
-      ${linha('Despesas Base/Admin', formatarMoeda(dre.despesasBase.total))}
+      ${linha('Despesas Base/Admin', formatarMoeda(despesasBaseTotal))}
       ${linha('Lucro liquido', formatarMoeda(dre.lucroLiquido), true)}
     </div>
-    <h2 class="mb-2 mt-6 text-base font-bold text-zinc-900">Resultado por veiculo</h2>
+    <h2 class="mb-2 mt-6 text-base font-bold text-zinc-900">Resultado por conjunto</h2>
     <table class="w-full border-collapse overflow-hidden rounded-lg text-sm">
       <thead><tr class="bg-zinc-100 text-left text-[11px] uppercase tracking-wide text-zinc-600">
-        <th class="px-2 py-1.5">Placa</th><th class="px-2 py-1.5 text-right">Receita</th><th class="px-2 py-1.5 text-right">Custo</th><th class="px-2 py-1.5 text-right">Lucro</th>
+        <th class="px-2 py-1.5">Conjunto</th><th class="px-2 py-1.5 text-right">Receita</th><th class="px-2 py-1.5 text-right">Custo</th><th class="px-2 py-1.5 text-right">Lucro</th>
       </tr></thead>
       <tbody>
-        ${dre.porVeiculo.map((v, i) => `
-          <tr class="border-b border-zinc-100 ${i % 2 ? 'bg-zinc-50/60' : ''}">
-            <td class="px-2 py-1.5 text-zinc-700">${v.placa}</td>
-            <td class="px-2 py-1.5 text-right text-zinc-700">${formatarMoeda(v.receita)}</td>
-            <td class="px-2 py-1.5 text-right text-zinc-700">${formatarMoeda(v.custoTotal)}</td>
-            <td class="px-2 py-1.5 text-right font-medium ${v.lucro >= 0 ? 'text-emerald-700' : 'text-red-700'}">${formatarMoeda(v.lucro)}</td>
+        ${dre.porConjunto.map((c, i) => `
+          <tr class="border-b border-zinc-100 align-top ${i % 2 ? 'bg-zinc-50/60' : ''}">
+            <td class="px-2 py-1.5 text-zinc-700">
+              <p class="font-medium text-zinc-900">${c.nome || `Conjunto #${c.conjunto_id}`}</p>
+              <p class="text-xs text-zinc-500">${c.custoPorVeiculo.map((v) => `${v.placa} (${TIPO_ROTULO[v.tipo] || v.tipo}): ${formatarMoeda(v.custoTotal)}`).join(' &middot; ') || '-'}</p>
+            </td>
+            <td class="px-2 py-1.5 text-right text-zinc-700">${formatarMoeda(c.receita)}</td>
+            <td class="px-2 py-1.5 text-right text-zinc-700">${formatarMoeda(c.custoTotal)}</td>
+            <td class="px-2 py-1.5 text-right font-medium ${c.lucro >= 0 ? 'text-emerald-700' : 'text-red-700'}">${formatarMoeda(c.lucro)}</td>
           </tr>
         `).join('') || '<tr><td colspan="4" class="px-2 py-3 text-center text-zinc-400">Sem dados no periodo.</td></tr>'}
       </tbody>
@@ -88,22 +103,36 @@ async function renderizarGeral(dre) {
   `;
 }
 
-async function renderizarVeiculo(dre) {
+async function renderizarConjunto(dre) {
+  const unidades = dre.porVeiculo;
   return `
     <div class="mb-4 grid grid-cols-2 gap-2">
-      <p class="col-span-2 text-sm"><span class="font-medium text-zinc-500">Veiculo:</span> <span class="text-zinc-900">${dre.veiculo.placa}</span></p>
-      ${linha('Receita', formatarMoeda(dre.receita))}
-      ${linha('Custo total', formatarMoeda(dre.custos.total))}
+      <p class="col-span-2 text-sm"><span class="font-medium text-zinc-500">Conjunto:</span> <span class="text-zinc-900">${dre.conjunto.nome || `#${dre.conjunto.id}`} (${unidades.map((v) => `${v.placa} - ${TIPO_ROTULO[v.tipo] || v.tipo}`).join(' + ')})</span></p>
+      ${linha('Receita do conjunto', formatarMoeda(dre.receita))}
+      ${linha('Custo total do conjunto', formatarMoeda(dre.custos.total))}
       ${linha('Lucro', formatarMoeda(dre.lucro), true)}
     </div>
-    <h2 class="mb-2 mt-6 text-base font-bold text-zinc-900">Detalhamento de custos</h2>
-    <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
-      ${linha('Despesas de viagem', formatarMoeda(dre.custos.viagem))}
-      ${linha('Pecas (estoque direto)', formatarMoeda(dre.custos.pecasDireto))}
-      ${linha('Ordens de servico', formatarMoeda(dre.custos.ordensServico))}
-      ${linha('Pneus', formatarMoeda(dre.custos.pneus))}
-      ${linha('Despesas fixas', formatarMoeda(dre.custos.despesasFixas))}
-      ${linha('Financiamento', formatarMoeda(dre.custos.financiamento))}
-    </div>
+    <h2 class="mb-2 mt-6 text-base font-bold text-zinc-900">Custos por unidade do conjunto</h2>
+    <table class="w-full border-collapse overflow-hidden rounded-lg text-sm">
+      <thead><tr class="bg-zinc-100 text-left text-[11px] uppercase tracking-wide text-zinc-600">
+        <th class="px-2 py-1.5">Categoria</th>
+        ${unidades.map((v) => `<th class="px-2 py-1.5 text-right">${v.placa} (${TIPO_ROTULO[v.tipo] || v.tipo})</th>`).join('')}
+        <th class="px-2 py-1.5 text-right">Total</th>
+      </tr></thead>
+      <tbody>
+        ${CATEGORIAS_CUSTO.map((c, i) => `
+          <tr class="border-b border-zinc-100 ${i % 2 ? 'bg-zinc-50/60' : ''}">
+            <td class="px-2 py-1.5 text-zinc-700">${c.titulo}</td>
+            ${unidades.map((v) => `<td class="px-2 py-1.5 text-right text-zinc-700">${formatarMoeda(v.custos[c.chave])}</td>`).join('')}
+            <td class="px-2 py-1.5 text-right font-medium text-zinc-900">${formatarMoeda(dre.custos[c.chave])}</td>
+          </tr>
+        `).join('')}
+        <tr class="bg-zinc-100 font-bold text-zinc-800">
+          <td class="px-2 py-1.5">Custo total</td>
+          ${unidades.map((v) => `<td class="px-2 py-1.5 text-right">${formatarMoeda(v.custos.total)}</td>`).join('')}
+          <td class="px-2 py-1.5 text-right">${formatarMoeda(dre.custos.total)}</td>
+        </tr>
+      </tbody>
+    </table>
   `;
 }

@@ -213,7 +213,6 @@ router.post('/', requerAcessoModulo('contas_pagar', 'Gerenciar'), exigirEmpresaE
 router.put('/:id', requerAcessoModulo('contas_pagar', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const antes = db.prepare('SELECT * FROM contas_pagar WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
   if (!antes) throw new ApiError(404, 'Conta a pagar nao encontrada.');
-  if (antes.status !== 'Pendente') throw new ApiError(400, 'So e possivel editar contas ainda Pendentes.');
   const campos = ['fornecedor_id', 'centro_custo_id', 'descricao', 'valor', 'data_vencimento'];
   const sets = [];
   const valores = [];
@@ -221,7 +220,29 @@ router.put('/:id', requerAcessoModulo('contas_pagar', 'Gerenciar'), exigirEmpres
     if (req.body[campo] !== undefined) { sets.push(`${campo} = ?`); valores.push(campo === 'descricao' ? String(req.body[campo]).toUpperCase() : req.body[campo]); }
   }
   if (!sets.length) throw new ApiError(400, 'Nenhum campo valido informado.');
-  db.prepare(`UPDATE contas_pagar SET ${sets.join(', ')} WHERE id = ?`).run(...valores, req.params.id);
+  // Conta ja paga fica travada. Com pagamento parcial, so o vencimento do
+  // restante pode ser reagendado - valor/descricao/fornecedor continuam
+  // restritos a contas ainda Pendentes (sem nenhum pagamento lancado).
+  if (antes.status === 'Pago') throw new ApiError(400, 'Esta conta ja foi paga e nao pode ser alterada.');
+  const soVencimento = sets.length === 1 && req.body.data_vencimento !== undefined;
+  if (antes.status !== 'Pendente' && !soVencimento) {
+    throw new ApiError(400, 'Conta com pagamento lancado: so e possivel alterar o vencimento.');
+  }
+  const novoVencimento = req.body.data_vencimento;
+  if (novoVencimento !== undefined && (!/^\d{4}-\d{2}-\d{2}$/.test(String(novoVencimento)) || Number.isNaN(Date.parse(`${novoVencimento}T00:00:00Z`)))) {
+    throw new ApiError(400, 'Informe um vencimento valido (AAAA-MM-DD).');
+  }
+  withTransaction(db, () => {
+    db.prepare(`UPDATE contas_pagar SET ${sets.join(', ')} WHERE id = ?`).run(...valores, req.params.id);
+    // O vencimento tambem mora na origem (parcela de financiamento/despesa
+    // fixa/OS ou despesa de viagem): mantem os dois iguais para a tela da
+    // origem nao continuar mostrando a data antiga.
+    if (novoVencimento !== undefined && antes.origem_id) {
+      const tabelaParcela = TABELA_PARCELA_POR_ORIGEM[antes.origem_tipo];
+      if (tabelaParcela) db.prepare(`UPDATE ${tabelaParcela} SET data_vencimento = ? WHERE id = ?`).run(novoVencimento, antes.origem_id);
+      else if (antes.origem_tipo === 'DespesaViagem') db.prepare('UPDATE despesas_viagem SET data_vencimento = ? WHERE id = ?').run(novoVencimento, antes.origem_id);
+    }
+  });
   const depois = db.prepare('SELECT * FROM contas_pagar WHERE id = ?').get(req.params.id);
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'contas_pagar', registroId: depois.id, acao: 'UPDATE', antes, depois });
   res.json(depois);

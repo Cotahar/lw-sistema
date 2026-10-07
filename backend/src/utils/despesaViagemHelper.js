@@ -145,4 +145,14 @@ function criarDespesaViagem({
   });
 }
 
-module.exports = { criarDespesaViagem, criarContaPagarCombinada, resolverContaPagarAposEdicao };
+// Todo abastecimento precisa do KM do hodometro no momento: e ele que alimenta
+// a media de consumo, o alerta de manutencao e a conferencia contra o
+// Onixsat. `km` pode vir como numero ou texto (multipart do app do motorista).
+function exigirKmAbastecimento(km) {
+  const numero = Number(km);
+  if (km === undefined || km === null || km === '' || !Number.isFinite(numero) || numero <= 0) {
+    throw new ApiError(400, 'Informe o KM do abastecimento (obrigatorio).');
+  }
+}
+
+module.exports = { criarDespesaViagem, criarContaPagarCombinada, resolverContaPagarAposEdicao, exigirKmAbastecimento };

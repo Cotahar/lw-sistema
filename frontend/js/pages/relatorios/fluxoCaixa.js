@@ -7,8 +7,16 @@ import { periodoAnteriorEquivalente, renderComparativoPeriodo } from '../../comp
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
 
 const ORIGEM_LABEL = {
-  ContaPagar: 'Conta a Pagar', ContaReceber: 'Conta a Receber', ViagemAdiantamento: 'Adiantamento de Viagem', Ajuste: 'Ajuste Manual',
+  ContaPagar: 'Conta a Pagar', ContaReceber: 'Conta a Receber', ViagemAdiantamento: 'Adiantamento de Viagem', Ajuste: 'Ajuste Manual', Transferencia: 'Transferencia entre contas',
 };
+
+// Transferencia entre contas nao e receita nem despesa: sai de uma conta e
+// entra em outra. Na visao de TODAS as contas ela inflaria Entradas e Saidas
+// ao mesmo tempo (liquido zero), entao fica fora dos totais; ao filtrar por
+// uma conta ela e movimento real daquela conta e entra normalmente.
+function paraTotais(dados, contaFiltrada) {
+  return contaFiltrada ? dados : dados.filter((r) => r.origem_tipo !== 'Transferencia');
+}
 
 async function buscarContasBancarias(termo) {
   const contas = await get('/contas-bancarias');
@@ -78,10 +86,10 @@ export async function render(container) {
     params.set('data_de', anterior.de);
     params.set('data_ate', anterior.ate);
     const dadosAnteriores = await get(`/relatorios/fluxo-caixa?${params.toString()}`);
-    const entradasAnt = dadosAnteriores.filter((r) => r.tipo === 'Entrada').reduce((t, r) => t + r.valor, 0);
-    const saidasAnt = dadosAnteriores.filter((r) => r.tipo === 'Saida').reduce((t, r) => t + r.valor, 0);
-    const entradasAtual = dadosAtuais.filter((r) => r.tipo === 'Entrada').reduce((t, r) => t + r.valor, 0);
-    const saidasAtual = dadosAtuais.filter((r) => r.tipo === 'Saida').reduce((t, r) => t + r.valor, 0);
+    const entradasAnt = paraTotais(dadosAnteriores, contaId).filter((r) => r.tipo === 'Entrada').reduce((t, r) => t + r.valor, 0);
+    const saidasAnt = paraTotais(dadosAnteriores, contaId).filter((r) => r.tipo === 'Saida').reduce((t, r) => t + r.valor, 0);
+    const entradasAtual = paraTotais(dadosAtuais, contaId).filter((r) => r.tipo === 'Entrada').reduce((t, r) => t + r.valor, 0);
+    const saidasAtual = paraTotais(dadosAtuais, contaId).filter((r) => r.tipo === 'Saida').reduce((t, r) => t + r.valor, 0);
     renderComparativoPeriodo(comparativoEl, {
       periodoAnteriorTexto: `${formatarDataBr(anterior.de)} a ${formatarDataBr(anterior.ate)}`,
       indicadores: [
@@ -115,13 +123,15 @@ export async function render(container) {
       const dados = termoLower
         ? todos.filter((r) => [r.conta_bancaria_nome, r.descricao].some((v) => (v || '').toLowerCase().includes(termoLower)))
         : todos;
-      const entradas = dados.filter((r) => r.tipo === 'Entrada').reduce((t, r) => t + r.valor, 0);
-      const saidas = dados.filter((r) => r.tipo === 'Saida').reduce((t, r) => t + r.valor, 0);
+      const entradas = paraTotais(dados, contaId).filter((r) => r.tipo === 'Entrada').reduce((t, r) => t + r.valor, 0);
+      const saidas = paraTotais(dados, contaId).filter((r) => r.tipo === 'Saida').reduce((t, r) => t + r.valor, 0);
       const saldo = entradas - saidas;
+      const transferencias = contaId ? 0 : dados.filter((r) => r.origem_tipo === 'Transferencia' && r.tipo === 'Saida').reduce((t, r) => t + r.valor, 0);
       resumoEl.innerHTML = `
         <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Entradas</p><p class="mt-1 text-2xl font-bold text-emerald-500">${formatarMoeda(entradas)}</p></div>
         <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Saidas</p><p class="mt-1 text-2xl font-bold text-red-500">${formatarMoeda(saidas)}</p></div>
         <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Saldo do periodo filtrado</p><p class="mt-1 text-2xl font-bold ${saldo >= 0 ? 'text-slate-900' : 'text-red-500'}">${formatarMoeda(saldo)}</p></div>
+        ${transferencias > 0 ? `<p class="text-xs text-slate-400 sm:col-span-3">Transferencias entre contas no periodo (${formatarMoeda(transferencias)}) aparecem na lista mas nao entram nos totais; filtre por uma conta para inclui-las.</p>` : ''}
       `;
       atualizarComparativo(dados);
       return dados;
@@ -151,8 +161,8 @@ export async function render(container) {
 
   container.querySelector('[data-exportar-pdf]').addEventListener('click', () => {
     const dados = tabela.dados();
-    const entradas = dados.filter((r) => r.tipo === 'Entrada').reduce((t, r) => t + r.valor, 0);
-    const saidas = dados.filter((r) => r.tipo === 'Saida').reduce((t, r) => t + r.valor, 0);
+    const entradas = paraTotais(dados, contaId).filter((r) => r.tipo === 'Entrada').reduce((t, r) => t + r.valor, 0);
+    const saidas = paraTotais(dados, contaId).filter((r) => r.tipo === 'Saida').reduce((t, r) => t + r.valor, 0);
     const saldo = entradas - saidas;
     const filtros = [];
     if (contaSelect.getValue()) filtros.push(`Conta: ${contaSelect.getLabel()}`);

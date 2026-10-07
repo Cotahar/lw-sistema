@@ -8,7 +8,7 @@ const ApiError = require('../utils/ApiError');
 const { requerMotorista } = require('../middleware/auth');
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
-const { criarDespesaViagem } = require('../utils/despesaViagemHelper');
+const { criarDespesaViagem, exigirKmAbastecimento } = require('../utils/despesaViagemHelper');
 const { registrarAuditoria } = require('../utils/audit');
 const { calcularMediasConsumo, buscarCategoriaAbastecimentoId: buscarCategoriaAbastecimentoIdGlobal, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
 const { SELECT_STATUS_PAGAMENTO, comStatusPagamento } = require('../utils/acertoPagamentoHelper');
@@ -208,6 +208,10 @@ router.post('/abastecimentos', upload.single('foto'), asyncHandler(async (req, r
   // lancado em vez de duplicar - essencial pra retry apos resposta perdida.
   const existente = db.prepare('SELECT * FROM despesas_viagem WHERE idempotency_key = ?').get(idempotency_key);
   if (existente) return res.status(200).json(existente);
+
+  // Depois do reenvio idempotente de proposito: um item gravado antes desta
+  // regra existir (fila offline) continua sendo devolvido, nao recusado.
+  exigirKmAbastecimento(km_abastecimento);
 
   const viagem = buscarViagemAtualDoMotorista(req.usuario.motorista_id, req.empresaId);
   if (!viagem) throw new ApiError(400, 'Nenhuma viagem em andamento no momento - fale com o escritorio.');

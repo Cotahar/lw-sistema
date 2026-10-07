@@ -133,6 +133,14 @@ export function hojeIsoLocal() {
   return `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-${String(agora.getDate()).padStart(2, '0')}`;
 }
 
+// Soma dias a uma data ISO ("AAAA-MM-DD"), devolvendo outra data ISO. Usa UTC
+// so como calendario (sem efeito de fuso/horario de verao).
+export function somarDiasIso(iso, dias) {
+  const data = new Date(`${iso}T00:00:00Z`);
+  data.setUTCDate(data.getUTCDate() + dias);
+  return data.toISOString().slice(0, 10);
+}
+
 export function parseDataBrParaIso(valorBr) {
   const digitos = apenasDigitos(valorBr);
   if (digitos.length !== 8) return null;

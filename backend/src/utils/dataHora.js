@@ -16,4 +16,22 @@ function agoraDataHoraIsoBrasilia() {
   return agoraBrasilia().toISOString().slice(0, 19).replace('T', ' ');
 }
 
-module.exports = { agoraBrasilia, hojeIsoBrasilia, agoraDataHoraIsoBrasilia };
+// Soma dias a uma data ISO (YYYY-MM-DD) sem passar por fuso (usa UTC so como
+// calendario), devolvendo outra data ISO.
+function somarDiasIso(dataIso, dias) {
+  const data = new Date(`${dataIso}T00:00:00Z`);
+  data.setUTCDate(data.getUTCDate() + dias);
+  return data.toISOString().slice(0, 10);
+}
+
+// Prazo padrao de recebimento do frete: data de descarga (entrega) + 3 dias.
+// Sem data de descarga ainda, usa hoje + 3 dias - nunca o inicio da viagem,
+// que deixava fretes recem-lancados "vencidos ha 40 dias" numa viagem longa.
+const PRAZO_RECEBIMENTO_DIAS = 3;
+function dataPrevistaRecebimentoPadrao(dataDescarga) {
+  return somarDiasIso(dataDescarga || hojeIsoBrasilia(), PRAZO_RECEBIMENTO_DIAS);
+}
+
+module.exports = {
+  agoraBrasilia, hojeIsoBrasilia, agoraDataHoraIsoBrasilia, somarDiasIso, dataPrevistaRecebimentoPadrao, PRAZO_RECEBIMENTO_DIAS,
+};

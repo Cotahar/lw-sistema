@@ -1,6 +1,7 @@
-import { get, podeGerenciar } from '../../api.js';
+import { get, put, podeGerenciar } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
-import { abrirModal } from '../../components/modal.js';
+import { abrirModal, fecharModal } from '../../components/modal.js';
+import { mostrarToast } from '../../components/toast.js';
 import { formatarMoeda, formatarDataBr, hojeIsoLocal, attachDataMask, parseDataBrParaIso } from '../../masks.js';
 import { criarOcorrencias } from '../../components/ocorrencias.js';
 import { abrirBaixasFrete } from '../../components/baixasFrete.js';
@@ -46,6 +47,42 @@ function abrirRecebivelBaixas(conta, recarregar, gerenciar) {
     destino_uf: conta.destino_uf,
   };
   abrirBaixasFrete(freteComoObjeto, recarregar, gerenciar);
+}
+
+// Previsao de recebimento do saldo: nasce como data de descarga + 3 dias
+// (ver POST /viagens/:id/fretes) e pode ser reagendada aqui a qualquer momento
+// enquanto houver saldo a receber.
+function abrirEditarPrevisao(conta, recarregar) {
+  const form = document.createElement('form');
+  form.className = 'space-y-4';
+  form.innerHTML = `
+    <p class="text-sm text-slate-500">Frete #${conta.frete_id} (viagem #${conta.viagem_id}) &middot; ${conta.origem_cidade}/${conta.origem_uf} &rarr; ${conta.destino_cidade}/${conta.destino_uf}</p>
+    <div class="max-w-[12rem]"><label class="label">Previsao de recebimento *</label><input type="text" name="data_prevista" class="input" required /></div>
+    <p class="hidden text-sm text-red-600" data-erro></p>
+    <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Salvar previsao</button></div>
+  `;
+  attachDataMask(form.data_prevista, conta.data_prevista);
+  const erro = form.querySelector('[data-erro]');
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    erro.classList.add('hidden');
+    const iso = parseDataBrParaIso(form.data_prevista.value);
+    if (!iso) {
+      erro.textContent = 'Informe uma data valida (dd/mm/aaaa).';
+      erro.classList.remove('hidden');
+      return;
+    }
+    try {
+      await put(`/contas-receber/${conta.id}`, { data_prevista: iso });
+      fecharModal();
+      mostrarToast('Previsao de recebimento atualizada.');
+      recarregar();
+    } catch (err) {
+      erro.textContent = err.message;
+      erro.classList.remove('hidden');
+    }
+  });
+  abrirModal({ titulo: 'Editar previsao de recebimento', conteudo: form, largura: 'max-w-sm' });
 }
 
 function abrirOcorrencias(conta, gerenciar) {
@@ -125,6 +162,7 @@ export async function render(container) {
     },
     acoesExtras: (r) => [
       { label: 'Recebivel/Baixas', onClick: (c) => abrirRecebivelBaixas(c, tabela.recarregar, gerenciar) },
+      ...(gerenciar && r.status !== 'Recebido' ? [{ label: 'Editar previsao', onClick: (c) => abrirEditarPrevisao(c, tabela.recarregar) }] : []),
       { label: 'Ocorrencias', onClick: (c) => abrirOcorrencias(c, gerenciar) },
     ],
     vazio: 'Nenhuma conta a receber registrada.',

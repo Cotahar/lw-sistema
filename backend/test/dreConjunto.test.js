@@ -1,0 +1,149 @@
+const { test, before } = require('node:test');
+const assert = require('node:assert/strict');
+const { login, api, criarEmpresa, criarVeiculo, db } = require('./helpers');
+
+// DRE por CONJUNTO (cavalo + carreta): receita e custo da composicao, com o
+// custo de cada placa detalhado; receita pela data do frete (nao pelo inicio
+// da viagem).
+
+let tokenAdmin, empresaId, cavaloId, carretaId, soltoId, conjuntoId, viagemId, categoriaId;
+
+before(async () => {
+  tokenAdmin = await login();
+  empresaId = criarEmpresa({ razao_social: 'DRE Conjunto Teste LTDA' });
+  cavaloId = criarVeiculo(empresaId, { placa: 'DRC1A11', tipo: 'Cavalo', qtd_eixos: 3 });
+  carretaId = criarVeiculo(empresaId, { placa: 'DRC2B22', tipo: 'Carreta', qtd_eixos: 3 });
+  soltoId = criarVeiculo(empresaId, { placa: 'DRC3C33', tipo: 'Truck' }); // sem composicao
+  categoriaId = db.prepare("INSERT INTO categorias_despesa (nome) VALUES ('Pedagio DRE Conjunto')").run().lastInsertRowid;
+});
+
+function admin() {
+  return api(tokenAdmin, empresaId);
+}
+
+function centroDoVeiculo(veiculoId) {
+  return db.prepare('SELECT id FROM centros_custo WHERE veiculo_id = ?').get(veiculoId).id;
+}
+
+test('setup: viagem iniciada em agosto, frete carregado em outubro, custos no cavalo e na carreta', async () => {
+  const conjunto = await admin().post('/api/conjuntos').send({ nome: 'CONJUNTO DRE', itens: [{ veiculo_id: cavaloId }, { veiculo_id: carretaId }] });
+  assert.equal(conjunto.status, 201, JSON.stringify(conjunto.body));
+  conjuntoId = conjunto.body.id;
+  const motorista = await admin().post('/api/motoristas').send({ nome: 'Motorista DRE Conj', cpf: `${Date.now()}`.slice(-11), cnh: '777', cnh_validade: '2029-01-01' });
+  const viagem = await admin().post('/api/viagens').send({ conjunto_id: conjuntoId, motorista_id: motorista.body.id, data_inicio: '2026-08-25', km_inicial: 1000 });
+  assert.equal(viagem.status, 201, JSON.stringify(viagem.body));
+  viagemId = viagem.body.id;
+
+  // Frete carregado em OUTUBRO (a viagem comecou em agosto).
+  const frete = await admin().post(`/api/viagens/${viagemId}/fretes`).send({
+    origem_cidade: 'A', origem_uf: 'SP', destino_cidade: 'B', destino_uf: 'RJ', frete_bruto: 500000, data_carregamento: '2026-10-06',
+  });
+  assert.equal(frete.status, 201, JSON.stringify(frete.body));
+  // Frete sem data de carregamento: cai no inicio da viagem (agosto).
+  const freteSemData = await admin().post(`/api/viagens/${viagemId}/fretes`).send({
+    origem_cidade: 'C', origem_uf: 'SP', destino_cidade: 'D', destino_uf: 'MG', frete_bruto: 200000,
+  });
+  assert.equal(freteSemData.status, 201, JSON.stringify(freteSemData.body));
+
+  // Despesas de viagem no centro de custo do cavalo (padrao).
+  const d1 = await admin().post(`/api/viagens/${viagemId}/despesas`).send({ categoria_id: categoriaId, valor: 30000, data: '2026-10-07', pago_por: 'Empresa' });
+  assert.equal(d1.status, 201, JSON.stringify(d1.body));
+  // Despesa apontada para o centro de custo da CARRETA.
+  const d2 = await admin().post(`/api/viagens/${viagemId}/despesas`).send({
+    categoria_id: categoriaId, valor: 12000, data: '2026-10-08', pago_por: 'Empresa', centro_custo_id: centroDoVeiculo(carretaId),
+  });
+  assert.equal(d2.status, 201, JSON.stringify(d2.body));
+  // Despesa fixa da carreta e do veiculo solto (sem composicao).
+  db.prepare('INSERT INTO despesas_fixas (empresa_id, centro_custo_id, categoria_id, valor, data) VALUES (?, ?, ?, ?, ?)').run(empresaId, centroDoVeiculo(carretaId), categoriaId, 8000, '2026-10-10');
+  db.prepare('INSERT INTO despesas_fixas (empresa_id, centro_custo_id, categoria_id, valor, data) VALUES (?, ?, ?, ?, ?)').run(empresaId, centroDoVeiculo(soltoId), categoriaId, 5000, '2026-10-11');
+});
+
+test('DRE geral de outubro: a receita do frete carregado em outubro aparece, mesmo com a viagem iniciada em agosto', async () => {
+  const res = await admin().get('/api/dre/geral?data_inicio=2026-10-01&data_fim=2026-10-31');
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(res.body.receitaTotal, 500000, 'so o frete carregado em outubro; o sem data fica em agosto');
+  assert.equal(res.body.custoTotalVeiculos, 30000 + 12000 + 8000 + 5000);
+
+  const linha = res.body.porConjunto.find((c) => c.conjunto_id === conjuntoId);
+  assert.ok(linha, 'o conjunto deveria ter uma linha');
+  assert.deepEqual(linha.placas, ['DRC1A11', 'DRC2B22']);
+  assert.equal(linha.receita, 500000);
+  assert.equal(linha.custoTotal, 30000 + 12000 + 8000, 'custo = cavalo + carreta');
+  assert.equal(linha.lucro, 500000 - 50000);
+  const cavalo = linha.custoPorVeiculo.find((v) => v.placa === 'DRC1A11');
+  const carreta = linha.custoPorVeiculo.find((v) => v.placa === 'DRC2B22');
+  assert.equal(cavalo.custoTotal, 30000);
+  assert.equal(carreta.custoTotal, 12000 + 8000);
+
+  const semComposicao = res.body.porConjunto.find((c) => c.conjunto_id === null);
+  assert.ok(semComposicao, 'veiculo fora de composicao entra em "Sem composicao"');
+  assert.equal(semComposicao.custoTotal, 5000);
+  assert.deepEqual(semComposicao.placas, ['DRC3C33']);
+
+  const somaConjuntos = res.body.porConjunto.reduce((t, c) => t + c.receita, 0);
+  assert.equal(somaConjuntos, res.body.receitaTotal, 'soma das receitas dos conjuntos = receita total');
+  assert.equal(res.body.lucroFrota, res.body.receitaTotal - res.body.custoTotalVeiculos);
+});
+
+test('DRE geral de agosto: o frete sem data de carregamento cai no inicio da viagem', async () => {
+  const res = await admin().get('/api/dre/geral?data_inicio=2026-08-01&data_fim=2026-08-31');
+  assert.equal(res.body.receitaTotal, 200000);
+  const setembro = await admin().get('/api/dre/geral?data_inicio=2026-09-01&data_fim=2026-09-30');
+  assert.equal(setembro.body.receitaTotal, 0);
+});
+
+test('DRE do conjunto: totais e custo detalhado por placa (cavalo x carreta)', async () => {
+  const res = await admin().get(`/api/dre/conjunto/${conjuntoId}?data_inicio=2026-10-01&data_fim=2026-10-31`);
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(res.body.receita, 500000);
+  assert.equal(res.body.custos.viagem, 42000);
+  assert.equal(res.body.custos.despesasFixas, 8000);
+  assert.equal(res.body.custos.total, 50000);
+  assert.equal(res.body.lucro, 450000);
+  assert.equal(res.body.porVeiculo.length, 2);
+  const [cavalo, carreta] = res.body.porVeiculo;
+  assert.equal(cavalo.placa, 'DRC1A11');
+  assert.equal(cavalo.custos.viagem, 30000);
+  assert.equal(carreta.placa, 'DRC2B22');
+  assert.equal(carreta.custos.viagem, 12000);
+  assert.equal(carreta.custos.despesasFixas, 8000);
+  assert.equal(cavalo.custos.total + carreta.custos.total, res.body.custos.total);
+
+  assert.equal((await admin().get('/api/dre/conjunto/999999')).status, 404);
+});
+
+test('drill-down do conjunto: soma dos lancamentos bate com cada categoria e traz a placa; receita lista os fretes', async () => {
+  const qs = 'data_inicio=2026-10-01&data_fim=2026-10-31';
+  const dre = await admin().get(`/api/dre/conjunto/${conjuntoId}?${qs}`);
+  for (const categoria of ['viagem', 'despesasFixas']) {
+    const det = await admin().get(`/api/dre/conjunto/${conjuntoId}/detalhe/${categoria}?${qs}`);
+    assert.equal(det.status, 200, JSON.stringify(det.body));
+    assert.ok(det.body.every((l) => l.placa), 'cada lancamento identifica a placa');
+    assert.equal(det.body.reduce((t, l) => t + l.valor, 0), dre.body.custos[categoria], `drill-down de ${categoria} deve bater com o total`);
+  }
+  const receita = await admin().get(`/api/dre/conjunto/${conjuntoId}/detalhe/receita?${qs}`);
+  assert.equal(receita.status, 200);
+  assert.equal(receita.body.length, 1);
+  assert.equal(receita.body[0].valor, 500000);
+  assert.equal(receita.body[0].data, '2026-10-06');
+  assert.equal((await admin().get(`/api/dre/conjunto/${conjuntoId}/detalhe/invalida?${qs}`)).status, 400);
+});
+
+test('comparativo e DRE por veiculo usam a mesma data de competencia da receita', async () => {
+  const comp = await admin().get('/api/dre/comparativo?data_inicio=2026-10-01&data_fim=2026-10-31');
+  assert.equal(comp.body.atual.dre.receitaTotal, 500000);
+  const cavalo = await admin().get(`/api/dre/veiculo/${cavaloId}?data_inicio=2026-10-01&data_fim=2026-10-31`);
+  assert.equal(cavalo.body.receita, 500000, 'receita do veiculo tratora tambem pela data do frete');
+});
+
+test('veiculo em dois conjuntos so tem o custo contado uma vez no total da frota', async () => {
+  const outro = await admin().post('/api/conjuntos').send({ nome: 'OUTRO CONJUNTO', itens: [{ veiculo_id: carretaId }] });
+  assert.equal(outro.status, 201, JSON.stringify(outro.body));
+  const res = await admin().get('/api/dre/geral?data_inicio=2026-10-01&data_fim=2026-10-31');
+  const somaCustos = res.body.porConjunto.reduce((t, c) => t + c.custoTotal, 0);
+  assert.equal(somaCustos, res.body.custoTotalVeiculos, 'a soma por conjunto nao pode passar o total da frota');
+  const original = res.body.porConjunto.find((c) => c.conjunto_id === conjuntoId);
+  const novo = res.body.porConjunto.find((c) => c.conjunto_id === outro.body.id);
+  assert.equal(original.custoPorVeiculo.find((v) => v.placa === 'DRC2B22').custoTotal, 0, 'a carreta passou a ser contabilizada no conjunto mais recente');
+  assert.equal(novo.custoTotal, 20000);
+});

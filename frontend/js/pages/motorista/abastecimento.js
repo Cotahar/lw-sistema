@@ -64,7 +64,7 @@ export async function render(appEl) {
             Encheu o tanque completamente?
           </label>
           <p class="-mt-2 text-xs text-slate-400">Importante pra media de consumo - so marque se nao ficou faltando nada pra completar.</p>
-          <div><label class="label">KM no abastecimento</label><input type="number" name="km_abastecimento" class="input" /></div>
+          <div><label class="label">KM no abastecimento *</label><input type="number" min="1" name="km_abastecimento" class="input" required /></div>
           <div>
             <label class="label">Posto</label>
             <div data-posto-select></div>
@@ -232,6 +232,11 @@ export async function render(appEl) {
     const arla = montarArlaPayload();
     if (!valor && !arla) {
       erro.textContent = 'Informe o valor do abastecimento ou do Arla.';
+      erro.classList.remove('hidden');
+      return;
+    }
+    if (!(Number(form.km_abastecimento.value) > 0)) {
+      erro.textContent = 'Informe o KM do hodometro no abastecimento.';
       erro.classList.remove('hidden');
       return;
     }

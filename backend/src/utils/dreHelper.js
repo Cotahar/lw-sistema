@@ -31,6 +31,14 @@ function custosDoCentroCusto(centroCustoId, inicio, fim) {
   return { despesasFixas, financiamento, total: despesasFixas + financiamento };
 }
 
+// Data de competencia da receita de um frete: a data do proprio frete
+// (carregamento); sem ela, o inicio da viagem. Antes a receita entrava sempre
+// pela data de INICIO DA VIAGEM, enquanto as despesas entram pela data da
+// despesa - numa viagem longa (ou que atravessa a virada do mes) o periodo
+// mostrava os custos e ficava sem a receita. Mesma data base dos relatorios
+// de Fretes e de Rentabilidade por Rota.
+const DATA_RECEITA_SQL = 'COALESCE(f.data_carregamento, vg.data_inicio)';
+
 // Receita (fretes) e custos variaveis (despesas_viagem) de um centro de custo no
 // periodo. Usa o centro_custo_id ja resolvido na criacao do frete/despesa (sempre
 // a unidade tratora da viagem) em vez de rejuntar pelo conjunto - isso evita
@@ -41,7 +49,7 @@ function receitaECustosDaViagemPorCentro(centroCustoId, inicio, fim) {
     FROM fretes f
     JOIN contas_receber cr ON cr.frete_id = f.id
     JOIN viagens vg ON vg.id = f.viagem_id
-    WHERE cr.centro_custo_id = ? AND vg.data_inicio BETWEEN ? AND ?
+    WHERE cr.centro_custo_id = ? AND ${DATA_RECEITA_SQL} BETWEEN ? AND ?
   `).get(centroCustoId, inicio, fim).total;
 
   const custosViagem = db.prepare(`
@@ -84,25 +92,128 @@ function resultadoDoVeiculo(veiculo, inicio, fim) {
   return { receita, custoTotal, lucro: receita - custoTotal };
 }
 
-// Receita/custo/lucro liquido agregados de TODA a frota (todos os veiculos
-// + centros Base) no periodo - usado tanto por /dre/comparativo quanto pelo
-// DRE Multi-periodo (relatorios.routes.js), extraido daqui pra nao duplicar
-// o loop nas duas rotas.
+// ---- DRE por CONJUNTO (composicao: cavalo + carreta) ----
+//
+// O resultado economico acontece no conjunto: o frete e transportado pela
+// composicao inteira, nao por uma placa. Por isso a DRE agrupa por conjunto,
+// mantendo o detalhamento dos custos de cada unidade (cavalo, carreta).
+
+// Todas as receitas de frete do periodo (todas as composicoes), pela data de
+// competencia definida em DATA_RECEITA_SQL.
+function receitaTotalDoPeriodo(empresaId, inicio, fim) {
+  const empresaFiltro = empresaId ? 'AND f.empresa_id = ?' : '';
+  const params = empresaId ? [inicio, fim, empresaId] : [inicio, fim];
+  return db.prepare(`
+    SELECT COALESCE(SUM(f.frete_bruto), 0) AS total
+    FROM fretes f JOIN viagens vg ON vg.id = f.viagem_id
+    WHERE ${DATA_RECEITA_SQL} BETWEEN ? AND ? ${empresaFiltro}
+  `).get(...params).total;
+}
+
+// Receita dos fretes das viagens feitas por UM conjunto.
+function receitaDoConjunto(conjuntoId, inicio, fim) {
+  return db.prepare(`
+    SELECT COALESCE(SUM(f.frete_bruto), 0) AS total
+    FROM fretes f JOIN viagens vg ON vg.id = f.viagem_id
+    WHERE vg.conjunto_id = ? AND ${DATA_RECEITA_SQL} BETWEEN ? AND ?
+  `).get(conjuntoId, inicio, fim).total;
+}
+
+const CATEGORIAS_CUSTO = ['viagem', 'pecasDireto', 'ordensServico', 'pneus', 'despesasFixas', 'financiamento'];
+
+function custosVazios() {
+  return Object.fromEntries([...CATEGORIAS_CUSTO, 'total'].map((c) => [c, 0]));
+}
+
+// Custos de UM veiculo no periodo, por categoria (mesma conta do DRE por
+// veiculo). null se o veiculo nao tem centro de custo.
+function custosDoVeiculo(veiculoId, inicio, fim) {
+  const centroCusto = buscarCentroCustoDoVeiculo(veiculoId);
+  if (!centroCusto) return null;
+  const { custosViagem } = receitaECustosDaViagemPorCentro(centroCusto.id, inicio, fim);
+  const { custoPecasDireto, custoOrdensServico, custoPneus } = custosDiretosDoVeiculo(veiculoId, inicio, fim);
+  const fixos = custosDoCentroCusto(centroCusto.id, inicio, fim);
+  return {
+    viagem: custosViagem,
+    pecasDireto: custoPecasDireto,
+    ordensServico: custoOrdensServico,
+    pneus: custoPneus,
+    despesasFixas: fixos.despesasFixas,
+    financiamento: fixos.financiamento,
+    total: custosViagem + custoPecasDireto + custoOrdensServico + custoPneus + fixos.total,
+  };
+}
+
+// A que conjunto cada veiculo "pertence" para fins de custo. Um veiculo pode
+// constar em mais de um conjunto (troca de carreta, por exemplo): o custo dele
+// e contado UMA vez, no conjunto ativo mais recente - senao a soma dos
+// conjuntos passaria o total da frota. Veiculo sem composicao nao tem dono.
+function conjuntoDonoPorVeiculo(empresaId) {
+  const linhas = db.prepare(`
+    SELECT ci.veiculo_id, c.id AS conjunto_id
+    FROM conjunto_itens ci JOIN conjuntos c ON c.id = ci.conjunto_id
+    ${empresaId ? 'WHERE c.empresa_id = ?' : ''}
+    ORDER BY c.ativo ASC, c.id ASC
+  `).all(...(empresaId ? [empresaId] : []));
+  const dono = new Map();
+  for (const l of linhas) dono.set(l.veiculo_id, l.conjunto_id); // o ultimo (ativo, maior id) vence
+  return dono;
+}
+
+function veiculosDoConjunto(conjuntoId) {
+  return db.prepare(`
+    SELECT v.id, v.placa, v.tipo, v.empresa_id, ci.ordem
+    FROM conjunto_itens ci JOIN veiculos v ON v.id = ci.veiculo_id
+    WHERE ci.conjunto_id = ? ORDER BY ci.ordem, v.id
+  `).all(conjuntoId);
+}
+
+// Resultado de UM conjunto no periodo, com o custo de cada unidade.
+function resultadoDoConjunto(conjunto, inicio, fim, donoPorVeiculo) {
+  const dono = donoPorVeiculo || conjuntoDonoPorVeiculo(conjunto.empresa_id);
+  const custos = custosVazios();
+  const porVeiculo = veiculosDoConjunto(conjunto.id).map((v) => {
+    const proprio = dono.get(v.id) === conjunto.id;
+    const c = proprio ? (custosDoVeiculo(v.id, inicio, fim) || custosVazios()) : custosVazios();
+    for (const chave of Object.keys(custos)) custos[chave] += c[chave];
+    return { veiculo_id: v.id, placa: v.placa, tipo: v.tipo, custos: c, contabilizadoEmOutroConjunto: !proprio };
+  });
+  const receita = receitaDoConjunto(conjunto.id, inicio, fim);
+  return { receita, custos, porVeiculo, lucro: receita - custos.total };
+}
+
+// Veiculos que nao estao em nenhuma composicao: seus custos nao podem sumir da
+// DRE, entao entram numa linha propria "Sem composicao".
+function custosDeVeiculosSemComposicao(empresaId, inicio, fim, donoPorVeiculo) {
+  const veiculos = empresaId
+    ? db.prepare('SELECT id, placa, tipo FROM veiculos WHERE empresa_id = ?').all(empresaId)
+    : db.prepare('SELECT id, placa, tipo FROM veiculos').all();
+  const custos = custosVazios();
+  const porVeiculo = [];
+  for (const v of veiculos) {
+    if (donoPorVeiculo.has(v.id)) continue;
+    const c = custosDoVeiculo(v.id, inicio, fim);
+    if (!c) continue;
+    for (const chave of Object.keys(custos)) custos[chave] += c[chave];
+    porVeiculo.push({ veiculo_id: v.id, placa: v.placa, tipo: v.tipo, custos: c });
+  }
+  return { custos, porVeiculo };
+}
+
+// Receita/custo/lucro liquido agregados de TODA a frota
+// (todos os veiculos + centros Base) no periodo - usado tanto por
+// /dre/comparativo quanto pelo DRE Multi-periodo (relatorios.routes.js),
+// extraido daqui pra nao duplicar o loop nas duas rotas.
 function totaisGeraisDoPeriodo(empresaId, inicio, fim) {
   const veiculos = empresaId
     ? db.prepare('SELECT id FROM veiculos WHERE empresa_id = ?').all(empresaId)
     : db.prepare('SELECT id FROM veiculos').all();
 
-  let receitaTotal = 0;
+  const receitaTotal = receitaTotalDoPeriodo(empresaId, inicio, fim);
   let custoTotal = 0;
   for (const veiculo of veiculos) {
-    const centroCusto = buscarCentroCustoDoVeiculo(veiculo.id);
-    if (!centroCusto) continue;
-    const { receita, custosViagem } = receitaECustosDaViagemPorCentro(centroCusto.id, inicio, fim);
-    const { custoPecasDireto, custoOrdensServico, custoPneus } = custosDiretosDoVeiculo(veiculo.id, inicio, fim);
-    const fixosEFinanciamento = custosDoCentroCusto(centroCusto.id, inicio, fim);
-    receitaTotal += receita;
-    custoTotal += custosViagem + custoPecasDireto + custoOrdensServico + custoPneus + fixosEFinanciamento.total;
+    const custos = custosDoVeiculo(veiculo.id, inicio, fim);
+    if (custos) custoTotal += custos.total;
   }
 
   const centrosBase = empresaId
@@ -115,4 +226,6 @@ function totaisGeraisDoPeriodo(empresaId, inicio, fim) {
 
 module.exports = {
   somar, periodoOuTudo, custosDoCentroCusto, receitaECustosDaViagemPorCentro, custosDiretosDoVeiculo, resultadoDoVeiculo, totaisGeraisDoPeriodo,
+  DATA_RECEITA_SQL, CATEGORIAS_CUSTO, receitaTotalDoPeriodo, receitaDoConjunto, custosDoVeiculo, conjuntoDonoPorVeiculo, veiculosDoConjunto,
+  resultadoDoConjunto, custosDeVeiculosSemComposicao,
 };

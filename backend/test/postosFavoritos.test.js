@@ -100,7 +100,7 @@ test('abastecimento "Assinar nota" em posto favorito com prazo cadastrado ja ger
   const postoId = criarFornecedor(empresaId, { nome: 'Posto Prazo 15', tipo_id: tipoPosto, favorito: 1, posto_assina_nota: 1, posto_prazo_dias: 15 });
 
   const res = await motorista().post('/api/motorista/abastecimentos').send({
-    valor: 50000, data: '2026-09-10', preco_litro: 600, litragem: 833.33, posto_fornecedor_id: postoId,
+    valor: 50000, data: '2026-09-10', preco_litro: 600, litragem: 833.33, km_abastecimento: 100500, posto_fornecedor_id: postoId,
     forma_pagamento_posto: 'AssinarNota', idempotency_key: `pf-teste-${Date.now()}`,
   });
   assert.equal(res.status, 201, JSON.stringify(res.body));
@@ -117,7 +117,7 @@ test('abastecimento "Assinar nota" em posto SEM prazo cadastrado continua espera
   const postoSemPrazoId = criarFornecedor(empresaId, { nome: 'Posto Sem Prazo', tipo_id: tipoPosto, favorito: 0, posto_assina_nota: 0 });
 
   const res = await motorista().post('/api/motorista/abastecimentos').send({
-    valor: 40000, data: '2026-09-11', preco_litro: 600, litragem: 666.66, posto_fornecedor_id: postoSemPrazoId,
+    valor: 40000, data: '2026-09-11', preco_litro: 600, litragem: 666.66, km_abastecimento: 100900, posto_fornecedor_id: postoSemPrazoId,
     forma_pagamento_posto: 'AssinarNota', idempotency_key: `pf-teste-semprazo-${Date.now()}`,
   });
   assert.equal(res.status, 201, JSON.stringify(res.body));

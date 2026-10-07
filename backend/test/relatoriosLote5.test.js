@@ -35,7 +35,7 @@ test('setup: viagem com frete/despesa/adiantamento (gera movimentacao de caixa)'
   let categoriaAbastecimento = db.prepare("SELECT id FROM categorias_despesa WHERE lower(trim(nome)) = 'abastecimento'").get();
   if (!categoriaAbastecimento) categoriaAbastecimento = { id: db.prepare("INSERT INTO categorias_despesa (nome) VALUES ('Abastecimento')").run().lastInsertRowid };
   await admin().post(`/api/viagens/${viagemId}/despesas`).send({
-    categoria_id: categoriaAbastecimento.id, valor: 100000, data: hojeIso, pago_por: 'Empresa',
+    categoria_id: categoriaAbastecimento.id, valor: 100000, data: hojeIso, pago_por: 'Empresa', km_abastecimento: 5100,
   });
 
   // Movimentacao de caixa real (entrada manual na conta) - pra testar o

@@ -1,8 +1,8 @@
-import { get, post, put, podeGerenciar } from '../../api.js';
+import { get, post, put, del, podeGerenciar } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
-import { abrirModal, fecharModal } from '../../components/modal.js';
+import { abrirModal, fecharModal, confirmarAcao } from '../../components/modal.js';
 import { mostrarToast, mostrarErro } from '../../components/toast.js';
-import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, formatarDataBr, attachUppercaseInput } from '../../masks.js';
+import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, formatarDataBr, attachUppercaseInput, attachDataMask, parseDataBrParaIso, hojeIsoLocal } from '../../masks.js';
 
 function montarFormulario(registro, aoSalvar) {
   const form = document.createElement('form');
@@ -101,8 +101,134 @@ async function abrirExtrato(conta, gerenciar, recarregar) {
   }
 }
 
+// Transferencia de saldo entre duas contas da empresa: gera uma saida na
+// origem e uma entrada no destino (ficam no extrato das duas e no historico).
+async function abrirTransferencia(recarregar) {
+  const contas = (await get('/contas-bancarias')).filter((c) => c.ativo);
+  if (contas.length < 2) {
+    mostrarErro(new Error('Cadastre ao menos duas contas bancarias ativas para transferir saldo entre elas.'));
+    return;
+  }
+  const opcoes = contas.map((c) => `<option value="${c.id}">${c.nome} (saldo ${formatarMoeda(c.saldo_atual)})</option>`).join('');
+  const form = document.createElement('form');
+  form.className = 'space-y-4';
+  form.innerHTML = `
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div><label class="label">Sai da conta *</label><select name="origem" class="input" required>${opcoes}</select></div>
+      <div><label class="label">Entra na conta *</label><select name="destino" class="input" required>${opcoes}</select></div>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div><label class="label">Valor *</label><input type="text" name="valor" class="input" required /></div>
+      <div><label class="label">Data</label><input type="text" name="data" class="input" /></div>
+    </div>
+    <div><label class="label">Descricao (para que foi)</label><input type="text" name="descricao" class="input" placeholder="Ex.: juntar para pagar o boleto do pedagio" /></div>
+    <p class="hidden text-sm text-red-600" data-erro></p>
+    <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Transferir</button></div>
+  `;
+  form.destino.value = String(contas[1].id);
+  attachMoedaMaskReais(form.valor, 0);
+  attachDataMask(form.data, hojeIsoLocal());
+  attachUppercaseInput(form.descricao);
+  const erro = form.querySelector('[data-erro]');
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    erro.classList.add('hidden');
+    const valor = getMoedaValue(form.valor);
+    const origem = contas.find((c) => c.id === Number(form.origem.value));
+    const destino = contas.find((c) => c.id === Number(form.destino.value));
+    if (origem.id === destino.id) { erro.textContent = 'Escolha contas diferentes para sair e entrar.'; erro.classList.remove('hidden'); return; }
+    if (valor <= 0) { erro.textContent = 'Informe um valor maior que zero.'; erro.classList.remove('hidden'); return; }
+    if (valor > origem.saldo_atual) {
+      const ok = await confirmarAcao({
+        titulo: 'Saldo insuficiente',
+        mensagem: `A conta ${origem.nome} tem ${formatarMoeda(origem.saldo_atual)} e ficara com ${formatarMoeda(origem.saldo_atual - valor)} depois da transferencia. Continuar mesmo assim?`,
+        textoConfirmar: 'Transferir',
+        perigo: false,
+      });
+      if (!ok) return;
+    }
+    try {
+      await post('/contas-bancarias/transferencias', {
+        conta_origem_id: origem.id,
+        conta_destino_id: destino.id,
+        valor,
+        data: form.data.value ? parseDataBrParaIso(form.data.value) : null,
+        descricao: form.descricao.value || null,
+      });
+      fecharModal();
+      mostrarToast(`Transferencia de ${formatarMoeda(valor)} registrada.`);
+      recarregar();
+    } catch (err) {
+      erro.textContent = err.message;
+      erro.classList.remove('hidden');
+    }
+  });
+  abrirModal({ titulo: 'Transferir saldo entre contas', conteudo: form, largura: 'max-w-lg' });
+}
+
+// Historico do que saiu e entrou em transferencias (mais recentes primeiro).
+async function abrirHistoricoTransferencias(gerenciar, recarregar) {
+  try {
+    const transferencias = await get('/contas-bancarias/transferencias');
+    const corpo = document.createElement('div');
+    corpo.innerHTML = `
+      <div class="overflow-x-auto">
+        <table class="w-full min-w-max text-sm">
+          <thead><tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
+            <th class="py-1 pr-3">Data</th><th class="py-1 pr-3">Saiu de</th><th class="py-1 pr-3">Entrou em</th><th class="py-1 pr-3 text-right">Valor</th><th class="py-1 pr-3">Descricao</th><th class="py-1 pr-3">Lancado por</th>${gerenciar ? '<th class="py-1"></th>' : ''}
+          </tr></thead>
+          <tbody>
+            ${transferencias.map((t) => `
+              <tr class="border-b border-slate-100">
+                <td class="py-1 pr-3">${formatarDataBr(t.data)}</td>
+                <td class="py-1 pr-3">${t.conta_origem_nome}</td>
+                <td class="py-1 pr-3">${t.conta_destino_nome}</td>
+                <td class="py-1 pr-3 text-right font-medium">${formatarMoeda(t.valor)}</td>
+                <td class="py-1 pr-3">${t.descricao || '-'}</td>
+                <td class="py-1 pr-3">${t.criado_por_nome || '-'}</td>
+                ${gerenciar ? `<td class="py-1 text-right"><button type="button" class="text-xs text-red-600 hover:underline" data-desfazer="${t.id}">Desfazer</button></td>` : ''}
+              </tr>
+            `).join('') || `<tr><td colspan="${gerenciar ? 7 : 6}" class="py-4 text-center text-slate-400">Nenhuma transferencia registrada.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    `;
+    abrirModal({ titulo: 'Historico de transferencias', conteudo: corpo, largura: 'max-w-4xl' });
+    corpo.querySelectorAll('[data-desfazer]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const t = transferencias.find((x) => x.id === Number(btn.dataset.desfazer));
+        const ok = await confirmarAcao({
+          titulo: 'Desfazer transferencia',
+          mensagem: `Desfazer a transferencia de ${formatarMoeda(t.valor)} de ${t.conta_origem_nome} para ${t.conta_destino_nome}? Os dois saldos voltam ao que eram e o lancamento some dos extratos.`,
+          textoConfirmar: 'Desfazer',
+        });
+        if (!ok) return;
+        try {
+          await del(`/contas-bancarias/transferencias/${t.id}`);
+          fecharModal();
+          mostrarToast('Transferencia desfeita.');
+          recarregar();
+        } catch (err) {
+          mostrarErro(err);
+        }
+      });
+    });
+  } catch (err) {
+    mostrarErro(err);
+  }
+}
+
 export async function render(container) {
-  container.innerHTML = '<h1 class="mb-4 text-xl font-bold text-slate-900">Contas Bancarias</h1><div data-tabela></div>';
+  container.innerHTML = `
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+      <h1 class="text-xl font-bold text-slate-900">Contas Bancarias</h1>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="btn-secondary btn-sm" data-historico-transferencias>Historico de transferencias</button>
+        ${podeGerenciar('contas_bancarias') ? '<button type="button" class="btn-primary btn-sm" data-transferir>Transferir entre contas</button>' : ''}
+      </div>
+    </div>
+    <div data-tabela></div>
+  `;
   const gerenciar = podeGerenciar('contas_bancarias');
 
   const tabela = criarDataTable({
@@ -120,4 +246,7 @@ export async function render(container) {
     vazio: 'Nenhuma conta bancaria cadastrada.',
   });
   container.querySelector('[data-tabela]').appendChild(tabela.el);
+  container.querySelector('[data-historico-transferencias]').addEventListener('click', () => abrirHistoricoTransferencias(gerenciar, tabela.recarregar));
+  const btnTransferir = container.querySelector('[data-transferir]');
+  if (btnTransferir) btnTransferir.addEventListener('click', () => abrirTransferencia(tabela.recarregar));
 }
