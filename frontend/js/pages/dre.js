@@ -151,7 +151,10 @@ async function renderGeral(resultadoEl, inicio, fim, selecionarConjunto) {
             <tr class="border-b border-slate-100 align-top">
               <td class="table-td">
                 <p class="font-medium">${c.nome || `Conjunto #${c.conjunto_id}`}${c.ativo === 0 ? ' <span class="badge-neutro">Inativo</span>' : ''}</p>
-                <p class="text-xs text-slate-500">${c.custoPorVeiculo.map((v) => `${v.placa} (${TIPO_ROTULO[v.tipo] || v.tipo}): ${formatarMoeda(v.custoTotal)}`).join(' &middot; ') || '-'}</p>
+                <p class="text-xs text-slate-500">${[
+                  ...c.custoPorVeiculo.map((v) => `${v.placa} (${TIPO_ROTULO[v.tipo] || v.tipo}): ${formatarMoeda(v.custoTotal)}`),
+                  ...(c.custoComissaoMotorista > 0 ? [`Motorista (comissao): ${formatarMoeda(c.custoComissaoMotorista)}`] : []),
+                ].join(' &middot; ') || '-'}</p>
               </td>
               <td class="table-td text-right">${formatarMoeda(c.receita)}</td>
               <td class="table-td text-right">${formatarMoeda(c.custoTotal)}</td>
@@ -182,7 +185,8 @@ const CATEGORIAS_CUSTO = [
 ];
 
 function linhaDetalheDre(item) {
-  const label = item.categoria_nome || item.item_nome || item.numero_fogo || item.descricao
+  const label = (item.motorista_nome ? `Comissao de ${item.motorista_nome}${item.percentual != null ? ` (${item.percentual}%)` : ''} - viagem #${item.viagem_id}` : null)
+    || item.categoria_nome || item.item_nome || item.numero_fogo || item.descricao
     || (item.origem_cidade ? `Frete #${item.id} - ${item.origem_cidade}/${item.origem_uf} &rarr; ${item.destino_cidade}/${item.destino_uf}` : null)
     || (item.viagem_id ? `Viagem #${item.viagem_id}` : item.numero_parcela ? `Parcela ${item.numero_parcela}` : '-');
   const placa = item.placa ? `<span class="badge-neutro mr-1">${item.placa}</span>` : '';
@@ -248,6 +252,11 @@ async function renderConjunto(resultadoEl, conjuntoId, inicio, fim) {
               <td class="table-td text-right font-medium">${formatarMoeda(dre.custos[c.chave])}</td>
             </tr>
           `).join('')}
+          <tr class="border-b border-slate-100">
+            <td class="table-td">Pagamento do motorista (comissao)</td>
+            ${unidades.map(() => '<td class="table-td text-right text-slate-400">&mdash;</td>').join('')}
+            <td class="table-td text-right font-medium">${formatarMoeda(dre.custos.comissaoMotorista)}</td>
+          </tr>
           <tr class="bg-slate-50 font-semibold">
             <td class="table-td">Custo total</td>
             ${unidades.map((v) => `<td class="table-td text-right">${formatarMoeda(v.custos.total)}</td>`).join('')}
@@ -255,6 +264,7 @@ async function renderConjunto(resultadoEl, conjuntoId, inicio, fim) {
           </tr>
         </tbody>
       </table>
+      <p class="px-4 pb-3 pt-2 text-xs text-slate-400">O pagamento do motorista (comissao) e custo do conjunto (nao de uma placa): por isso a soma das placas nao fecha com o total do conjunto.</p>
     </div>
     <div class="card mt-6 p-4">
       <h2 class="mb-1 font-semibold text-slate-900">Lancamentos - ${nomeConjunto}</h2>
@@ -262,6 +272,7 @@ async function renderConjunto(resultadoEl, conjuntoId, inicio, fim) {
       <div>
         ${montarLinhaExpansivel('receita', 'Receita (fretes)', dre.receita)}
         ${CATEGORIAS_CUSTO.map((c) => montarLinhaExpansivel(c.chave, c.titulo, dre.custos[c.chave])).join('')}
+        ${montarLinhaExpansivel('comissaoMotorista', 'Pagamento do motorista (comissao)', dre.custos.comissaoMotorista)}
       </div>
     </div>
   `;

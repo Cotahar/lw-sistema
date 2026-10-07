@@ -208,9 +208,10 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
     }
     resumoEl.innerHTML = [
       linha('Receitas (frete bruto total)', formatarMoeda(p.freteBrutoTotal)),
-      linha(p.valorPedagio > 0 ? 'Despesas lancadas' : 'Despesas da viagem', formatarMoeda(p.despesasLancadasTotal)),
+      linha('Despesas lancadas', formatarMoeda(p.despesasLancadasTotal)),
       p.valorPedagio > 0 ? linha('Pedagio da viagem (custo; nao altera o saldo do motorista)', formatarMoeda(p.valorPedagio)) : '',
-      p.valorPedagio > 0 ? linha('Despesas da viagem (total)', formatarMoeda(p.despesasTotal)) : '',
+      linha('Comissao do motorista (custo da viagem)', formatarMoeda(p.valorComissao), false, 'comissaoDespesa'),
+      linha('Despesas da viagem (total)', formatarMoeda(p.despesasTotal), false, 'despesasTotal'),
       linha('Receitas &minus; Despesas', valorResultado(p.receitasMenosDespesas), true, 'resultado'),
       linha('% de sobra (do faturamento)', p.percentualSobra !== null ? `<span class="${p.percentualSobra >= 0 ? 'text-emerald-500' : 'text-red-500'}">${p.percentualSobra.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</span>` : '-'),
       '<hr class="my-2 border-slate-200" />',
@@ -311,8 +312,10 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
       colunas: [{ titulo: 'Cod.' }, { titulo: 'Data' }, { titulo: 'Categoria' }, { titulo: 'Fornecedor' }, { titulo: 'Valor', direita: true }, { titulo: 'Pago por' }, { titulo: 'Status' }, { titulo: '' }],
       linhas,
       vazio: 'Nenhuma despesa lancada nesta viagem.',
-      rodape: linhaTotal(7, p.valorPedagio > 0 ? 'Total (despesas lancadas)' : 'Total (Despesas)', formatarMoeda(p.despesasLancadasTotal))
-        + (p.valorPedagio > 0 ? linhaTotal(7, 'Pedagio da viagem (informativo no saldo)', formatarMoeda(p.valorPedagio)) + linhaTotal(7, 'Total das despesas', formatarMoeda(p.despesasTotal)) : ''),
+      rodape: linhaTotal(7, 'Total (despesas lancadas)', formatarMoeda(p.despesasLancadasTotal))
+        + (p.valorPedagio > 0 ? linhaTotal(7, 'Pedagio da viagem (informativo no saldo)', formatarMoeda(p.valorPedagio)) : '')
+        + linhaTotal(7, 'Comissao do motorista', formatarMoeda(p.valorComissao))
+        + linhaTotal(7, 'Total das despesas do acerto', formatarMoeda(p.despesasTotal)),
     }), 'Despesas pagas pelo motorista viram desconto no acerto.');
   }
 
@@ -630,8 +633,9 @@ async function renderFechado(container, viagem, motorista, acerto, gerenciar) {
   const freteBrutoTotal = (viagem.fretes || []).reduce((t, f) => t + f.frete_bruto, 0);
   const valorPedagio = detalhamento.valorPedagio || 0;
   const despesasLancadasTotal = despesas.reduce((t, d) => t + d.valor, 0);
-  // Pedagio: informativo no acerto (nao altera o saldo), mas e custo da viagem.
-  const despesasTotal = despesasLancadasTotal + valorPedagio;
+  // Pedagio: informativo no acerto (nao altera o saldo), mas e custo da viagem; a
+  // comissao do motorista tambem entra no somatorio de despesas do acerto.
+  const despesasTotal = despesasLancadasTotal + valorPedagio + acerto.valor_comissao;
   const percentualSobra = freteBrutoTotal > 0 ? ((freteBrutoTotal - despesasTotal) / freteBrutoTotal) * 100 : null;
   const baseCalculoComissao = freteBrutoTotal - (acerto.valor_imposto || 0);
 
@@ -647,9 +651,10 @@ async function renderFechado(container, viagem, motorista, acerto, gerenciar) {
   container.querySelector('[data-resumo]').innerHTML = `
     <div class="mb-4 space-y-1">
       ${linha('Receitas (frete bruto total)', formatarMoeda(freteBrutoTotal))}
-      ${linha(valorPedagio > 0 ? 'Despesas lancadas' : 'Despesas da viagem', formatarMoeda(despesasLancadasTotal))}
+      ${linha('Despesas lancadas', formatarMoeda(despesasLancadasTotal))}
       ${valorPedagio > 0 ? linha('Pedagio da viagem (custo; nao altera o saldo do motorista)', formatarMoeda(valorPedagio)) : ''}
-      ${valorPedagio > 0 ? linha('Despesas da viagem (total)', formatarMoeda(despesasTotal)) : ''}
+      ${linha('Comissao do motorista (custo da viagem)', formatarMoeda(acerto.valor_comissao))}
+      ${linha('Despesas da viagem (total)', formatarMoeda(despesasTotal))}
       ${linha('Receitas &minus; Despesas', valorResultado(freteBrutoTotal - despesasTotal), true)}
       ${linha('% de sobra (do faturamento)', percentualSobra !== null ? `<span class="${percentualSobra >= 0 ? 'text-emerald-500' : 'text-red-500'}">${percentualSobra.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</span>` : '-')}
       ${acerto.valor_imposto > 0 ? linha(`Imposto (${acerto.percentual_imposto_aplicado}%)`, `- ${formatarMoeda(acerto.valor_imposto)}`) : ''}

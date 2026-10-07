@@ -58,7 +58,6 @@ function calcularAcerto(viagemId, empresaId, overrides = {}) {
   // por consequencia, em Receitas - Despesas e no % de sobra.
   const despesasLancadasTotal = somar(despesas.map((d) => d.valor));
   const valorPedagio = viagem.valor_pedagio || 0;
-  const despesasTotal = despesasLancadasTotal + valorPedagio;
   const kmTotal = viagem.km_final - viagem.km_inicial;
   // Media "tanque cheio a tanque cheio" (ver mediaConsumoHelper.js) - unica
   // forma confiavel de saber litros/km real quando existem abastecimentos
@@ -95,6 +94,10 @@ function calcularAcerto(viagemId, empresaId, overrides = {}) {
 
   const percentualAplicado = overrides.percentual_comissao_aplicado ?? percentualSugerido ?? 0;
   const valorComissao = Math.round(baseCalculoComissao * (percentualAplicado / 100));
+  // Somatorio de despesas do acerto: despesas lancadas + pedagio (informativo no
+  // saldo, mas custo da viagem) + a COMISSAO do motorista (custo da viagem para o
+  // resultado). Nada disso muda a formula do saldo do motorista (saldoFinal).
+  const despesasTotal = despesasLancadasTotal + valorPedagio + valorComissao;
 
   const itens = listarItensManuais(viagemId);
   const itensReembolso = itens.filter((i) => i.tipo === 'Reembolso');
@@ -123,9 +126,10 @@ function calcularAcerto(viagemId, empresaId, overrides = {}) {
     percentualImposto, valorImposto, baseCalculoComissao,
     valorReembolsos, adiantamentosTotal, valorDescontosSugerido, valorDescontosManuais, valorDescontos,
     itensReembolso, itensDesconto,
-    // Receitas (frete bruto) - despesas da viagem (lancadas + pedagio): so
-    // informativo, pro escritorio enxergar o resultado da viagem (nao entra no
-    // saldo). percentualSobra = quanto do faturamento sobra depois das despesas.
+    // Receitas (frete bruto) - despesas da viagem (lancadas + pedagio + comissao
+    // do motorista): so informativo, pro escritorio enxergar o resultado da
+    // viagem (nao entra no saldo). percentualSobra = quanto do faturamento sobra
+    // depois das despesas.
     despesasLancadasTotal, despesasTotal, receitasMenosDespesas: freteBrutoTotal - despesasTotal,
     percentualSobra: freteBrutoTotal > 0 ? ((freteBrutoTotal - despesasTotal) / freteBrutoTotal) * 100 : null,
     valorPedagio,

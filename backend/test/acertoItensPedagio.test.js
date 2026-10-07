@@ -85,8 +85,9 @@ test('preview: reembolsos/descontos vem dos itens, pedagio nao entra no saldo, R
   assert.equal(p.valorDescontosSugerido, 20000, 'despesa por conta do motorista');
   assert.equal(p.valorDescontosManuais, 2000);
   assert.equal(p.valorDescontos, 22000);
-  assert.equal(p.despesasTotal, 120000);
-  assert.equal(p.receitasMenosDespesas, 380000);
+  assert.equal(p.despesasLancadasTotal, 120000);
+  assert.equal(p.despesasTotal, 120000 + 100000, 'despesas lancadas + comissao do motorista (20% de 500000)');
+  assert.equal(p.receitasMenosDespesas, 500000 - 220000);
   assert.equal(p.adiantamentos.length, 1);
   // comissao 20% de 500000 = 100000; + 8000 - 50000 (adiantamento) - 22000 - 0
   assert.equal(p.valorComissao, 100000);
@@ -100,9 +101,9 @@ test('preview: reembolsos/descontos vem dos itens, pedagio nao entra no saldo, R
   assert.equal(depois.body.saldoFinal, 36000, 'pedagio e so informativo: saldo nao muda');
   // ...mas e custo da viagem: entra no total de despesas, em Receitas - Despesas e no % de sobra.
   assert.equal(depois.body.despesasLancadasTotal, 120000);
-  assert.equal(depois.body.despesasTotal, 120000 + 123456);
-  assert.equal(depois.body.receitasMenosDespesas, 500000 - 243456);
-  assert.ok(Math.abs(depois.body.percentualSobra - ((500000 - 243456) / 500000) * 100) < 1e-9);
+  assert.equal(depois.body.despesasTotal, 120000 + 123456 + 100000, 'lancadas + pedagio + comissao');
+  assert.equal(depois.body.receitasMenosDespesas, 500000 - 343456);
+  assert.ok(Math.abs(depois.body.percentualSobra - ((500000 - 343456) / 500000) * 100) < 1e-9);
 
   assert.equal((await admin().put(`/api/acertos/viagem/${viagemId}/pedagio`).send({ valor: -1 })).status, 400);
   assert.equal((await admin().put(`/api/acertos/viagem/${viagemId}/pedagio`).send({ valor: 'abc' })).status, 400);

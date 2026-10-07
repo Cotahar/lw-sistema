@@ -178,3 +178,52 @@ test('sem data final o DRE vai so ate hoje: parcelas futuras de financiamento na
   const geral = await admin().get('/api/dre/geral?data_inicio=2026-01-01');
   assert.equal(geral.body.periodo.fim, hoje);
 });
+
+test('DRE do conjunto inclui o pagamento do motorista (comissao do acerto) e NAO o pedagio informado na viagem', async () => {
+  const motorista = await admin().post('/api/motoristas').send({ nome: 'Motorista DRE Comissao', cpf: `${Date.now()}`.slice(-11), cnh: '778', cnh_validade: '2029-01-01' });
+  const viagem = await admin().post('/api/viagens').send({ conjunto_id: conjuntoId, motorista_id: motorista.body.id, data_inicio: '2026-10-12', km_inicial: 2000 });
+  assert.equal(viagem.status, 201, JSON.stringify(viagem.body));
+  await admin().post(`/api/viagens/${viagem.body.id}/fretes`).send({ origem_cidade: 'E', origem_uf: 'SP', destino_cidade: 'F', destino_uf: 'MG', frete_bruto: 400000, data_carregamento: '2026-10-12' });
+  assert.equal((await admin().post(`/api/viagens/${viagem.body.id}/finalizar`).send({ km_final: 2500, data_fim: '2026-10-14' })).status, 200);
+
+  const qs = 'data_inicio=2026-10-01&data_fim=2026-10-31';
+  const antes = await admin().get(`/api/dre/conjunto/${conjuntoId}?${qs}`);
+  assert.equal(antes.body.custos.comissaoMotorista, 0, 'acerto ainda nao fechado: sem comissao');
+
+  // Fecha com 10% de comissao (40.000) e pedagio informativo de 30.000.
+  const fechar = await admin().post(`/api/acertos/viagem/${viagem.body.id}/fechar`).send({ percentual_comissao_aplicado: 10, valor_pedagio: 30000 });
+  assert.equal(fechar.status, 201, JSON.stringify(fechar.body));
+  assert.equal(fechar.body.valor_comissao, 40000);
+
+  const depois = await admin().get(`/api/dre/conjunto/${conjuntoId}?${qs}`);
+  assert.equal(depois.body.custos.comissaoMotorista, 40000);
+  assert.equal(depois.body.custos.pedagio, undefined, 'o pedagio da viagem e so informativo: nao entra no DRE');
+  assert.equal(depois.body.custos.total, antes.body.custos.total + 40000);
+  assert.equal(depois.body.receita, antes.body.receita, 'fechar o acerto nao muda a receita');
+  assert.equal(depois.body.lucro, depois.body.receita - depois.body.custos.total);
+
+  // Total geral, comparativo e ranking batem com o do conjunto.
+  const geral = await admin().get(`/api/dre/geral?${qs}`);
+  const linha = geral.body.porConjunto.find((c) => c.conjunto_id === conjuntoId);
+  assert.equal(linha.custoComissaoMotorista, 40000);
+  assert.equal(linha.custoTotal, depois.body.custos.total);
+  assert.equal(geral.body.custoTotalVeiculos, geral.body.porConjunto.reduce((t, c) => t + c.custoTotal, 0));
+  const comp = await admin().get(`/api/dre/comparativo?${qs}`);
+  assert.equal(comp.body.atual.dre.custoTotal, geral.body.custoTotalVeiculos + geral.body.despesasBase.total);
+  const ranking = await admin().get('/api/relatorios/ranking-conjuntos?data_de=2026-10-01&data_ate=2026-10-31');
+  const rk = ranking.body.find((c) => c.conjunto_id === conjuntoId);
+  assert.equal(rk.custo, depois.body.custos.total);
+  assert.equal(rk.custo_comissao_motorista, 40000);
+
+  // Drill-down do pagamento do motorista; o pedagio nao existe como categoria do DRE.
+  const detalhe = await admin().get(`/api/dre/conjunto/${conjuntoId}/detalhe/comissaoMotorista?${qs}`);
+  assert.equal(detalhe.status, 200, JSON.stringify(detalhe.body));
+  assert.equal(detalhe.body.length, 1);
+  assert.equal(detalhe.body[0].valor, 40000);
+  assert.equal(detalhe.body[0].motorista_nome, 'MOTORISTA DRE COMISSAO');
+  assert.equal((await admin().get(`/api/dre/conjunto/${conjuntoId}/detalhe/pedagio?${qs}`)).status, 400);
+
+  // Fora do periodo da viagem, a comissao nao aparece.
+  const setembro = await admin().get(`/api/dre/conjunto/${conjuntoId}?data_inicio=2026-09-01&data_fim=2026-09-30`);
+  assert.equal(setembro.body.custos.comissaoMotorista, 0);
+});

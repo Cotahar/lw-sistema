@@ -9,7 +9,7 @@ const { hojeIsoBrasilia } = require('../utils/dataHora');
 const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
 const {
   somar, periodoRealizado, custosDoCentroCusto, receitaECustosDaViagemPorCentro, custosDiretosDoVeiculo, totaisGeraisDoPeriodo,
-  DATA_RECEITA_SQL, CATEGORIAS_CUSTO, conjuntoDonoPorVeiculo, resultadoDoConjunto, custosDeVeiculosSemComposicao,
+  DATA_RECEITA_SQL, CATEGORIAS_CUSTO, CATEGORIAS_CUSTO_CONJUNTO, DATA_VIAGEM_SQL, conjuntoDonoPorVeiculo, resultadoDoConjunto, custosDeVeiculosSemComposicao,
 } = require('../utils/dreHelper');
 
 const router = express.Router();
@@ -176,7 +176,7 @@ router.get('/conjunto/:conjuntoId', requerAcessoModulo('dre', 'Visualizar'), exi
   res.json({ conjunto, periodo: { inicio, fim }, ...resultado });
 }));
 
-const CATEGORIAS_DETALHE_CONJUNTO = ['receita', ...CATEGORIAS_CUSTO];
+const CATEGORIAS_DETALHE_CONJUNTO = ['receita', ...CATEGORIAS_CUSTO, ...CATEGORIAS_CUSTO_CONJUNTO];
 router.get('/conjunto/:conjuntoId/detalhe/:categoria', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const conjunto = buscarConjuntoDaEmpresa(req.params.conjuntoId, req.empresaId);
   const { categoria } = req.params;
@@ -192,6 +192,18 @@ router.get('/conjunto/:conjuntoId/detalhe/:categoria', requerAcessoModulo('dre',
       ORDER BY data DESC, f.id DESC
     `).all(conjunto.id, inicio, fim);
     return res.json(fretes);
+  }
+
+  // Custo do conjunto que nao e de uma placa: pagamento do motorista (comissao
+  // do acerto fechado), por viagem.
+  if (categoria === 'comissaoMotorista') {
+    return res.json(db.prepare(`
+      SELECT a.id, ${DATA_VIAGEM_SQL} AS data, a.valor_comissao AS valor, vg.id AS viagem_id, m.nome AS motorista_nome,
+             a.percentual_comissao_aplicado AS percentual
+      FROM acertos_viagem a JOIN viagens vg ON vg.id = a.viagem_id JOIN motoristas m ON m.id = vg.motorista_id
+      WHERE vg.conjunto_id = ? AND a.status = 'Fechado' AND ${DATA_VIAGEM_SQL} BETWEEN ? AND ?
+      ORDER BY data DESC, a.id DESC
+    `).all(conjunto.id, inicio, fim));
   }
 
   // Mesma regra de "dono" do resultado: custo de um veiculo so aparece no
@@ -254,6 +266,8 @@ router.get('/geral', requerAcessoModulo('dre', 'Visualizar'), asyncHandler(async
         custoTotal: r.custos.total,
         lucro: r.lucro,
         custoPorVeiculo: r.porVeiculo.map((v) => ({ veiculo_id: v.veiculo_id, placa: v.placa, tipo: v.tipo, custoTotal: v.custos.total })),
+        // Pagamento do motorista (comissao): custo do conjunto.
+        custoComissaoMotorista: r.custos.comissaoMotorista,
       });
     }
 

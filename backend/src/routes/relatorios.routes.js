@@ -536,11 +536,14 @@ router.get('/ranking-conjuntos', requerAcessoModulo('dre', 'Visualizar'), exigir
     const r = resultadoDoConjunto(c, inicio, fim, dono);
     if (!c.ativo && r.receita === 0 && r.custos.total === 0) return null;
     const custoTratora = r.porVeiculo.filter((v) => TIPOS_TRATORA.includes(v.tipo)).reduce((t, v) => t + v.custos.total, 0);
+    const custoReboque = r.porVeiculo.filter((v) => !TIPOS_TRATORA.includes(v.tipo)).reduce((t, v) => t + v.custos.total, 0);
     return {
       conjunto_id: c.id, conjunto: rotulos.get(c.id), nome: c.nome || `Conjunto #${c.id}`,
       placas: r.porVeiculo.map((v) => v.placa).join(' + '),
       receita: r.receita, custo: r.custos.total, lucro: r.lucro,
-      custo_tratora: custoTratora, custo_reboque: r.custos.total - custoTratora,
+      custo_tratora: custoTratora, custo_reboque: custoReboque,
+      // Pagamento do motorista (comissao): custo do conjunto.
+      custo_comissao_motorista: r.custos.comissaoMotorista,
       margem_pct: r.receita > 0 ? (r.lucro / r.receita) * 100 : null,
     };
   }).filter(Boolean);

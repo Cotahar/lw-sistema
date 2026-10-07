@@ -178,6 +178,38 @@ function veiculosDoConjunto(conjuntoId) {
   `).all(conjuntoId);
 }
 
+// Custo da VIAGEM que nao pertence a uma placa especifica, mas ao conjunto que a
+// fez: a COMISSAO DO MOTORISTA (acerto fechado). Entra no DRE do conjunto (a DRE
+// precisa de TODAS as despesas do conjunto, inclusive o pagamento do motorista).
+// Data de competencia = fim da viagem (sem data_fim, o inicio). Nao inclui
+// reembolsos nem descontos do acerto (repassam despesas que ja constam em outros
+// lancamentos) NEM o pedagio informado no acerto: ele e so informativo (resultado
+// da viagem); o pedagio entra no DRE pelo lancamento financeiro proprio, rateado
+// por centro de custo.
+const DATA_VIAGEM_SQL = 'COALESCE(vg.data_fim, vg.data_inicio)';
+const CATEGORIAS_CUSTO_CONJUNTO = ['comissaoMotorista'];
+
+function custosDeViagemDoConjunto(conjuntoId, inicio, fim) {
+  const comissaoMotorista = db.prepare(`
+    SELECT COALESCE(SUM(a.valor_comissao), 0) AS total
+    FROM acertos_viagem a JOIN viagens vg ON vg.id = a.viagem_id
+    WHERE vg.conjunto_id = ? AND a.status = 'Fechado' AND ${DATA_VIAGEM_SQL} BETWEEN ? AND ?
+  `).get(conjuntoId, inicio, fim).total;
+  return { comissaoMotorista };
+}
+
+// O mesmo, somado para a empresa toda (totais gerais / comparativo).
+function custosDeViagemDaEmpresa(empresaId, inicio, fim) {
+  const filtro = empresaId ? 'AND vg.empresa_id = ?' : '';
+  const extra = empresaId ? [empresaId] : [];
+  const comissaoMotorista = db.prepare(`
+    SELECT COALESCE(SUM(a.valor_comissao), 0) AS total
+    FROM acertos_viagem a JOIN viagens vg ON vg.id = a.viagem_id
+    WHERE a.status = 'Fechado' AND ${DATA_VIAGEM_SQL} BETWEEN ? AND ? ${filtro}
+  `).get(inicio, fim, ...extra).total;
+  return comissaoMotorista;
+}
+
 // Resultado de UM conjunto no periodo, com o custo de cada unidade.
 function resultadoDoConjunto(conjunto, inicio, fim, donoPorVeiculo) {
   const dono = donoPorVeiculo || conjuntoDonoPorVeiculo(conjunto.empresa_id);
@@ -188,6 +220,11 @@ function resultadoDoConjunto(conjunto, inicio, fim, donoPorVeiculo) {
     for (const chave of Object.keys(custos)) custos[chave] += c[chave];
     return { veiculo_id: v.id, placa: v.placa, tipo: v.tipo, custos: c, contabilizadoEmOutroConjunto: !proprio };
   });
+  // Pagamento do motorista (comissao): custo do conjunto, nao de uma placa - soma
+  // no total do conjunto.
+  const daViagem = custosDeViagemDoConjunto(conjunto.id, inicio, fim);
+  custos.comissaoMotorista = daViagem.comissaoMotorista;
+  custos.total += daViagem.comissaoMotorista;
   const receita = receitaDoConjunto(conjunto.id, inicio, fim);
   return { receita, custos, porVeiculo, lucro: receita - custos.total };
 }
@@ -230,12 +267,18 @@ function totaisGeraisDoPeriodo(empresaId, inicio, fim) {
     ? db.prepare("SELECT id FROM centros_custo WHERE tipo = 'Base' AND empresa_id = ?").all(empresaId)
     : db.prepare("SELECT id FROM centros_custo WHERE tipo = 'Base'").all();
   const custosBaseTotal = somar(centrosBase.map((c) => custosDoCentroCusto(c.id, inicio, fim).total));
+  // Comissao dos motoristas (custo do conjunto, nao de placa).
+  const custosDasViagens = custosDeViagemDaEmpresa(empresaId, inicio, fim);
 
-  return { receitaTotal, custoTotal: custoTotal + custosBaseTotal, lucroLiquido: receitaTotal - custoTotal - custosBaseTotal };
+  return {
+    receitaTotal,
+    custoTotal: custoTotal + custosBaseTotal + custosDasViagens,
+    lucroLiquido: receitaTotal - custoTotal - custosBaseTotal - custosDasViagens,
+  };
 }
 
 module.exports = {
   somar, periodoOuTudo, periodoRealizado, custosDoCentroCusto, receitaECustosDaViagemPorCentro, custosDiretosDoVeiculo, resultadoDoVeiculo, totaisGeraisDoPeriodo,
   DATA_RECEITA_SQL, CATEGORIAS_CUSTO, receitaTotalDoPeriodo, receitaDoConjunto, custosDoVeiculo, conjuntoDonoPorVeiculo, veiculosDoConjunto,
-  resultadoDoConjunto, custosDeVeiculosSemComposicao,
+  resultadoDoConjunto, custosDeVeiculosSemComposicao, CATEGORIAS_CUSTO_CONJUNTO, DATA_VIAGEM_SQL,
 };

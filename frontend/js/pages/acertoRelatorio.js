@@ -128,7 +128,9 @@ export async function renderRelatorio(root, params, query) {
   const valorPedagio = detalhamento.valorPedagio;
   // Pedagio: informativo no acerto (nao altera o saldo do motorista), mas e custo
   // da viagem - entra nas despesas, em Receitas - Despesas e no % de sobra.
-  const totalDespesas = totalDespesasLancadas + valorPedagio;
+  // A comissao do motorista (acerto fechado) tambem entra no somatorio de despesas.
+  const valorComissaoDespesa = acerto ? acerto.valor_comissao : 0;
+  const totalDespesas = totalDespesasLancadas + valorPedagio + valorComissaoDespesa;
   const receitasMenosDespesas = freteBrutoTotal - totalDespesas;
   const percentualSobra = freteBrutoTotal ? (receitasMenosDespesas / freteBrutoTotal) * 100 : null;
 
@@ -348,10 +350,11 @@ export async function renderRelatorio(root, params, query) {
           <h2 class="mb-2 mt-6 flex items-center gap-2 text-base font-bold text-zinc-900"><span class="h-4 w-1.5 rounded-full bg-zinc-400"></span>Demais despesas</h2>
           ${tabelaOutrasDespesas()}
           <div class="mb-4 flex items-center justify-between border-t-2 border-zinc-300 pt-2 text-sm font-bold text-zinc-900">
-            <span>${valorPedagio > 0 ? 'Despesas lancadas' : 'Total geral de despesas'}</span><span>${formatarMoeda(totalDespesasLancadas)}</span>
+            <span>${valorPedagio > 0 || valorComissaoDespesa > 0 ? 'Despesas lancadas' : 'Total geral de despesas'}</span><span>${formatarMoeda(totalDespesasLancadas)}</span>
           </div>
-          ${valorPedagio > 0 ? `
-            <div class="flex items-center justify-between py-1 text-sm text-zinc-700"><span>Pedagio da viagem (informado no acerto; nao altera o saldo do motorista)</span><span>${formatarMoeda(valorPedagio)}</span></div>
+          ${valorPedagio > 0 || valorComissaoDespesa > 0 ? `
+            ${valorPedagio > 0 ? `<div class="flex items-center justify-between py-1 text-sm text-zinc-700"><span>Pedagio da viagem (informado no acerto; nao altera o saldo do motorista)</span><span>${formatarMoeda(valorPedagio)}</span></div>` : ''}
+            ${valorComissaoDespesa > 0 ? `<div class="flex items-center justify-between py-1 text-sm text-zinc-700"><span>Comissao do motorista</span><span>${formatarMoeda(valorComissaoDespesa)}</span></div>` : ''}
             <div class="mb-4 flex items-center justify-between border-t-2 border-zinc-300 pt-2 text-sm font-bold text-zinc-900"><span>Total geral de despesas</span><span>${formatarMoeda(totalDespesas)}</span></div>
           ` : ''}
 
@@ -377,8 +380,9 @@ export async function renderRelatorio(root, params, query) {
         <h2 class="mb-2 mt-6 text-base font-bold text-zinc-900">Resumo financeiro (romaneio ao motorista)</h2>
         <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
           ${linha('Receitas (frete bruto total)', formatarMoeda(freteBrutoTotal))}
-          ${valorPedagio > 0 ? linha('Despesas lancadas', formatarMoeda(totalDespesasLancadas)) : ''}
+          ${valorPedagio > 0 || valorComissaoDespesa > 0 ? linha('Despesas lancadas', formatarMoeda(totalDespesasLancadas)) : ''}
           ${valorPedagio > 0 ? linha('Pedagio da viagem (nao altera o saldo do motorista)', formatarMoeda(valorPedagio)) : ''}
+          ${valorComissaoDespesa > 0 ? linha('Comissao do motorista', formatarMoeda(valorComissaoDespesa)) : ''}
           ${linha('Despesas da viagem', formatarMoeda(totalDespesas))}
           <div class="flex items-center justify-between border-t border-zinc-200 py-1 text-base font-bold text-zinc-900"><span>Receitas - Despesas</span><span class="${classeResultado}">${formatarMoeda(receitasMenosDespesas)}</span></div>
           ${linha('% de sobra (do faturamento)', percentualSobra !== null ? `<span class="${classeResultado}">${percentualSobra.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</span>` : '-')}
