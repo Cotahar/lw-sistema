@@ -216,8 +216,11 @@ router.delete('/itens/:itemId', requerAcessoModulo('acertos', 'Gerenciar'), exig
 // o lancamento do pedagio de verdade vem depois (um boleto agrupa varios
 // veiculos), por isso aqui e so um numero salvo na viagem pra constar nos
 // relatorios do acerto.
+// Por ser so informativo, tambem pode ser informado/corrigido DEPOIS do acerto
+// fechado: nao altera nenhum total congelado do acerto.
 router.put('/viagem/:viagemId/pedagio', requerAcessoModulo('acertos', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const antes = viagemAbertaParaAjustes(req.params.viagemId, req.empresaId);
+  const antes = db.prepare('SELECT * FROM viagens WHERE id = ? AND empresa_id = ?').get(req.params.viagemId, req.empresaId);
+  if (!antes) throw new ApiError(404, 'Viagem nao encontrada.');
   const { valor } = req.body;
   if (!Number.isInteger(valor) || valor < 0) throw new ApiError(400, 'Informe o valor do pedagio (zero ou mais).');
   db.prepare('UPDATE viagens SET valor_pedagio = ? WHERE id = ?').run(valor, antes.id);
@@ -250,9 +253,19 @@ router.post('/viagem/:viagemId/fechar', requerAcessoModulo('acertos', 'Gerenciar
     throw new ApiError(400, `Existem ${despesasPendentes} despesa(s) pendente(s) de validacao nesta viagem. Valide todas antes de fechar o acerto.`);
   }
 
-  const { percentual_comissao_aplicado, observacoes_ajustes } = req.body;
+  const { percentual_comissao_aplicado, observacoes_ajustes, valor_pedagio } = req.body;
+  if (valor_pedagio !== undefined && valor_pedagio !== null && (!Number.isInteger(valor_pedagio) || valor_pedagio < 0)) {
+    throw new ApiError(400, 'Informe o valor do pedagio (zero ou mais).');
+  }
 
   const resultado = withTransaction(db, () => {
+    // O pedagio digitado na tela vai JUNTO com o fechamento: dependia de um
+    // PUT separado disparado ao sair do campo, que podia perder a corrida
+    // contra o proprio fechamento (viagem Finalizada recusa o PUT) e o valor
+    // digitado sumia sem ninguem perceber.
+    if (valor_pedagio !== undefined && valor_pedagio !== null) {
+      db.prepare('UPDATE viagens SET valor_pedagio = ? WHERE id = ?').run(valor_pedagio, req.params.viagemId);
+    }
     const calculo = calcularAcerto(req.params.viagemId, req.empresaId, { percentual_comissao_aplicado });
 
     const info = db.prepare(`

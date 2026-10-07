@@ -127,7 +127,7 @@ test('detalhamento antes de fechar: despesa por conta do motorista + desconto ma
   assert.equal(res.body.valorPedagio, 123456);
 });
 
-test('fechar congela os totais; depois disso itens e pedagio nao mudam mais', async () => {
+test('fechar congela os totais; depois disso os itens nao mudam mais (o pedagio informativo ainda pode ser corrigido)', async () => {
   const fechar = await admin().post(`/api/acertos/viagem/${viagemId}/fechar`).send({ percentual_comissao_aplicado: 20 });
   assert.equal(fechar.status, 201, JSON.stringify(fechar.body));
   acertoId = fechar.body.id;
@@ -138,7 +138,11 @@ test('fechar congela os totais; depois disso itens e pedagio nao mudam mais', as
   assert.equal((await admin().post(`/api/acertos/viagem/${viagemId}/itens`).send({ tipo: 'Reembolso', descricao: 'tarde demais', valor: 100 })).status, 400);
   assert.equal((await admin().put(`/api/acertos/itens/${itemCaixinhaId}`).send({ valor: 1 })).status, 400);
   assert.equal((await admin().delete(`/api/acertos/itens/${itemCaixinhaId}`)).status, 400);
-  assert.equal((await admin().put(`/api/acertos/viagem/${viagemId}/pedagio`).send({ valor: 1 })).status, 400);
+  // Pedagio e so informativo: pode ser corrigido mesmo com o acerto fechado, sem mexer nos totais congelados.
+  const pedagioDepois = await admin().put(`/api/acertos/viagem/${viagemId}/pedagio`).send({ valor: 99999 });
+  assert.equal(pedagioDepois.status, 200, JSON.stringify(pedagioDepois.body));
+  assert.equal(db.prepare('SELECT saldo_final FROM acertos_viagem WHERE id = ?').get(acertoId).saldo_final, 35000);
+  assert.equal((await admin().put(`/api/acertos/viagem/${viagemId}/pedagio`).send({ valor: 123456 })).status, 200);
 });
 
 test('detalhamento de acerto antigo reconcilia com o total gravado (linha "Sem detalhamento")', async () => {

@@ -523,6 +523,7 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
         const acerto = await post(`/acertos/viagem/${viagem.id}/fechar`, {
           percentual_comissao_aplicado: form.percentual.value !== '' ? Number(form.percentual.value) : undefined,
           observacoes_ajustes: form.observacoes.value || null,
+          valor_pedagio: getMoedaValue(form.pedagio), // vai junto: nao depende do 'change' do campo
         });
         limparRascunho(viagem.id);
         sujo = false;
@@ -643,7 +644,13 @@ async function renderFechado(container, viagem, motorista, acerto, gerenciar) {
       ${linha('Receitas &minus; Despesas', valorResultado(freteBrutoTotal - despesasTotal), true)}
       ${acerto.valor_imposto > 0 ? linha(`Imposto (${acerto.percentual_imposto_aplicado}%)`, `- ${formatarMoeda(acerto.valor_imposto)}`) : ''}
       ${acerto.valor_imposto > 0 ? linha('Base de calculo da comissao (bruto - imposto)', formatarMoeda(baseCalculoComissao)) : ''}
-      ${detalhamento.valorPedagio > 0 ? linha('Pedagio da viagem (informativo - nao altera o saldo)', formatarMoeda(detalhamento.valorPedagio)) : ''}
+      <div class="flex flex-wrap items-center justify-between gap-2 py-1.5 text-sm text-slate-600" data-linha-pedagio>
+        <span>Pedagio da viagem (informativo - nao altera o saldo)</span>
+        <span class="flex items-center gap-2">
+          <span class="font-medium" data-pedagio-valor>${formatarMoeda(detalhamento.valorPedagio)}</span>
+          ${gerenciar ? '<button type="button" class="text-xs text-gray-900 hover:underline" data-editar-pedagio>Informar/editar</button>' : ''}
+        </span>
+      </div>
     </div>
     <div class="grid grid-cols-1 gap-6 border-t border-slate-200 pt-4 sm:grid-cols-2">
       <div>
@@ -674,6 +681,38 @@ async function renderFechado(container, viagem, motorista, acerto, gerenciar) {
     </div>
     ${acerto.observacoes_ajustes ? `<p class="mt-3 text-sm text-slate-500">Obs.: ${esc(acerto.observacoes_ajustes)}</p>` : ''}
   `;
+
+  // Pedagio e so informativo: pode ser informado/corrigido mesmo com o acerto fechado.
+  const btnEditarPedagio = container.querySelector('[data-editar-pedagio]');
+  if (btnEditarPedagio) {
+    btnEditarPedagio.addEventListener('click', () => {
+      const form = document.createElement('form');
+      form.className = 'space-y-4';
+      form.innerHTML = `
+        <p class="text-sm text-slate-500">Valor do pedagio desta viagem. Fica so como informacao nos relatorios do acerto - nao gera lancamento nem altera o saldo.</p>
+        <div class="max-w-[12rem]"><label class="label">Pedagio da viagem</label><input type="text" name="valor" class="input" /></div>
+        <p class="hidden text-sm text-red-600" data-erro></p>
+        <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Salvar pedagio</button></div>
+      `;
+      attachMoedaMaskReais(form.valor, detalhamento.valorPedagio || 0);
+      const erro = form.querySelector('[data-erro]');
+      form.addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        erro.classList.add('hidden');
+        try {
+          const res = await put(`/acertos/viagem/${viagem.id}/pedagio`, { valor: getMoedaValue(form.valor) });
+          detalhamento.valorPedagio = res.valor_pedagio;
+          container.querySelector('[data-pedagio-valor]').textContent = formatarMoeda(res.valor_pedagio);
+          fecharModal();
+          mostrarToast('Pedagio salvo (informativo).');
+        } catch (err) {
+          erro.textContent = err.message;
+          erro.classList.remove('hidden');
+        }
+      });
+      abrirModal({ titulo: 'Pedagio da viagem', conteudo: form, largura: 'max-w-sm' });
+    });
+  }
 
   container.querySelectorAll('[data-relatorio]').forEach((btn) => {
     btn.addEventListener('click', () => {
