@@ -187,7 +187,19 @@ router.get('/:id', requerAcessoModulo('contas_pagar', 'Visualizar'), exigirEmpre
       };
     }
   }
-  res.json({ ...conta, despesa_info });
+  // Despesa fixa RATEADA entre centros de custo: a conta e uma so (total); mostra
+  // a parte de cada centro.
+  let rateio = null;
+  if (conta.origem_tipo === 'DespesaFixa') {
+    const linhas = db.prepare(`
+      SELECT df.id, df.valor, df.centro_custo_id, cc.nome AS centro_custo_nome
+      FROM despesas_fixas df JOIN centros_custo cc ON cc.id = df.centro_custo_id
+      WHERE df.rateio_id = (SELECT rateio_id FROM despesas_fixas WHERE id = ?) AND df.rateio_id IS NOT NULL
+      ORDER BY df.id
+    `).all(conta.origem_id);
+    if (linhas.length) rateio = linhas;
+  }
+  res.json({ ...conta, despesa_info, rateio });
 }));
 
 // Conta a pagar avulsa (nao gerada automaticamente por outro modulo).
@@ -249,12 +261,13 @@ router.put('/:id', requerAcessoModulo('contas_pagar', 'Gerenciar'), exigirEmpres
 // (ajustarValorConta=true) antes de aceitar - ela reajusta o valor
 // original do lancamento pra refletir o que foi realmente pago/descontado.
 router.post('/:id/baixar', requerAcessoModulo('contas_pagar', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const { conta_bancaria_id, valor_pago, desconto, data_pagamento, ajustarValorConta } = req.body;
-  if (!conta_bancaria_id) throw new ApiError(400, 'Informe a conta bancaria de origem do pagamento.');
+  const { conta_bancaria_id, valor_pago, desconto, data_pagamento, ajustarValorConta, sem_pagamento, valor_sem_pagamento } = req.body;
+  if (!sem_pagamento && !conta_bancaria_id) throw new ApiError(400, 'Informe a conta bancaria de origem do pagamento.');
 
   const resultado = withTransaction(db, () => baixarContaPagar({
     empresaId: req.empresaId, usuarioId: req.usuario.id, contaId: req.params.id, contaBancariaId: conta_bancaria_id,
     valorPago: valor_pago, desconto, dataPagamento: data_pagamento, ajustarValorConta,
+    semPagamento: Boolean(sem_pagamento), valorSemPagamento: valor_sem_pagamento,
   }));
 
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'contas_pagar', registroId: resultado.contaPagar.id, acao: 'UPDATE', antes: resultado.antes, depois: resultado.contaPagar });
@@ -267,8 +280,9 @@ router.post('/:id/baixar', requerAcessoModulo('contas_pagar', 'Gerenciar'), exig
 // conta gera a propria movimentacao de caixa e o proprio registro de
 // auditoria, igual a baixa individual. Valor acima do restante nao e aceito
 // aqui (o ajuste de valor continua sendo feito na baixa individual).
-// itens: [{ id, valor_pago?, desconto?, conta_bancaria_id? }] - sem valor_pago,
-// paga o restante; sem conta_bancaria_id na linha, usa a conta do lote.
+// itens: [{ id, valor_pago?, desconto?, conta_bancaria_id?, sem_pagamento? }] - sem
+// valor_pago, paga o restante; sem conta_bancaria_id na linha, usa a conta do lote;
+// sem_pagamento:true quita a linha SEM valor pago e sem conta (nada sai do caixa).
 router.post('/baixar-lote', requerAcessoModulo('contas_pagar', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const { conta_bancaria_id, data_pagamento, itens } = req.body;
   if (!Array.isArray(itens) || !itens.length) throw new ApiError(400, 'Selecione ao menos uma conta a pagar.');
@@ -282,11 +296,12 @@ router.post('/baixar-lote', requerAcessoModulo('contas_pagar', 'Gerenciar'), exi
 
   const resultados = withTransaction(db, () => itens.map((item) => {
     const contaBancariaId = item.conta_bancaria_id || conta_bancaria_id;
-    if (!contaBancariaId) throw new ApiError(400, 'Informe a conta bancaria de origem do pagamento.');
+    if (!item.sem_pagamento && !contaBancariaId) throw new ApiError(400, 'Informe a conta bancaria de origem do pagamento.');
     try {
       return baixarContaPagar({
         empresaId: req.empresaId, usuarioId: req.usuario.id, contaId: item.id, contaBancariaId,
         valorPago: item.valor_pago, desconto: item.desconto, dataPagamento: data_pagamento, ajustarValorConta: false,
+        semPagamento: Boolean(item.sem_pagamento), valorSemPagamento: item.valor_sem_pagamento,
       });
     } catch (err) {
       // Diz QUAL conta barrou o lote (o erro original so fala do valor/status).

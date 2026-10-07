@@ -5,7 +5,7 @@ import { criarNovoFornecedor } from '../../components/fornecedorQuickCreate.js';
 import { abrirModal, fecharModal, confirmarAcao } from '../../components/modal.js';
 import { mostrarToast, mostrarErro } from '../../components/toast.js';
 import { criarOcorrencias } from '../../components/ocorrencias.js';
-import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr, hojeIsoLocal, attachUppercaseInput } from '../../masks.js';
+import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr, hojeIsoLocal, attachUppercaseInput } from '../../masks.js';
 
 const STATUS_BADGE = { Pendente: 'badge-atencao', Parcial: 'badge-atencao', Pago: 'badge-sucesso', Atrasado: 'badge-critico' };
 const STATUS_OPCOES = [
@@ -99,7 +99,7 @@ async function abrirBaixaLote(contas, recarregar) {
     <div class="overflow-x-auto rounded-lg border border-slate-200">
       <table class="w-full min-w-max text-sm">
         <thead class="bg-slate-50 text-left text-xs uppercase text-slate-500">
-          <tr><th class="px-2 py-1.5">Conta a pagar</th><th class="px-2 py-1.5">Venc.</th><th class="px-2 py-1.5 text-right">Restante</th><th class="px-2 py-1.5">Valor a pagar</th><th class="px-2 py-1.5">Desconto</th><th class="px-2 py-1.5">Conta de saida</th></tr>
+          <tr><th class="px-2 py-1.5">Conta a pagar</th><th class="px-2 py-1.5">Venc.</th><th class="px-2 py-1.5 text-right">Restante</th><th class="px-2 py-1.5">Valor a pagar</th><th class="px-2 py-1.5">Desconto</th><th class="px-2 py-1.5">Conta de saida</th><th class="px-2 py-1.5 text-center" title="Quita o restante sem valor pago e sem conta: nada sai do caixa">Sem pagamento</th></tr>
         </thead>
         <tbody data-linhas>
           ${contas.map((c) => `
@@ -110,11 +110,12 @@ async function abrirBaixaLote(contas, recarregar) {
               <td class="px-2 py-1.5"><input type="text" class="input w-32" data-valor /></td>
               <td class="px-2 py-1.5"><input type="text" class="input w-28" data-desconto /></td>
               <td class="px-2 py-1.5"><select class="input w-44" data-conta-linha>${opcoesConta}</select></td>
+              <td class="px-2 py-1.5 text-center"><input type="checkbox" class="h-4 w-4" data-sem-pagamento /></td>
             </tr>
           `).join('')}
         </tbody>
         <tfoot class="border-t border-slate-200 bg-slate-50 font-semibold">
-          <tr><td class="px-2 py-1.5" colspan="3">Total do lote (<span data-qtd>${contas.length}</span> conta(s))</td><td class="px-2 py-1.5" data-total-pago colspan="3"></td></tr>
+          <tr><td class="px-2 py-1.5" colspan="3">Total do lote (<span data-qtd>${contas.length}</span> conta(s))</td><td class="px-2 py-1.5" data-total-pago colspan="4"></td></tr>
         </tfoot>
       </table>
     </div>
@@ -133,6 +134,13 @@ async function abrirBaixaLote(contas, recarregar) {
     attachMoedaMaskReais(tr.querySelector('[data-desconto]'), 0);
     tr.querySelector('[data-conta-linha]').value = String(contaPadrao);
     tr.querySelector('[data-conta-linha]').addEventListener('change', () => contaEditadaNaLinha.add(tr.dataset.id));
+    // Sem pagamento: quita o restante todo sem valor pago e sem conta (nada sai do caixa).
+    tr.querySelector('[data-sem-pagamento]').addEventListener('change', (ev) => {
+      const marcado = ev.target.checked;
+      for (const sel of ['[data-valor]', '[data-desconto]', '[data-conta-linha]']) tr.querySelector(sel).disabled = marcado;
+      tr.classList.toggle('opacity-70', marcado);
+      atualizarTotal();
+    });
   }
 
   function lerLinha(tr) {
@@ -142,14 +150,17 @@ async function abrirBaixaLote(contas, recarregar) {
       valor_pago: getMoedaValue(tr.querySelector('[data-valor]')),
       desconto: getMoedaValue(tr.querySelector('[data-desconto]')),
       conta_bancaria_id: Number(tr.querySelector('[data-conta-linha]').value),
+      sem_pagamento: tr.querySelector('[data-sem-pagamento]').checked,
     };
   }
 
   function atualizarTotal() {
     const lidas = linhas.map(lerLinha);
-    const total = lidas.reduce((t, l) => t + l.valor_pago, 0);
-    const desconto = lidas.reduce((t, l) => t + l.desconto, 0);
-    corpo.querySelector('[data-total-pago]').textContent = `${formatarMoeda(total)} a pagar${desconto ? ` + ${formatarMoeda(desconto)} de desconto` : ''}`;
+    const pagaveis = lidas.filter((l) => !l.sem_pagamento);
+    const total = pagaveis.reduce((t, l) => t + l.valor_pago, 0);
+    const desconto = pagaveis.reduce((t, l) => t + l.desconto, 0);
+    const semPagamento = lidas.filter((l) => l.sem_pagamento).reduce((t, l) => t + l.restante, 0);
+    corpo.querySelector('[data-total-pago]').textContent = `${formatarMoeda(total)} a pagar${desconto ? ` + ${formatarMoeda(desconto)} de desconto` : ''}${semPagamento ? ` + ${formatarMoeda(semPagamento)} baixados sem pagamento` : ''}`;
   }
   corpo.conta_lote.addEventListener('change', () => {
     for (const tr of linhas) {
@@ -164,7 +175,7 @@ async function abrirBaixaLote(contas, recarregar) {
     ev.preventDefault();
     erro.classList.add('hidden');
     const lidas = linhas.map(lerLinha);
-    for (const l of lidas) {
+    for (const l of lidas.filter((x) => !x.sem_pagamento)) {
       const conta = contas.find((c) => c.id === l.id);
       if (l.valor_pago + l.desconto <= 0) { erro.textContent = `"${conta.descricao}": informe um valor a pagar ou um desconto.`; erro.classList.remove('hidden'); return; }
       if (l.valor_pago + l.desconto > l.restante) { erro.textContent = `"${conta.descricao}": valor a pagar + desconto passa do restante (${formatarMoeda(l.restante)}). Ajuste o valor ou faca a baixa individual dessa conta.`; erro.classList.remove('hidden'); return; }
@@ -174,7 +185,7 @@ async function abrirBaixaLote(contas, recarregar) {
 
     // Saldo: avisa (sem bloquear) quando a saida do lote deixa alguma conta negativa.
     const saidaPorConta = new Map();
-    for (const l of lidas) saidaPorConta.set(l.conta_bancaria_id, (saidaPorConta.get(l.conta_bancaria_id) || 0) + l.valor_pago);
+    for (const l of lidas.filter((x) => !x.sem_pagamento)) saidaPorConta.set(l.conta_bancaria_id, (saidaPorConta.get(l.conta_bancaria_id) || 0) + l.valor_pago);
     const negativas = [...saidaPorConta].map(([id, saida]) => ({ conta: contasBancarias.find((c) => c.id === id), saida }))
       .filter(({ conta, saida }) => conta && saida > conta.saldo_atual);
     if (negativas.length) {
@@ -193,10 +204,12 @@ async function abrirBaixaLote(contas, recarregar) {
       const res = await post('/contas-pagar/baixar-lote', {
         conta_bancaria_id: Number(corpo.conta_lote.value),
         data_pagamento: dataIso,
-        itens: lidas.map((l) => ({ id: l.id, valor_pago: l.valor_pago, desconto: l.desconto, conta_bancaria_id: l.conta_bancaria_id })),
+        itens: lidas.map((l) => (l.sem_pagamento
+          ? { id: l.id, sem_pagamento: true }
+          : { id: l.id, valor_pago: l.valor_pago, desconto: l.desconto, conta_bancaria_id: l.conta_bancaria_id })),
       });
       fecharModal();
-      mostrarToast(`${res.quantidade} conta(s) paga(s): ${formatarMoeda(res.total_pago)}.`);
+      mostrarToast(`${res.quantidade} conta(s) baixada(s): ${formatarMoeda(res.total_pago)} pagos.`);
       recarregar();
     } catch (err) {
       erro.textContent = err.message;
@@ -281,10 +294,14 @@ async function abrirBaixa(conta, recarregar) {
   form.className = 'space-y-4';
   form.innerHTML = `
     <p class="text-sm text-slate-600">Restante a pagar: <span class="font-medium">${formatarMoeda(restante)}</span></p>
-    <div><label class="label">Conta bancaria *</label><div data-conta></div></div>
+    <label class="flex items-start gap-2 rounded-lg border border-slate-200 p-3 text-sm text-slate-700">
+      <input type="checkbox" name="sem_pagamento" class="mt-0.5 h-4 w-4" />
+      <span><span class="font-medium">Baixar sem pagamento</span><br /><span class="text-xs text-slate-400">Quita a conta sem valor pago e sem conta bancaria - nada sai do caixa. Use quando foi paga por outro meio, compensada ou cancelada.</span></span>
+    </label>
+    <div data-bloco-conta><label class="label">Conta bancaria *</label><div data-conta></div></div>
     <div class="grid grid-cols-2 gap-3">
-      <div><label class="label">Valor a baixar *</label><input type="text" name="valor_pago" class="input" required /></div>
-      <div><label class="label">Desconto</label><input type="text" name="desconto" class="input" /></div>
+      <div><label class="label" data-label-valor>Valor a baixar *</label><input type="text" name="valor_pago" class="input" required /></div>
+      <div data-bloco-desconto><label class="label">Desconto</label><input type="text" name="desconto" class="input" /></div>
     </div>
     <div><label class="label">Data do pagamento</label><input type="text" name="data_pagamento" class="input" /></div>
     <p class="hidden text-sm text-red-600" data-erro></p>
@@ -296,9 +313,25 @@ async function abrirBaixa(conta, recarregar) {
   const contaSelect = criarSearchableSelect({ buscar: buscarContasBancarias, placeholder: 'Pesquisar conta...' });
   form.querySelector('[data-conta]').appendChild(contaSelect.el);
   const erro = form.querySelector('[data-erro]');
+  form.sem_pagamento.addEventListener('change', () => {
+    const sem = form.sem_pagamento.checked;
+    form.querySelector('[data-bloco-conta]').classList.toggle('hidden', sem);
+    form.querySelector('[data-bloco-desconto]').classList.toggle('hidden', sem);
+    form.querySelector('[data-label-valor]').textContent = sem ? 'Valor a baixar sem pagamento *' : 'Valor a baixar *';
+    form.querySelector('button[type="submit"]').textContent = sem ? 'Baixar sem pagamento' : 'Baixar';
+    setMoedaValue(form.valor_pago, restante);
+  });
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     erro.classList.add('hidden');
+    if (form.sem_pagamento.checked) {
+      await enviarBaixa(conta, {
+        sem_pagamento: true,
+        valor_sem_pagamento: getMoedaValue(form.valor_pago),
+        data_pagamento: form.data_pagamento.value ? parseDataBrParaIso(form.data_pagamento.value) : null,
+      }, recarregar, erro);
+      return;
+    }
     const conta_bancaria_id = contaSelect.getValue();
     if (!conta_bancaria_id) { erro.textContent = 'Selecione a conta bancaria.'; erro.classList.remove('hidden'); return; }
     await enviarBaixa(conta, {
@@ -341,6 +374,12 @@ async function abrirDetalhes(conta, recarregar, gerenciar) {
           <p class="text-slate-600">Pago em dinheiro pelo motorista: <span class="font-medium text-slate-900">${formatarMoeda(contaAtual.despesa_info.valor_pago_dinheiro)}</span></p>
         </div>
       ` : ''}
+      ${contaAtual.rateio ? `
+        <div class="mb-4 rounded-lg border border-slate-200 p-3 text-sm">
+          <p class="mb-1 font-medium text-slate-900">Despesa rateada entre ${contaAtual.rateio.length} centros de custo</p>
+          ${contaAtual.rateio.map((r) => `<div class="flex justify-between py-0.5 text-slate-600"><span>${r.centro_custo_nome}</span><span class="font-medium text-slate-900">${formatarMoeda(r.valor)}</span></div>`).join('')}
+        </div>
+      ` : ''}
       <p class="mb-2 text-sm font-semibold text-slate-900">Historico de baixas</p>
       <table class="w-full text-sm">
         <thead><tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500"><th class="py-1">Data</th><th class="py-1">Conta bancaria</th><th class="py-1 text-right">Valor</th></tr></thead>
@@ -348,7 +387,7 @@ async function abrirDetalhes(conta, recarregar, gerenciar) {
           ${movimentacoes.map((m) => `<tr class="border-b border-slate-100"><td class="py-1">${formatarDataBr(m.data)}</td><td class="py-1">${m.conta_bancaria_nome || '-'}</td><td class="py-1 text-right">${formatarMoeda(m.valor)}</td></tr>`).join('') || '<tr><td colspan="3" class="py-3 text-center text-slate-400">Nenhuma baixa em dinheiro lancada.</td></tr>'}
         </tbody>
       </table>
-      ${contaAtual.valor_descontado > 0 ? `<p class="mt-2 text-xs text-slate-500">+ ${formatarMoeda(contaAtual.valor_descontado)} em desconto (nao movimenta caixa).</p>` : ''}
+      ${contaAtual.valor_descontado > 0 ? `<p class="mt-2 text-xs text-slate-500">+ ${formatarMoeda(contaAtual.valor_descontado)} em desconto ou baixa sem pagamento (nao movimenta caixa; veja as Ocorrencias).</p>` : ''}
       <p class="mt-3 hidden text-sm text-red-600" data-erro></p>
       ${podeEstornar ? '<div class="mt-4 flex justify-end"><button type="button" class="btn-danger btn-sm" data-estornar>Estornar baixa</button></div>' : ''}
     `;

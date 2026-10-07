@@ -21,7 +21,8 @@ function buscarDespesaFixaCompleta(id, empresaId) {
   const despesa = db.prepare('SELECT * FROM despesas_fixas WHERE id = ? AND empresa_id = ?').get(id, empresaId);
   if (!despesa) return null;
   const parcelas = db.prepare('SELECT * FROM despesa_fixa_parcelas WHERE despesa_fixa_id = ? ORDER BY numero_parcela').all(id);
-  return { ...despesa, parcelas };
+  const rateio = despesa.rateio_id ? db.prepare('SELECT id, centro_custo_id, valor FROM despesas_fixas WHERE rateio_id = ? ORDER BY id').all(despesa.rateio_id) : null;
+  return { ...despesa, parcelas, rateio };
 }
 
 // Despesas recorrentes/fixas nao ligadas a uma viagem (seguro, rastreamento,
@@ -35,12 +36,83 @@ router.get('/', requerAcessoModulo('despesas_fixas', 'Visualizar'), exigirEmpres
   if (data_cadastro_ate) { condicoes.push('date(criado_em) <= ?'); params.push(data_cadastro_ate); }
   if (data_vencimento_de) { condicoes.push('data >= ?'); params.push(data_vencimento_de); }
   if (data_vencimento_ate) { condicoes.push('data <= ?'); params.push(data_vencimento_ate); }
-  const rows = db.prepare(`SELECT * FROM despesas_fixas WHERE ${condicoes.join(' AND ')} ORDER BY data DESC, id DESC`).all(...params);
+  const rows = db.prepare(`
+    SELECT d.*,
+           (SELECT SUM(r.valor) FROM despesas_fixas r WHERE r.rateio_id = d.rateio_id) AS rateio_total,
+           (SELECT COUNT(*) FROM despesas_fixas r WHERE r.rateio_id = d.rateio_id) AS rateio_qtd
+    FROM despesas_fixas d WHERE ${condicoes.join(' AND ').replace(/(^|\s|\()(centro_custo_id|criado_em|data|empresa_id)\b/g, '$1d.$2')} ORDER BY d.data DESC, d.id DESC
+  `).all(...params);
   res.json(rows);
 }));
 
+// Lancamento RATEADO: um valor total (ex.: Sem Parar R$ 10.000) dividido entre
+// varios centros de custo (placas / Base). Gera UMA conta a pagar com o total e
+// uma linha de despesa fixa por centro (a parte de cada um - e o que o DRE soma
+// por placa/conjunto). Sem parcelamento.
+function criarDespesaRateada(req) {
+  const { rateios, categoria_id, valor, data, recorrente, descricao, qtd_parcelas, fornecedor_id, data_vencimento } = req.body;
+  if (qtd_parcelas) throw new ApiError(400, 'Despesa rateada entre centros de custo nao pode ser parcelada.');
+  if (!categoria_id) throw new ApiError(400, 'Informe a categoria da despesa.');
+  if (!Array.isArray(rateios) || rateios.length < 2) throw new ApiError(400, 'Informe ao menos 2 centros de custo para ratear a despesa.');
+  const ids = rateios.map((r) => Number(r.centro_custo_id));
+  if (ids.some((id) => !Number.isInteger(id) || id <= 0)) throw new ApiError(400, 'Cada linha do rateio precisa de um centro de custo.');
+  if (new Set(ids).size !== ids.length) throw new ApiError(400, 'O mesmo centro de custo aparece mais de uma vez no rateio.');
+  if (rateios.some((r) => !Number.isInteger(r.valor) || r.valor <= 0)) throw new ApiError(400, 'Cada centro de custo precisa de um valor maior que zero.');
+  const soma = rateios.reduce((t, r) => t + r.valor, 0);
+  if (valor !== undefined && valor !== null && valor !== soma) {
+    throw new ApiError(400, `A soma do rateio (${(soma / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}) nao bate com o valor total informado (${(valor / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}).`);
+  }
+  const categoria = db.prepare('SELECT nome FROM categorias_despesa WHERE id = ?').get(categoria_id);
+  if (!categoria) throw new ApiError(400, 'Categoria nao encontrada.');
+  const centros = ids.map((id) => {
+    const c = db.prepare('SELECT * FROM centros_custo WHERE id = ? AND empresa_id = ?').get(id, req.empresaId);
+    if (!c) throw new ApiError(400, `Centro de custo #${id} nao encontrado.`);
+    return c;
+  });
+  if (fornecedor_id) {
+    const f = db.prepare('SELECT id FROM fornecedores WHERE id = ? AND empresa_id = ?').get(fornecedor_id, req.empresaId);
+    if (!f) throw new ApiError(400, 'Fornecedor nao encontrado.');
+  }
+  const nomeDescricao = descricao ? String(descricao).toUpperCase() : null;
+
+  return withTransaction(db, () => {
+    const inserir = db.prepare(`
+      INSERT INTO despesas_fixas (empresa_id, centro_custo_id, categoria_id, valor, data, recorrente, descricao, criado_por)
+      VALUES (?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), ?, ?, ?)
+    `);
+    const linhasIds = rateios.map((r) => inserir.run(req.empresaId, r.centro_custo_id, categoria_id, r.valor, data || null, recorrente ? 1 : 0, nomeDescricao, req.usuario.id).lastInsertRowid);
+    const principalId = linhasIds[0];
+    db.prepare(`UPDATE despesas_fixas SET rateio_id = ? WHERE id IN (${linhasIds.map(() => '?').join(',')})`).run(principalId, ...linhasIds);
+    const nomeConta = `${categoria.nome} - RATEIO ENTRE ${centros.length} CENTROS DE CUSTO${nomeDescricao ? ` - ${nomeDescricao}` : ''}`.toUpperCase();
+    const conta = db.prepare(`
+      INSERT INTO contas_pagar (empresa_id, fornecedor_id, centro_custo_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
+      VALUES (?, ?, NULL, ?, ?, COALESCE(?, ?, date('now', '-3 hours')), 'Pendente', 'DespesaFixa', ?)
+    `).run(req.empresaId, fornecedor_id || null, nomeConta, soma, data_vencimento || null, data || null, principalId);
+    const despesas = db.prepare(`SELECT * FROM despesas_fixas WHERE rateio_id = ? ORDER BY id`).all(principalId);
+    return { rateio_id: principalId, valor_total: soma, conta_pagar_id: conta.lastInsertRowid, despesas };
+  });
+}
+
+// Exclui o lancamento rateado INTEIRO (todas as linhas + a conta unica) - so se
+// a conta ainda nao teve pagamento.
+function excluirGrupoRateio(rateioId) {
+  const conta = db.prepare("SELECT * FROM contas_pagar WHERE origem_tipo = 'DespesaFixa' AND origem_id = ?").get(rateioId);
+  if (conta && conta.status !== 'Pendente') throw new ApiError(400, 'Este lancamento rateado ja possui pagamento lancado e nao pode ser excluido.');
+  return withTransaction(db, () => {
+    if (conta) db.prepare('DELETE FROM contas_pagar WHERE id = ?').run(conta.id);
+    db.prepare('DELETE FROM despesas_fixas WHERE rateio_id = ?').run(rateioId);
+  });
+}
+
 router.post('/', requerAcessoModulo('despesas_fixas', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const { centro_custo_id, categoria_id, valor, data, recorrente, descricao, qtd_parcelas, primeira_parcela_vencimento } = req.body;
+  if (req.body.rateios !== undefined) {
+    const resultado = criarDespesaRateada(req);
+    for (const d of resultado.despesas) {
+      registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'despesas_fixas', registroId: d.id, acao: 'INSERT', depois: d });
+    }
+    return res.status(201).json(resultado);
+  }
+  const { centro_custo_id, categoria_id, valor, data, recorrente, descricao, qtd_parcelas, primeira_parcela_vencimento, fornecedor_id, data_vencimento } = req.body;
   if (!centro_custo_id || !categoria_id || valor === undefined) {
     throw new ApiError(400, 'Preencha centro_custo_id, categoria_id e valor.');
   }
@@ -77,9 +149,9 @@ router.post('/', requerAcessoModulo('despesas_fixas', 'Gerenciar'), exigirEmpres
       }
     } else {
       db.prepare(`
-        INSERT INTO contas_pagar (empresa_id, centro_custo_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
-        VALUES (?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), 'Pendente', 'DespesaFixa', ?)
-      `).run(req.empresaId, centro_custo_id, nomeBase, valor, data || null, nova.id);
+        INSERT INTO contas_pagar (empresa_id, fornecedor_id, centro_custo_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
+        VALUES (?, ?, ?, ?, ?, COALESCE(?, ?, date('now', '-3 hours')), 'Pendente', 'DespesaFixa', ?)
+      `).run(req.empresaId, fornecedor_id || null, centro_custo_id, nomeBase, valor, data_vencimento || null, data || null, nova.id);
     }
 
     return buscarDespesaFixaCompleta(nova.id, req.empresaId);
@@ -98,6 +170,12 @@ router.get('/:id', requerAcessoModulo('despesas_fixas', 'Visualizar'), exigirEmp
 router.put('/:id', requerAcessoModulo('despesas_fixas', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const antes = db.prepare('SELECT * FROM despesas_fixas WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
   if (!antes) throw new ApiError(404, 'Despesa fixa nao encontrada.');
+  // Linha de um lancamento rateado: o valor/data/categoria definem o rateio e a
+  // conta unica - mudar so uma parte desfaria a soma. Corrige-se excluindo o
+  // lancamento rateado e lancando de novo.
+  if (antes.rateio_id && ['valor', 'data', 'categoria_id'].some((c) => req.body[c] !== undefined && req.body[c] !== antes[c])) {
+    throw new ApiError(400, 'Esta despesa faz parte de um lancamento rateado: valor, data e categoria nao podem ser alterados. Exclua o rateio e lance de novo.');
+  }
   const campos = ['categoria_id', 'valor', 'data', 'recorrente', 'descricao'];
   const sets = [];
   const valores = [];
@@ -114,6 +192,13 @@ router.put('/:id', requerAcessoModulo('despesas_fixas', 'Gerenciar'), exigirEmpr
 router.delete('/:id', requerAcessoModulo('despesas_fixas', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const antes = buscarDespesaFixaCompleta(req.params.id, req.empresaId);
   if (!antes) throw new ApiError(404, 'Despesa fixa nao encontrada.');
+
+  if (antes.rateio_id) {
+    const grupo = db.prepare('SELECT * FROM despesas_fixas WHERE rateio_id = ?').all(antes.rateio_id);
+    excluirGrupoRateio(antes.rateio_id);
+    for (const d of grupo) registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'despesas_fixas', registroId: d.id, acao: 'DELETE', antes: d });
+    return res.status(204).send();
+  }
 
   if (antes.qtd_parcelas) {
     const temParcelaPaga = antes.parcelas.some((p) => p.status === 'Paga');
@@ -137,9 +222,18 @@ router.delete('/:id', requerAcessoModulo('despesas_fixas', 'Gerenciar'), exigirE
 router.post('/batch-delete', requerAcessoModulo('despesas_fixas', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const { ids } = req.body;
   if (!Array.isArray(ids) || !ids.length) throw new ApiError(400, 'Informe a lista de ids a excluir.');
+  const gruposJaTratados = new Set();
   const registros = ids.map((id) => {
     const antes = buscarDespesaFixaCompleta(id, req.empresaId);
     if (!antes) throw new ApiError(404, `Despesa fixa #${id} nao encontrada.`);
+    if (antes.rateio_id) {
+      // Lancamento rateado: apaga o grupo inteiro (uma vez so, mesmo com varias linhas marcadas).
+      if (gruposJaTratados.has(antes.rateio_id)) return null;
+      gruposJaTratados.add(antes.rateio_id);
+      const conta = db.prepare("SELECT * FROM contas_pagar WHERE origem_tipo = 'DespesaFixa' AND origem_id = ?").get(antes.rateio_id);
+      if (conta && conta.status !== 'Pendente') throw new ApiError(400, `O lancamento rateado da despesa #${id} ja possui pagamento lancado e nao pode ser excluido em lote.`);
+      return antes;
+    }
     if (antes.qtd_parcelas) {
       if (antes.parcelas.some((p) => p.status === 'Paga')) throw new ApiError(400, `A despesa fixa #${id} tem parcelas ja pagas e nao pode ser excluida em lote.`);
     } else {
@@ -147,9 +241,16 @@ router.post('/batch-delete', requerAcessoModulo('despesas_fixas', 'Gerenciar'), 
       if (contaPagar && contaPagar.status !== 'Pendente') throw new ApiError(400, `A despesa fixa #${id} ja possui pagamento lancado e nao pode ser excluida em lote.`);
     }
     return antes;
-  });
+  }).filter(Boolean);
   withTransaction(db, () => {
     for (const antes of registros) {
+      if (antes.rateio_id) {
+        const grupo = db.prepare('SELECT * FROM despesas_fixas WHERE rateio_id = ?').all(antes.rateio_id);
+        db.prepare("DELETE FROM contas_pagar WHERE origem_tipo = 'DespesaFixa' AND origem_id = ?").run(antes.rateio_id);
+        db.prepare('DELETE FROM despesas_fixas WHERE rateio_id = ?').run(antes.rateio_id);
+        for (const d of grupo) registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'despesas_fixas', registroId: d.id, acao: 'DELETE', antes: d });
+        continue;
+      }
       if (antes.qtd_parcelas) {
         db.prepare("DELETE FROM contas_pagar WHERE origem_tipo = 'DespesaFixaParcela' AND origem_id IN (SELECT id FROM despesa_fixa_parcelas WHERE despesa_fixa_id = ?)").run(antes.id);
       } else {

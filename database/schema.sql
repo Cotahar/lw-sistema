@@ -752,9 +752,15 @@ CREATE TABLE despesas_fixas (
     qtd_parcelas        INTEGER,
     descricao           TEXT,
     criado_por          INTEGER REFERENCES usuarios(id),
-    criado_em           TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
+    criado_em           TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
+    -- Lancamento RATEADO entre centros de custo (ex.: Sem Parar de R$ 10.000
+    -- dividido entre as placas): as linhas do mesmo lancamento compartilham
+    -- rateio_id (= id da primeira linha, que e tambem o origem_id da UNICA
+    -- conta a pagar). Cada linha guarda a PARTE de um centro de custo.
+    rateio_id           INTEGER
 );
 CREATE INDEX idx_despesas_fixas_centro ON despesas_fixas(centro_custo_id);
+CREATE INDEX idx_despesas_fixas_rateio ON despesas_fixas(rateio_id);
 
 -- Parcelas de uma despesa fixa parcelada (mesmo padrao de financiamento_parcelas).
 CREATE TABLE despesa_fixa_parcelas (
