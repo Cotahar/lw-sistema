@@ -547,7 +547,7 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
 const STATUS_BADGE_PAGAMENTO = { Pendente: 'badge-atencao', Parcial: 'badge-atencao', Pago: 'badge-sucesso' };
 
 // A pergunta mais comum depois de fechar um acerto e "como eu baixo isso?" -
-// o saldo final (e o imposto, se houver) viram Contas a Pagar normais (ver
+// o saldo final vira Conta a Pagar normal (o imposto e so informativo e nao gera conta; ver
 // POST /acertos/viagem/:viagemId/fechar), a baixa e feita LA (Contas a Pagar
 // -> Baixar), nao aqui. Sem este bloco a tela do acerto fechado nunca
 // refletia se aquele pagamento ja tinha sido baixado ou nao - ficava

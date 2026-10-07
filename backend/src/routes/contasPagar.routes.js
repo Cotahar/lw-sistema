@@ -71,9 +71,9 @@ router.get('/', requerAcessoModulo('contas_pagar', 'Visualizar'), exigirEmpresaE
     condicoes.push(`cp.origem_tipo = 'OrdemServicoParcela' AND cp.origem_id IN (SELECT id FROM os_parcelas WHERE os_id = ?)`);
     params.push(os_id);
   }
-  // Contas geradas ao fechar um Acerto (saldo a pagar ao motorista e/ou
-  // imposto - ver POST /acertos/viagem/:viagemId/fechar) apontam direto pro
-  // id do acerto, sem tabela de parcela intermediaria.
+  // Conta gerada ao fechar um Acerto (saldo a pagar ao motorista - ver POST
+  // /acertos/viagem/:viagemId/fechar) aponta direto pro id do acerto, sem
+  // tabela de parcela intermediaria.
   if (acerto_id) {
     condicoes.push(`cp.origem_tipo = 'AcertoViagem' AND cp.origem_id = ?`);
     params.push(acerto_id);

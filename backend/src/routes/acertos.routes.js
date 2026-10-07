@@ -43,7 +43,8 @@ function calcularAcerto(viagemId, empresaId, overrides = {}) {
   // Imposto da empresa sobre o frete bruto (variavel por empresa, cadastro
   // de Empresas). Reduz a base sobre a qual a comissao do motorista incide
   // (comissao = (bruto - imposto) x %) - o motorista nao recebe comissao
-  // sobre a parte do frete que e imposto da empresa.
+  // sobre a parte do frete que e imposto da empresa. E so um valor calculado
+  // (informativo): nao vira Conta a Pagar nem entra no saldo do motorista.
   const empresa = db.prepare('SELECT razao_social, percentual_desconto_geral FROM empresas WHERE id = ?').get(empresaId);
   const percentualImposto = empresa.percentual_desconto_geral || null;
   const valorImposto = percentualImposto ? Math.round(freteBrutoTotal * (percentualImposto / 100)) : 0;
@@ -294,14 +295,12 @@ router.post('/viagem/:viagemId/fechar', requerAcessoModulo('acertos', 'Gerenciar
       `).run(req.empresaId, `Acerto viagem #${req.params.viagemId} - pagamento a ${calculo.motorista.nome}`.toUpperCase(), calculo.saldoFinal, acertoId);
     }
 
-    // Imposto da empresa sobre o frete bruto - lancamento separado, nao
-    // afeta o saldo do motorista acima (ver comentario em calcularAcerto).
-    if (calculo.valorImposto > 0) {
-      db.prepare(`
-        INSERT INTO contas_pagar (empresa_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
-        VALUES (?, ?, ?, date('now', '-3 hours'), 'Pendente', 'AcertoViagem', ?)
-      `).run(req.empresaId, `Imposto (${calculo.empresa.razao_social}) - viagem #${req.params.viagemId}`.toUpperCase(), calculo.valorImposto, acertoId);
-    }
+    // O imposto da empresa NAO gera Conta a Pagar aqui: ele so e CALCULADO (e
+    // gravado em acertos_viagem.valor_imposto) para reduzir a base da comissao
+    // do motorista - e informativo. O pagamento do imposto em si e lancado a
+    // parte, no financeiro. (Antes este fechamento criava uma conta "IMPOSTO"
+    // por acerto; reabrir/refechar pela Auditoria deixava a conta antiga
+    // orfa e ela aparecia duplicada.)
 
     db.prepare("UPDATE viagens SET status = 'Finalizada' WHERE id = ?").run(req.params.viagemId);
 

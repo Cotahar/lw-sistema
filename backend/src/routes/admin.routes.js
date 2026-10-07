@@ -85,14 +85,17 @@ function reverterAcertoViagem(log) {
   const acerto = db.prepare('SELECT * FROM acertos_viagem WHERE id = ?').get(log.registro_id);
   if (!acerto) throw new ApiError(400, 'Este acerto ja foi revertido ou nao existe mais.');
 
-  const contaPagar = db.prepare("SELECT * FROM contas_pagar WHERE origem_tipo = 'AcertoViagem' AND origem_id = ?").get(acerto.id);
-  if (contaPagar && contaPagar.valor_pago > 0) {
+  // TODAS as contas do acerto (acertos antigos podem ter tambem uma de imposto):
+  // com .get() so a primeira era apagada e a outra ficava orfa - ao refechar a
+  // viagem ela reaparecia duplicada junto da nova.
+  const contasPagar = db.prepare("SELECT * FROM contas_pagar WHERE origem_tipo = 'AcertoViagem' AND origem_id = ?").all(acerto.id);
+  if (contasPagar.some((c) => c.valor_pago > 0)) {
     throw new ApiError(400, 'Este acerto gerou uma conta a pagar que ja teve pagamento lancado. Estorne o pagamento antes de reverter o acerto.');
   }
 
   const lancamento = db.prepare('SELECT * FROM motorista_conta_corrente_lancamentos WHERE acerto_id = ?').get(acerto.id);
 
-  if (contaPagar) db.prepare('DELETE FROM contas_pagar WHERE id = ?').run(contaPagar.id);
+  for (const c of contasPagar) db.prepare('DELETE FROM contas_pagar WHERE id = ?').run(c.id);
   if (lancamento) {
     db.prepare('UPDATE motoristas SET saldo_conta_corrente = ? WHERE id = ?').run(lancamento.saldo_anterior, lancamento.motorista_id);
     db.prepare('DELETE FROM motorista_conta_corrente_lancamentos WHERE id = ?').run(lancamento.id);
