@@ -7,16 +7,19 @@ const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { condicaoEmpresa } = require('../utils/empresaScope');
 const { registrarAuditoria } = require('../utils/audit');
 const { verificarAlertasDoVeiculo } = require('../utils/alertaEngine');
+const { hodometroDoConjuntoDoVeiculo, veiculoIdsDosConjuntos, comConjuntoDoVeiculo } = require('../utils/conjuntoRelatorioHelper');
 
 const router = express.Router();
 
 router.get('/regras', requerAcessoModulo('alertas', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const { veiculo_id } = req.query;
+  const { veiculo_id, conjunto_id } = req.query;
   const condicoes = []; const params = [];
   condicaoEmpresa(condicoes, params, req);
   if (veiculo_id) { condicoes.push('veiculo_id = ?'); params.push(veiculo_id); }
+  const veiculosDoConjunto = veiculoIdsDosConjuntos(conjunto_id, req.empresaId);
+  if (veiculosDoConjunto) { condicoes.push(`veiculo_id IN (${veiculosDoConjunto.map(() => '?').join(',')})`); params.push(...veiculosDoConjunto); }
   const rows = db.prepare(`SELECT * FROM alertas_regras WHERE ${condicoes.join(' AND ')} ORDER BY id DESC`).all(...params);
-  res.json(rows);
+  res.json(comConjuntoDoVeiculo(rows, req.empresaId));
 }));
 
 router.post('/regras', requerAcessoModulo('alertas', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
@@ -24,9 +27,10 @@ router.post('/regras', requerAcessoModulo('alertas', 'Gerenciar'), exigirEmpresa
   if (!descricao || !intervalo_km) throw new ApiError(400, 'Preencha descricao e intervalo_km.');
   let hodometroAtual = 0;
   if (veiculo_id) {
-    const veiculo = db.prepare('SELECT hodometro_atual FROM veiculos WHERE id = ? AND empresa_id = ?').get(veiculo_id, req.empresaId);
+    const veiculo = db.prepare('SELECT id, tipo, hodometro_atual FROM veiculos WHERE id = ? AND empresa_id = ?').get(veiculo_id, req.empresaId);
     if (!veiculo) throw new ApiError(400, 'Veiculo nao encontrado.');
-    hodometroAtual = veiculo.hodometro_atual;
+    // Carreta nao tem hodometro proprio: a contagem parte do km do conjunto.
+    hodometroAtual = hodometroDoConjuntoDoVeiculo(veiculo);
   }
 
   const info = db.prepare(`
@@ -75,21 +79,24 @@ router.post('/regras/batch-delete', requerAcessoModulo('alertas', 'Gerenciar'), 
 }));
 
 router.get('/ocorrencias', requerAcessoModulo('alertas', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const { status, veiculo_id } = req.query;
+  const { status, veiculo_id, conjunto_id } = req.query;
   const condicoes = [];
   const params = [];
   condicoes.push('ao.empresa_id = ?'); params.push(req.empresaId);
+  const veiculosDoConjunto = veiculoIdsDosConjuntos(conjunto_id, req.empresaId);
+  if (veiculosDoConjunto) { condicoes.push(`ao.veiculo_id IN (${veiculosDoConjunto.map(() => '?').join(',')})`); params.push(...veiculosDoConjunto); }
   if (status) { condicoes.push('ao.status = ?'); params.push(status); }
   if (veiculo_id) { condicoes.push('ao.veiculo_id = ?'); params.push(veiculo_id); }
   const where = `WHERE ${condicoes.join(' AND ')}`;
-  res.json(db.prepare(`
+  const linhas = db.prepare(`
     SELECT ao.*, v.placa, ar.descricao AS regra_descricao
     FROM alertas_ocorrencias ao
     JOIN veiculos v ON v.id = ao.veiculo_id
     JOIN alertas_regras ar ON ar.id = ao.regra_id
     ${where}
     ORDER BY ao.data_disparo DESC
-  `).all(...params));
+  `).all(...params);
+  res.json(comConjuntoDoVeiculo(linhas, req.empresaId));
 }));
 
 router.post('/ocorrencias/:id/resolver', requerAcessoModulo('alertas', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {

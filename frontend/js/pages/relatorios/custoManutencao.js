@@ -1,12 +1,15 @@
 import { get } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
+import { criarMultiSearchableSelect } from '../../components/multiSearchableSelect.js';
+import { buscarConjuntos } from '../../components/conjuntoOpcoes.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
 
 const OPCOES_AGRUPAR = [
   { value: '', label: 'Nenhum' },
+  { value: 'conjunto', label: 'Conjunto' },
   { value: 'veiculo_placa', label: 'Veiculo' },
   { value: 'tipo', label: 'Tipo (Preventiva/Corretiva)' },
   { value: 'fornecedor_nome', label: 'Oficina' },
@@ -21,9 +24,10 @@ async function buscarOficinas(termo) {
 
 export async function render(container) {
   container.innerHTML = `
-    <h1 class="mb-1 text-xl font-bold text-slate-900">Custo de Manutencao por Veiculo</h1>
-    <p class="mb-4 text-sm text-slate-500">Quanto cada veiculo custou em pecas e mao de obra no periodo.</p>
+    <h1 class="mb-1 text-xl font-bold text-slate-900">Custo de Manutencao</h1>
+    <p class="mb-4 text-sm text-slate-500">Quanto cada conjunto (e cada placa dele) custou em pecas e mao de obra no periodo.</p>
     <div class="card mb-4 grid grid-cols-2 gap-3 p-4 lg:grid-cols-4">
+      <div><label class="label">Conjunto</label><div data-filtro-conjunto></div></div>
       <div><label class="label">Veiculo</label><div data-filtro-veiculo></div></div>
       <div>
         <label class="label">Tipo</label>
@@ -58,6 +62,8 @@ export async function render(container) {
   let oficinaId = null;
   const veiculoSelect = criarSearchableSelect({ buscar: buscarVeiculos, placeholder: 'Pesquisar placa...', onChange: (id) => { veiculoId = id; tabela.recarregar(); } });
   container.querySelector('[data-filtro-veiculo]').appendChild(veiculoSelect.el);
+  const conjuntoSelect = criarMultiSearchableSelect({ buscar: buscarConjuntos, placeholder: 'Pesquisar conjunto...', onChange: () => tabela.recarregar() });
+  container.querySelector('[data-filtro-conjunto]').appendChild(conjuntoSelect.el);
   const oficinaSelect = criarSearchableSelect({ buscar: buscarOficinas, placeholder: 'Pesquisar oficina...', onChange: (id) => { oficinaId = id; tabela.recarregar(); } });
   container.querySelector('[data-filtro-oficina]').appendChild(oficinaSelect.el);
 
@@ -111,6 +117,7 @@ export async function render(container) {
   const tabela = criarDataTable({
     colunas: [
       { chave: 'data', titulo: 'Data', render: (r) => formatarDataBr(r.data) },
+      { chave: 'conjunto', titulo: 'Conjunto', render: (r) => r.conjunto || '-' },
       { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => r.veiculo_placa },
       { chave: 'tipo', titulo: 'Tipo', render: (r) => r.tipo },
       { chave: 'fornecedor_nome', titulo: 'Oficina', render: (r) => r.fornecedor_nome || '-' },
@@ -123,6 +130,7 @@ export async function render(container) {
     buscarDados: async (termo) => {
       const params = new URLSearchParams();
       if (veiculoId) params.set('veiculo_id', veiculoId);
+      for (const id of conjuntoSelect.getValues()) params.append('conjunto_id', id);
       if (selectTipo.value) params.set('tipo', selectTipo.value);
       if (oficinaId) params.set('fornecedor_id', oficinaId);
       if (inputDataDe.value) params.set('data_de', parseDataBrParaIso(inputDataDe.value));
@@ -131,7 +139,7 @@ export async function render(container) {
       const todos = await get(`/relatorios/ordens-servico${query ? `?${query}` : ''}`);
       const termoLower = (termo || '').toLowerCase();
       const dados = termoLower
-        ? todos.filter((r) => [r.veiculo_placa, r.fornecedor_nome, r.descricao].some((v) => (v || '').toLowerCase().includes(termoLower)))
+        ? todos.filter((r) => [r.veiculo_placa, r.conjunto, r.fornecedor_nome, r.descricao].some((v) => (v || '').toLowerCase().includes(termoLower)))
         : todos;
       const total = dados.reduce((t, r) => t + r.valor_total, 0);
       resumoEl.innerHTML = `
@@ -149,6 +157,7 @@ export async function render(container) {
     rota: '/relatorios/manutencao-custo',
     obterFiltros: () => ({
       veiculoId, veiculoLabel: veiculoSelect.getLabel(),
+      conjuntoIds: conjuntoSelect.getValues(), conjuntoLabels: conjuntoSelect.getLabels(),
       tipo: selectTipo.value,
       oficinaId, oficinaLabel: oficinaSelect.getLabel(),
       dataDe: inputDataDe.value, dataAte: inputDataAte.value, agrupar: selectAgrupar.value,
@@ -156,6 +165,7 @@ export async function render(container) {
     aplicarFiltros: (f) => {
       veiculoId = f.veiculoId || null;
       veiculoSelect.setValue(f.veiculoId || null, f.veiculoLabel || '');
+      conjuntoSelect.setValues(f.conjuntoIds || [], f.conjuntoLabels || []);
       selectTipo.value = f.tipo || '';
       oficinaId = f.oficinaId || null;
       oficinaSelect.setValue(f.oficinaId || null, f.oficinaLabel || '');
@@ -172,21 +182,22 @@ export async function render(container) {
     const total = dados.reduce((t, r) => t + r.valor_total, 0);
     const grupo = calcularGrupo(dados);
     const filtros = [];
+    if (conjuntoSelect.getValues().length) filtros.push(`Conjunto: ${conjuntoSelect.getLabels().join(', ')}`);
     if (veiculoSelect.getValue()) filtros.push(`Veiculo: ${veiculoSelect.getLabel()}`);
     if (selectTipo.value) filtros.push(`Tipo: ${selectTipo.value}`);
     if (oficinaSelect.getValue()) filtros.push(`Oficina: ${oficinaSelect.getLabel()}`);
     if (inputDataDe.value) filtros.push(`Data de: ${inputDataDe.value}`);
     if (inputDataAte.value) filtros.push(`Data ate: ${inputDataAte.value}`);
     abrirRelatorioImpressao({
-      titulo: 'Custo de Manutencao por Veiculo',
+      titulo: 'Custo de Manutencao',
       filtros,
       resumo: [
         { label: 'Total no filtro', valor: formatarMoeda(total), cor: 'red' },
         { label: 'Ordens de servico', valor: String(dados.length) },
       ],
-      colunas: ['Data', 'Veiculo', 'Tipo', 'Oficina', { titulo: 'Pecas', alinhar: 'right' }, { titulo: 'Mao de obra', alinhar: 'right' }, { titulo: 'Total', alinhar: 'right' }],
+      colunas: ['Data', 'Conjunto', 'Veiculo', 'Tipo', 'Oficina', { titulo: 'Pecas', alinhar: 'right' }, { titulo: 'Mao de obra', alinhar: 'right' }, { titulo: 'Total', alinhar: 'right' }],
       linhas: dados.map((r) => [
-        formatarDataBr(r.data), r.veiculo_placa, r.tipo, r.fornecedor_nome || '-',
+        formatarDataBr(r.data), r.conjunto || '-', r.veiculo_placa, r.tipo, r.fornecedor_nome || '-',
         formatarMoeda(r.valor_pecas), formatarMoeda(r.valor_mao_obra), formatarMoeda(r.valor_total),
       ]),
       grupo: grupo ? {

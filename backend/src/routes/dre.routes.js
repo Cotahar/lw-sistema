@@ -8,7 +8,7 @@ const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/c
 const { hojeIsoBrasilia } = require('../utils/dataHora');
 const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
 const {
-  somar, periodoOuTudo, custosDoCentroCusto, receitaECustosDaViagemPorCentro, custosDiretosDoVeiculo, totaisGeraisDoPeriodo,
+  somar, periodoRealizado, custosDoCentroCusto, receitaECustosDaViagemPorCentro, custosDiretosDoVeiculo, totaisGeraisDoPeriodo,
   DATA_RECEITA_SQL, CATEGORIAS_CUSTO, conjuntoDonoPorVeiculo, resultadoDoConjunto, custosDeVeiculosSemComposicao,
 } = require('../utils/dreHelper');
 
@@ -63,7 +63,7 @@ router.get('/veiculo/:veiculoId', requerAcessoModulo('dre', 'Visualizar'), exigi
   const centroCusto = buscarCentroCustoDoVeiculo(veiculo.id);
   if (!centroCusto) throw new ApiError(400, 'Centro de custo do veiculo nao encontrado.');
 
-  const { inicio, fim } = periodoOuTudo(req.query.data_inicio, req.query.data_fim);
+  const { inicio, fim } = periodoRealizado(req.query.data_inicio, req.query.data_fim);
   const { receita, custosViagem } = receitaECustosDaViagemPorCentro(centroCusto.id, inicio, fim);
   const { custoPecasDireto, custoOrdensServico, custoPneus } = custosDiretosDoVeiculo(veiculo.id, inicio, fim);
   const custosFixosEFinanciamento = custosDoCentroCusto(centroCusto.id, inicio, fim);
@@ -155,7 +155,7 @@ router.get('/veiculo/:veiculoId/detalhe/:categoria', requerAcessoModulo('dre', '
   if (!centroCusto) throw new ApiError(400, 'Centro de custo do veiculo nao encontrado.');
   const { categoria } = req.params;
   if (!CATEGORIAS_CUSTO.includes(categoria)) throw new ApiError(400, `Categoria invalida. Use uma de: ${CATEGORIAS_CUSTO.join(', ')}`);
-  const { inicio, fim } = periodoOuTudo(req.query.data_inicio, req.query.data_fim);
+  const { inicio, fim } = periodoRealizado(req.query.data_inicio, req.query.data_fim);
   res.json(lancamentosDoVeiculo(veiculo, centroCusto, categoria, inicio, fim));
 }));
 
@@ -171,7 +171,7 @@ function buscarConjuntoDaEmpresa(id, empresaId) {
 
 router.get('/conjunto/:conjuntoId', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const conjunto = buscarConjuntoDaEmpresa(req.params.conjuntoId, req.empresaId);
-  const { inicio, fim } = periodoOuTudo(req.query.data_inicio, req.query.data_fim);
+  const { inicio, fim } = periodoRealizado(req.query.data_inicio, req.query.data_fim);
   const resultado = resultadoDoConjunto(conjunto, inicio, fim);
   res.json({ conjunto, periodo: { inicio, fim }, ...resultado });
 }));
@@ -181,7 +181,7 @@ router.get('/conjunto/:conjuntoId/detalhe/:categoria', requerAcessoModulo('dre',
   const conjunto = buscarConjuntoDaEmpresa(req.params.conjuntoId, req.empresaId);
   const { categoria } = req.params;
   if (!CATEGORIAS_DETALHE_CONJUNTO.includes(categoria)) throw new ApiError(400, `Categoria invalida. Use uma de: ${CATEGORIAS_DETALHE_CONJUNTO.join(', ')}`);
-  const { inicio, fim } = periodoOuTudo(req.query.data_inicio, req.query.data_fim);
+  const { inicio, fim } = periodoRealizado(req.query.data_inicio, req.query.data_fim);
 
   if (categoria === 'receita') {
     const fretes = db.prepare(`
@@ -220,7 +220,7 @@ router.get('/conjunto/:conjuntoId/detalhe/:categoria', requerAcessoModulo('dre',
 // da composicao dentro dele. Custos de veiculos que nao estao em nenhuma
 // composicao entram na linha "Sem composicao".
 router.get('/geral', requerAcessoModulo('dre', 'Visualizar'), asyncHandler(async (req, res) => {
-  const { inicio, fim } = periodoOuTudo(req.query.data_inicio, req.query.data_fim);
+  const { inicio, fim } = periodoRealizado(req.query.data_inicio, req.query.data_fim);
 
   const empresas = req.empresaId
     ? db.prepare('SELECT id, razao_social FROM empresas WHERE id = ?').all(req.empresaId)

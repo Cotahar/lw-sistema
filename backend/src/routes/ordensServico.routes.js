@@ -9,6 +9,8 @@ const { registrarAuditoria } = require('../utils/audit');
 const { withTransaction } = require('../utils/transaction');
 const { hojeIsoBrasilia } = require('../utils/dataHora');
 
+const { veiculoIdsDosConjuntos, comConjuntoDoVeiculo } = require('../utils/conjuntoRelatorioHelper');
+
 const router = express.Router();
 const TIPOS = ['Preventiva', 'Corretiva'];
 
@@ -27,12 +29,14 @@ function buscarOsCompleta(id, empresaId) {
 }
 
 router.get('/', requerAcessoModulo('manutencao', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const { veiculo_id } = req.query;
+  const { veiculo_id, conjunto_id } = req.query;
   const condicoes = []; const params = [];
   condicaoEmpresa(condicoes, params, req);
   if (veiculo_id) { condicoes.push('veiculo_id = ?'); params.push(veiculo_id); }
+  const veiculosDoConjunto = veiculoIdsDosConjuntos(conjunto_id, req.empresaId);
+  if (veiculosDoConjunto) { condicoes.push(`veiculo_id IN (${veiculosDoConjunto.map(() => '?').join(',')})`); params.push(...veiculosDoConjunto); }
   const rows = db.prepare(`SELECT * FROM ordens_servico WHERE ${condicoes.join(' AND ')} ORDER BY data DESC, id DESC`).all(...params);
-  res.json(rows);
+  res.json(comConjuntoDoVeiculo(rows, req.empresaId));
 }));
 
 router.get('/:id', requerAcessoModulo('manutencao', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {

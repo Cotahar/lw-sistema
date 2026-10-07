@@ -2,6 +2,7 @@ import { get } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { criarMultiSearchableSelect } from '../../components/multiSearchableSelect.js';
+import { buscarConjuntos } from '../../components/conjuntoOpcoes.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { periodoAnteriorEquivalente, renderComparativoPeriodo } from '../../components/comparativoPeriodo.js';
@@ -17,6 +18,7 @@ const CHAVE_COLUNAS = 'frottex-colunas-relatorio-despesas';
 const CATALOGO_COLUNAS = [
   { chave: 'data', titulo: 'Data', padrao: true, render: (r) => formatarDataBr(r.data) },
   { chave: 'categoria_nome', titulo: 'Categoria', padrao: true, render: (r) => r.categoria_nome || '-' },
+  { chave: 'conjunto', titulo: 'Conjunto', padrao: true, render: (r) => r.conjunto || '-' },
   { chave: 'veiculo_placa', titulo: 'Veiculo', padrao: true, render: (r) => r.veiculo_placa || '-' },
   { chave: 'motorista_nome', titulo: 'Motorista', padrao: true, render: (r) => r.motorista_nome || '-' },
   { chave: 'fornecedor_nome', titulo: 'Fornecedor', padrao: true, render: (r) => r.fornecedor_nome || '-' },
@@ -34,6 +36,7 @@ const COLUNA_VALOR = { chave: 'valor', titulo: 'Valor', render: (r) => formatarM
 const OPCOES_AGRUPAR = [
   { value: '', label: 'Nenhum' },
   { value: 'categoria_nome', label: 'Categoria' },
+  { value: 'conjunto', label: 'Conjunto' },
   { value: 'veiculo_placa', label: 'Veiculo' },
   { value: 'motorista_nome', label: 'Motorista' },
   { value: 'pago_por', label: 'Pago por' },
@@ -94,6 +97,7 @@ export async function render(container) {
           ${categorias.map((c) => `<option value="${c.id}">${c.nome}</option>`).join('')}
         </select>
       </div>
+      <div><label class="label">Conjunto</label><div data-filtro-conjunto></div></div>
       <div><label class="label">Veiculo</label><div data-filtro-veiculo></div></div>
       <div><label class="label">Motorista</label><div data-filtro-motorista></div></div>
       <div><label class="label">Viagem</label><div data-filtro-viagem></div></div>
@@ -163,6 +167,8 @@ export async function render(container) {
 
   const veiculoSelect = criarMultiSearchableSelect({ buscar: buscarVeiculos, placeholder: 'Pesquisar placa...', onChange: () => recarregarDados() });
   container.querySelector('[data-filtro-veiculo]').appendChild(veiculoSelect.el);
+  const conjuntoSelect = criarMultiSearchableSelect({ buscar: buscarConjuntos, placeholder: 'Pesquisar conjunto...', onChange: () => recarregarDados() });
+  container.querySelector('[data-filtro-conjunto]').appendChild(conjuntoSelect.el);
   const motoristaSelect = criarMultiSearchableSelect({ buscar: buscarMotoristas, placeholder: 'Pesquisar motorista...', onChange: () => recarregarDados() });
   container.querySelector('[data-filtro-motorista]').appendChild(motoristaSelect.el);
   const viagemSelect = criarMultiSearchableSelect({ buscar: buscarViagens, placeholder: 'Pesquisar viagem...', onChange: () => recarregarDados() });
@@ -189,6 +195,7 @@ export async function render(container) {
     const params = new URLSearchParams();
     if (selectCategoria.value) params.set('categoria_id', selectCategoria.value);
     for (const id of veiculoSelect.getValues()) params.append('veiculo_id', id);
+    for (const id of conjuntoSelect.getValues()) params.append('conjunto_id', id);
     for (const id of motoristaSelect.getValues()) params.append('motorista_id', id);
     for (const id of viagemSelect.getValues()) params.append('viagem_id', id);
     if (selectPagoPor.value) params.set('pago_por', selectPagoPor.value);
@@ -266,6 +273,7 @@ export async function render(container) {
         const params = new URLSearchParams();
         if (selectCategoria.value) params.set('categoria_id', selectCategoria.value);
         for (const id of veiculoSelect.getValues()) params.append('veiculo_id', id);
+        for (const id of conjuntoSelect.getValues()) params.append('conjunto_id', id);
         for (const id of motoristaSelect.getValues()) params.append('motorista_id', id);
         for (const id of viagemSelect.getValues()) params.append('viagem_id', id);
         if (selectPagoPor.value) params.set('pago_por', selectPagoPor.value);
@@ -276,7 +284,7 @@ export async function render(container) {
         const todos = await get(`/relatorios/despesas${query ? `?${query}` : ''}`);
         const termoLower = (termo || '').toLowerCase();
         const dados = termoLower
-          ? todos.filter((r) => [r.categoria_nome, r.veiculo_placa, r.motorista_nome, r.fornecedor_nome, r.descricao]
+          ? todos.filter((r) => [r.categoria_nome, r.veiculo_placa, r.conjunto, r.motorista_nome, r.fornecedor_nome, r.descricao]
               .some((v) => (v || '').toLowerCase().includes(termoLower)))
           : todos;
         const total = dados.reduce((t, r) => t + r.valor, 0);
@@ -301,6 +309,7 @@ export async function render(container) {
     obterFiltros: () => ({
       categoriaId: selectCategoria.value,
       veiculoIds: veiculoSelect.getValues(), veiculoLabels: veiculoSelect.getLabels(),
+      conjuntoIds: conjuntoSelect.getValues(), conjuntoLabels: conjuntoSelect.getLabels(),
       motoristaIds: motoristaSelect.getValues(), motoristaLabels: motoristaSelect.getLabels(),
       viagemIds: viagemSelect.getValues(), viagemLabels: viagemSelect.getLabels(),
       pagoPor: selectPagoPor.value,
@@ -313,6 +322,7 @@ export async function render(container) {
     aplicarFiltros: (f) => {
       selectCategoria.value = f.categoriaId || '';
       veiculoSelect.setValues(f.veiculoIds || [], f.veiculoLabels || []);
+      conjuntoSelect.setValues(f.conjuntoIds || [], f.conjuntoLabels || []);
       motoristaSelect.setValues(f.motoristaIds || [], f.motoristaLabels || []);
       viagemSelect.setValues(f.viagemIds || [], f.viagemLabels || []);
       selectPagoPor.value = f.pagoPor || '';
@@ -333,6 +343,7 @@ export async function render(container) {
   function filtrosAtivos() {
     const filtros = [];
     if (selectCategoria.value) filtros.push(`Categoria: ${selectCategoria.options[selectCategoria.selectedIndex].text}`);
+    if (conjuntoSelect.getValues().length) filtros.push(`Conjunto: ${conjuntoSelect.getLabels().join(', ')}`);
     if (veiculoSelect.getValues().length) filtros.push(`Veiculo: ${veiculoSelect.getLabels().join(', ')}`);
     if (motoristaSelect.getValues().length) filtros.push(`Motorista: ${motoristaSelect.getLabels().join(', ')}`);
     if (viagemSelect.getValues().length) filtros.push(`Viagem: ${viagemSelect.getLabels().join(', ')}`);

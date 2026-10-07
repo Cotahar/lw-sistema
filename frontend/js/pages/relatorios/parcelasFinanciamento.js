@@ -1,6 +1,8 @@
 import { get } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
+import { criarMultiSearchableSelect } from '../../components/multiSearchableSelect.js';
+import { buscarConjuntos } from '../../components/conjuntoOpcoes.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
@@ -16,6 +18,7 @@ export async function render(container) {
     <h1 class="mb-1 text-xl font-bold text-slate-900">Parcelas de Financiamento</h1>
     <p class="mb-4 text-sm text-slate-500">Quais parcelas estao pagas, a vencer ou atrasadas, por veiculo.</p>
     <div class="card mb-4 grid grid-cols-2 gap-3 p-4 lg:grid-cols-4">
+      <div><label class="label">Conjunto</label><div data-filtro-conjunto></div></div>
       <div><label class="label">Veiculo</label><div data-filtro-veiculo></div></div>
       <div>
         <label class="label">Status</label>
@@ -39,6 +42,8 @@ export async function render(container) {
   let veiculoId = null;
   const veiculoSelect = criarSearchableSelect({ buscar: buscarVeiculos, placeholder: 'Pesquisar placa...', onChange: (id) => { veiculoId = id; tabela.recarregar(); } });
   container.querySelector('[data-filtro-veiculo]').appendChild(veiculoSelect.el);
+  const conjuntoSelect = criarMultiSearchableSelect({ buscar: buscarConjuntos, placeholder: 'Pesquisar conjunto...', onChange: () => tabela.recarregar() });
+  container.querySelector('[data-filtro-conjunto]').appendChild(conjuntoSelect.el);
 
   const selectStatus = container.querySelector('[data-filtro-status]');
   const inputDataDe = container.querySelector('[data-filtro-data-de]');
@@ -53,6 +58,7 @@ export async function render(container) {
     colunas: [
       { chave: 'data_vencimento', titulo: 'Vencimento', render: (r) => formatarDataBr(r.data_vencimento) },
       { chave: 'financiamento_descricao', titulo: 'Financiamento', render: (r) => r.financiamento_descricao },
+      { chave: 'conjunto', titulo: 'Conjunto', render: (r) => r.conjunto || '-' },
       { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => r.veiculo_placa || '-' },
       { chave: 'credor_nome', titulo: 'Credor', render: (r) => r.credor_nome || '-' },
       { chave: 'numero_parcela', titulo: 'Parcela', render: (r) => `${r.numero_parcela}` },
@@ -64,6 +70,7 @@ export async function render(container) {
     buscarDados: async (termo) => {
       const params = new URLSearchParams();
       if (veiculoId) params.set('veiculo_id', veiculoId);
+      for (const id of conjuntoSelect.getValues()) params.append('conjunto_id', id);
       if (selectStatus.value) params.set('status', selectStatus.value);
       if (inputDataDe.value) params.set('data_de', parseDataBrParaIso(inputDataDe.value));
       if (inputDataAte.value) params.set('data_ate', parseDataBrParaIso(inputDataAte.value));
@@ -71,7 +78,7 @@ export async function render(container) {
       const todos = await get(`/relatorios/parcelas-financiamento${query ? `?${query}` : ''}`);
       const termoLower = (termo || '').toLowerCase();
       return termoLower
-        ? todos.filter((r) => [r.financiamento_descricao, r.veiculo_placa, r.credor_nome].some((v) => (v || '').toLowerCase().includes(termoLower)))
+        ? todos.filter((r) => [r.financiamento_descricao, r.veiculo_placa, r.conjunto, r.credor_nome].some((v) => (v || '').toLowerCase().includes(termoLower)))
         : todos;
     },
     vazio: 'Nenhuma parcela encontrada com estes filtros.',
@@ -82,11 +89,13 @@ export async function render(container) {
     rota: '/relatorios/parcelas-financiamento',
     obterFiltros: () => ({
       veiculoId, veiculoLabel: veiculoSelect.getLabel(),
+      conjuntoIds: conjuntoSelect.getValues(), conjuntoLabels: conjuntoSelect.getLabels(),
       status: selectStatus.value, dataDe: inputDataDe.value, dataAte: inputDataAte.value,
     }),
     aplicarFiltros: (f) => {
       veiculoId = f.veiculoId || null;
       veiculoSelect.setValue(f.veiculoId || null, f.veiculoLabel || '');
+      conjuntoSelect.setValues(f.conjuntoIds || [], f.conjuntoLabels || []);
       selectStatus.value = f.status || '';
       inputDataDe.value = f.dataDe || '';
       inputDataAte.value = f.dataAte || '';
@@ -98,6 +107,7 @@ export async function render(container) {
   container.querySelector('[data-exportar-pdf]').addEventListener('click', () => {
     const dados = tabela.dados();
     const filtros = [];
+    if (conjuntoSelect.getValues().length) filtros.push(`Conjunto: ${conjuntoSelect.getLabels().join(', ')}`);
     if (veiculoSelect.getValue()) filtros.push(`Veiculo: ${veiculoSelect.getLabel()}`);
     if (selectStatus.value) filtros.push(`Status: ${selectStatus.value}`);
     if (inputDataDe.value) filtros.push(`Vencimento de: ${inputDataDe.value}`);
@@ -105,9 +115,9 @@ export async function render(container) {
     abrirRelatorioImpressao({
       titulo: 'Parcelas de Financiamento',
       filtros,
-      colunas: ['Vencimento', 'Financiamento', 'Veiculo', 'Credor', 'Parcela', 'Status', { titulo: 'Valor', alinhar: 'right' }],
+      colunas: ['Vencimento', 'Financiamento', 'Conjunto', 'Veiculo', 'Credor', 'Parcela', 'Status', { titulo: 'Valor', alinhar: 'right' }],
       linhas: dados.map((r) => [
-        formatarDataBr(r.data_vencimento), r.financiamento_descricao, r.veiculo_placa || '-', r.credor_nome || '-',
+        formatarDataBr(r.data_vencimento), r.financiamento_descricao, r.conjunto || '-', r.veiculo_placa || '-', r.credor_nome || '-',
         String(r.numero_parcela), r.status, formatarMoeda(r.valor_parcela),
       ]),
       tituloVazio: 'Nenhuma parcela encontrada com estes filtros.',

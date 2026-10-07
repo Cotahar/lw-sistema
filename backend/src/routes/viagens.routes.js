@@ -7,7 +7,7 @@ const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { condicaoEmpresa } = require('../utils/empresaScope');
 const { registrarAuditoria } = require('../utils/audit');
 const { withTransaction } = require('../utils/transaction');
-const { verificarAlertasDoVeiculo } = require('../utils/alertaEngine');
+const { verificarAlertasDoConjunto } = require('../utils/alertaEngine');
 const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 const {
   hojeIsoBrasilia, agoraDataHoraIsoBrasilia, dataPrevistaRecebimentoPadrao, somarDiasIso, PRAZO_RECEBIMENTO_DIAS,
@@ -187,7 +187,7 @@ router.post('/:id/finalizar', requerAcessoModulo('viagens', 'Gerenciar'), exigir
   });
 
   const tratora = buscarUnidadeTratora(viagem.conjunto_id);
-  const alertasDisparados = tratora ? verificarAlertasDoVeiculo(tratora.id) : [];
+  const alertasDisparados = tratora ? verificarAlertasDoConjunto(tratora.id) : [];
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'viagens', registroId: viagem.id, acao: 'UPDATE', antes: viagemAntes, depois: viagem });
   res.json({ ...viagem, alertasDisparados });
 }));

@@ -1,6 +1,8 @@
 import { get } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
+import { criarMultiSearchableSelect } from '../../components/multiSearchableSelect.js';
+import { buscarConjuntos } from '../../components/conjuntoOpcoes.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
@@ -17,8 +19,9 @@ async function buscarVeiculos(termo) {
 export async function render(container) {
   container.innerHTML = `
     <h1 class="mb-1 text-xl font-bold text-slate-900">Historico de Manutencao</h1>
-    <p class="mb-4 text-sm text-slate-500">O que ja foi feito em cada veiculo, em ordem cronologica.</p>
+    <p class="mb-4 text-sm text-slate-500">O que ja foi feito em cada conjunto (cavalo e carreta), em ordem cronologica.</p>
     <div class="card mb-4 grid grid-cols-2 gap-3 p-4 lg:grid-cols-4">
+      <div><label class="label">Conjunto</label><div data-filtro-conjunto></div></div>
       <div><label class="label">Veiculo</label><div data-filtro-veiculo></div></div>
       <div>
         <label class="label">Tipo</label>
@@ -41,6 +44,8 @@ export async function render(container) {
   let veiculoId = null;
   const veiculoSelect = criarSearchableSelect({ buscar: buscarVeiculos, placeholder: 'Pesquisar placa...', onChange: (id) => { veiculoId = id; tabela.recarregar(); } });
   container.querySelector('[data-filtro-veiculo]').appendChild(veiculoSelect.el);
+  const conjuntoSelect = criarMultiSearchableSelect({ buscar: buscarConjuntos, placeholder: 'Pesquisar conjunto...', onChange: () => tabela.recarregar() });
+  container.querySelector('[data-filtro-conjunto]').appendChild(conjuntoSelect.el);
 
   const selectTipo = container.querySelector('[data-filtro-tipo]');
   const inputDataDe = container.querySelector('[data-filtro-data-de]');
@@ -54,6 +59,7 @@ export async function render(container) {
   const tabela = criarDataTable({
     colunas: [
       { chave: 'data', titulo: 'Data', render: (r) => formatarDataBr(r.data) },
+      { chave: 'conjunto', titulo: 'Conjunto', render: (r) => r.conjunto || '-' },
       { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => r.veiculo_placa },
       { chave: 'hodometro', titulo: 'Hodometro', render: (r) => (r.hodometro != null ? r.hodometro.toLocaleString('pt-BR') : '-') },
       { chave: 'tipo', titulo: 'Tipo', render: (r) => r.tipo },
@@ -67,6 +73,7 @@ export async function render(container) {
     buscarDados: async (termo) => {
       const params = new URLSearchParams();
       if (veiculoId) params.set('veiculo_id', veiculoId);
+      for (const id of conjuntoSelect.getValues()) params.append('conjunto_id', id);
       if (selectTipo.value) params.set('tipo', selectTipo.value);
       if (inputDataDe.value) params.set('data_de', parseDataBrParaIso(inputDataDe.value));
       if (inputDataAte.value) params.set('data_ate', parseDataBrParaIso(inputDataAte.value));
@@ -74,7 +81,7 @@ export async function render(container) {
       const todos = await get(`/relatorios/ordens-servico${query ? `?${query}` : ''}`);
       const termoLower = (termo || '').toLowerCase();
       return termoLower
-        ? todos.filter((r) => [r.veiculo_placa, r.fornecedor_nome, r.descricao].some((v) => (v || '').toLowerCase().includes(termoLower)))
+        ? todos.filter((r) => [r.veiculo_placa, r.conjunto, r.fornecedor_nome, r.descricao].some((v) => (v || '').toLowerCase().includes(termoLower)))
         : todos;
     },
     vazio: 'Nenhuma ordem de servico encontrada com estes filtros.',
@@ -85,11 +92,13 @@ export async function render(container) {
     rota: '/relatorios/manutencao-historico',
     obterFiltros: () => ({
       veiculoId, veiculoLabel: veiculoSelect.getLabel(),
+      conjuntoIds: conjuntoSelect.getValues(), conjuntoLabels: conjuntoSelect.getLabels(),
       tipo: selectTipo.value, dataDe: inputDataDe.value, dataAte: inputDataAte.value,
     }),
     aplicarFiltros: (f) => {
       veiculoId = f.veiculoId || null;
       veiculoSelect.setValue(f.veiculoId || null, f.veiculoLabel || '');
+      conjuntoSelect.setValues(f.conjuntoIds || [], f.conjuntoLabels || []);
       selectTipo.value = f.tipo || '';
       inputDataDe.value = f.dataDe || '';
       inputDataAte.value = f.dataAte || '';
@@ -101,6 +110,7 @@ export async function render(container) {
   container.querySelector('[data-exportar-pdf]').addEventListener('click', () => {
     const dados = tabela.dados();
     const filtros = [];
+    if (conjuntoSelect.getValues().length) filtros.push(`Conjunto: ${conjuntoSelect.getLabels().join(', ')}`);
     if (veiculoSelect.getValue()) filtros.push(`Veiculo: ${veiculoSelect.getLabel()}`);
     if (selectTipo.value) filtros.push(`Tipo: ${selectTipo.value}`);
     if (inputDataDe.value) filtros.push(`Data de: ${inputDataDe.value}`);
@@ -108,9 +118,9 @@ export async function render(container) {
     abrirRelatorioImpressao({
       titulo: 'Historico de Manutencao',
       filtros,
-      colunas: ['Data', 'Veiculo', 'Hodometro', 'Tipo', 'Descricao', 'Itens', 'Oficina', { titulo: 'Total', alinhar: 'right' }],
+      colunas: ['Data', 'Conjunto', 'Veiculo', 'Hodometro', 'Tipo', 'Descricao', 'Itens', 'Oficina', { titulo: 'Total', alinhar: 'right' }],
       linhas: dados.map((r) => [
-        formatarDataBr(r.data), r.veiculo_placa, r.hodometro != null ? r.hodometro.toLocaleString('pt-BR') : '-',
+        formatarDataBr(r.data), r.conjunto || '-', r.veiculo_placa, r.hodometro != null ? r.hodometro.toLocaleString('pt-BR') : '-',
         r.tipo, r.descricao || '-', textoItens(r.itens), r.fornecedor_nome || '-', formatarMoeda(r.valor_total),
       ]),
       tituloVazio: 'Nenhuma ordem de servico encontrada com estes filtros.',

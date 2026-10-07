@@ -12,8 +12,8 @@ function primeiroDiaMesAtualIso() {
 
 export async function render(container) {
   container.innerHTML = `
-    <h1 class="mb-1 text-xl font-bold text-slate-900">Ranking de Veiculos</h1>
-    <p class="mb-4 text-sm text-slate-500">Receita, custo e lucro de cada veiculo no periodo - mesma conta da DRE, em lista comparavel.</p>
+    <h1 class="mb-1 text-xl font-bold text-slate-900">Ranking de Conjuntos</h1>
+    <p class="mb-4 text-sm text-slate-500">Receita, custo e lucro de cada conjunto (cavalo + carreta) no periodo - mesma conta da DRE, em lista comparavel. O custo mostra quanto e do cavalo e quanto e da carreta.</p>
     <div class="card mb-4 grid grid-cols-2 gap-3 p-4 lg:grid-cols-4">
       <div><label class="label">De</label><input type="text" class="input" data-filtro-data-de placeholder="dd/mm/aaaa" /></div>
       <div><label class="label">Ate</label><input type="text" class="input" data-filtro-data-ate placeholder="dd/mm/aaaa" /></div>
@@ -46,7 +46,7 @@ export async function render(container) {
     const anterior = periodoAnteriorEquivalente(dataDeIso, dataAteIso);
     if (!anterior) { comparativoEl.innerHTML = ''; return; }
     const params = new URLSearchParams({ data_de: anterior.de, data_ate: anterior.ate });
-    const dadosAnteriores = await get(`/relatorios/ranking-veiculos?${params.toString()}`);
+    const dadosAnteriores = await get(`/relatorios/ranking-conjuntos?${params.toString()}`);
     const receitaAnt = dadosAnteriores.reduce((t, r) => t + r.receita, 0);
     const custoAnt = dadosAnteriores.reduce((t, r) => t + r.custo, 0);
     const receitaAtual = dadosAtuais.reduce((t, r) => t + r.receita, 0);
@@ -63,26 +63,27 @@ export async function render(container) {
 
   const tabela = criarDataTable({
     colunas: [
-      { chave: 'placa', titulo: 'Placa', render: (r) => r.placa },
-      { chave: 'tipo', titulo: 'Tipo', render: (r) => r.tipo },
+      { chave: 'nome', titulo: 'Conjunto', render: (r) => `<span class="font-medium">${r.nome}</span><br /><span class="text-xs text-slate-500">${r.placas}</span>`, exportar: (r) => r.conjunto },
       { chave: 'receita', titulo: 'Receita', render: (r) => formatarMoeda(r.receita), exportar: (r) => r.receita / 100 },
       { chave: 'custo', titulo: 'Custo', render: (r) => formatarMoeda(r.custo), exportar: (r) => r.custo / 100 },
+      { chave: 'custo_tratora', titulo: 'Custo do cavalo', render: (r) => formatarMoeda(r.custo_tratora), exportar: (r) => r.custo_tratora / 100 },
+      { chave: 'custo_reboque', titulo: 'Custo da carreta', render: (r) => formatarMoeda(r.custo_reboque), exportar: (r) => r.custo_reboque / 100 },
       { chave: 'lucro', titulo: 'Lucro', render: (r) => `<span class="font-semibold ${r.lucro >= 0 ? 'text-emerald-500' : 'text-red-500'}">${formatarMoeda(r.lucro)}</span>`, exportar: (r) => r.lucro / 100 },
       { chave: 'margem_pct', titulo: 'Margem', render: (r) => (r.margem_pct !== null ? `${r.margem_pct.toFixed(1)}%` : '-'), exportar: (r) => (r.margem_pct !== null ? r.margem_pct.toFixed(1) : '') },
     ],
     ordenacaoInicial: { chave: 'lucro', direcao: 'desc' },
-    exportar: { nomeArquivo: 'ranking-veiculos' },
+    exportar: { nomeArquivo: 'ranking-conjuntos' },
     buscarDados: async (termo) => {
       const params = new URLSearchParams();
       if (inputDataDe.value) params.set('data_de', parseDataBrParaIso(inputDataDe.value));
       if (inputDataAte.value) params.set('data_ate', parseDataBrParaIso(inputDataAte.value));
-      const todos = await get(`/relatorios/ranking-veiculos?${params.toString()}`);
+      const todos = await get(`/relatorios/ranking-conjuntos?${params.toString()}`);
       const termoLower = (termo || '').toLowerCase();
-      const dados = termoLower ? todos.filter((r) => r.placa.toLowerCase().includes(termoLower)) : todos;
+      const dados = termoLower ? todos.filter((r) => r.conjunto.toLowerCase().includes(termoLower)) : todos;
       atualizarComparativo(dados);
       return dados;
     },
-    vazio: 'Nenhum veiculo encontrado.',
+    vazio: 'Nenhum conjunto encontrado.',
   });
   container.querySelector('[data-tabela]').appendChild(tabela.el);
 
@@ -101,14 +102,14 @@ export async function render(container) {
   container.querySelector('[data-exportar-pdf]').addEventListener('click', () => {
     const dados = tabela.dados();
     abrirRelatorioImpressao({
-      titulo: 'Ranking de Veiculos',
+      titulo: 'Ranking de Conjuntos',
       filtros: [`Periodo: ${inputDataDe.value || 'inicio'} a ${inputDataAte.value || 'hoje'}`],
-      colunas: ['Placa', 'Tipo', { titulo: 'Receita', alinhar: 'right' }, { titulo: 'Custo', alinhar: 'right' }, { titulo: 'Lucro', alinhar: 'right' }, { titulo: 'Margem', alinhar: 'right' }],
+      colunas: ['Conjunto', { titulo: 'Receita', alinhar: 'right' }, { titulo: 'Custo', alinhar: 'right' }, { titulo: 'Custo do cavalo', alinhar: 'right' }, { titulo: 'Custo da carreta', alinhar: 'right' }, { titulo: 'Lucro', alinhar: 'right' }, { titulo: 'Margem', alinhar: 'right' }],
       linhas: [...dados].sort((a, b) => b.lucro - a.lucro).map((r) => [
-        r.placa, r.tipo, formatarMoeda(r.receita), formatarMoeda(r.custo), formatarMoeda(r.lucro),
+        r.conjunto, formatarMoeda(r.receita), formatarMoeda(r.custo), formatarMoeda(r.custo_tratora), formatarMoeda(r.custo_reboque), formatarMoeda(r.lucro),
         r.margem_pct !== null ? `${r.margem_pct.toFixed(1)}%` : '-',
       ]),
-      tituloVazio: 'Nenhum veiculo encontrado.',
+      tituloVazio: 'Nenhum conjunto encontrado.',
     });
   });
 }

@@ -1,17 +1,14 @@
 import { get } from '../../api.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
+import { buscarConjuntos } from '../../components/conjuntoOpcoes.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda } from '../../masks.js';
 
-async function buscarVeiculos(termo) {
-  return (await get(`/veiculos${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((v) => ({ value: v.id, label: v.placa }));
-}
-
 export async function render(container) {
   container.innerHTML = `
     <h1 class="mb-1 text-xl font-bold text-slate-900">DRE Multi-periodo</h1>
-    <p class="mb-4 text-sm text-slate-500">Receita, custo e lucro mes a mes - geral da frota ou de um veiculo especifico.</p>
+    <p class="mb-4 text-sm text-slate-500">Receita, custo e lucro mes a mes - geral da frota ou de um conjunto (cavalo + carreta) especifico.</p>
     <div class="card mb-4 grid grid-cols-2 gap-3 p-4 lg:grid-cols-4">
       <div>
         <label class="label">Quantidade de meses</label>
@@ -22,7 +19,7 @@ export async function render(container) {
           <option value="24">Ultimos 24 meses</option>
         </select>
       </div>
-      <div><label class="label">Veiculo (opcional, geral se vazio)</label><div data-filtro-veiculo></div></div>
+      <div class="col-span-2"><label class="label">Conjunto (opcional, geral se vazio)</label><div data-filtro-conjunto></div></div>
     </div>
     <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
       <div data-relatorios-salvos></div>
@@ -31,9 +28,9 @@ export async function render(container) {
     <div class="card overflow-x-auto border-gray-300 p-0" data-tabela></div>
   `;
 
-  let veiculoId = null;
-  const veiculoSelect = criarSearchableSelect({ buscar: buscarVeiculos, placeholder: 'Pesquisar placa...', onChange: (id) => { veiculoId = id; atualizar(); } });
-  container.querySelector('[data-filtro-veiculo]').appendChild(veiculoSelect.el);
+  let conjuntoId = null;
+  const conjuntoSelect = criarSearchableSelect({ buscar: buscarConjuntos, placeholder: 'Pesquisar conjunto ou placa...', onChange: (id) => { conjuntoId = id; atualizar(); } });
+  container.querySelector('[data-filtro-conjunto]').appendChild(conjuntoSelect.el);
 
   const selectMeses = container.querySelector('[data-filtro-meses]');
   const tabelaEl = container.querySelector('[data-tabela]');
@@ -64,18 +61,19 @@ export async function render(container) {
 
   async function atualizar() {
     const params = new URLSearchParams({ meses: selectMeses.value });
-    if (veiculoId) params.set('veiculo_id', veiculoId);
+    if (conjuntoId) params.set('conjunto_id', conjuntoId);
     const resultado = await get(`/relatorios/dre-multi-periodo?${params.toString()}`);
     renderTabela(resultado);
   }
 
   const relatoriosSalvos = criarRelatoriosSalvos({
     rota: '/relatorios/dre-multi-periodo',
-    obterFiltros: () => ({ meses: selectMeses.value, veiculoId, veiculoLabel: veiculoSelect.getLabel() }),
+    obterFiltros: () => ({ meses: selectMeses.value, conjuntoId, conjuntoLabel: conjuntoSelect.getLabel() }),
     aplicarFiltros: (f) => {
       selectMeses.value = f.meses || '6';
-      veiculoId = f.veiculoId || null;
-      veiculoSelect.setValue(f.veiculoId || null, f.veiculoLabel || '');
+      // Relatorios salvos antes da visao por conjunto guardavam um veiculo: viram o geral.
+      conjuntoId = f.conjuntoId || null;
+      conjuntoSelect.setValue(f.conjuntoId || null, f.conjuntoLabel || '');
       atualizar();
     },
   });
@@ -84,9 +82,9 @@ export async function render(container) {
   container.querySelector('[data-exportar-pdf]').addEventListener('click', () => {
     if (!ultimoResultado) return;
     const filtros = [`${selectMeses.options[selectMeses.selectedIndex].text}`];
-    if (veiculoSelect.getValue()) filtros.push(`Veiculo: ${veiculoSelect.getLabel()}`);
+    if (conjuntoSelect.getValue()) filtros.push(`Conjunto: ${conjuntoSelect.getLabel()}`);
     abrirRelatorioImpressao({
-      titulo: `DRE Multi-periodo${ultimoResultado.veiculo ? ` - ${ultimoResultado.veiculo.placa}` : ' - Geral'}`,
+      titulo: `DRE Multi-periodo${ultimoResultado.conjunto ? ` - ${ultimoResultado.conjunto.rotulo}` : ' - Geral'}`,
       filtros,
       colunas: ['Mes', { titulo: 'Receita', alinhar: 'right' }, { titulo: 'Custo', alinhar: 'right' }, { titulo: 'Lucro', alinhar: 'right' }],
       linhas: ultimoResultado.meses.map((m) => [m.periodo, formatarMoeda(m.receita), formatarMoeda(m.custo), formatarMoeda(m.lucro)]),

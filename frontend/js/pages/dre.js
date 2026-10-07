@@ -335,9 +335,19 @@ export async function render(container) {
     });
   });
 
+  // Campo vazio = sem limite; data completa e valida = ISO; qualquer coisa no
+  // meio do caminho (usuario ainda digitando "06/10") = undefined. Antes uma
+  // data pela metade virava "sem data final" e a tela recalculava na hora,
+  // somando todas as parcelas de financiamento ate 2031.
+  function lerData(input) {
+    if (!input.value.trim()) return null;
+    return parseDataBrParaIso(input.value) || undefined;
+  }
+
   async function atualizar() {
-    const inicio = inicioInput.value ? parseDataBrParaIso(inicioInput.value) : null;
-    const fim = fimInput.value ? parseDataBrParaIso(fimInput.value) : null;
+    const inicio = lerData(inicioInput);
+    const fim = lerData(fimInput);
+    if (inicio === undefined || fim === undefined) return; // aguarda a data ficar completa
     try {
       if (conjuntoId) await renderConjunto(resultadoEl, conjuntoId, inicio, fim);
       else {
@@ -356,6 +366,13 @@ export async function render(container) {
   [inicioInput, fimInput].forEach((el) => el.addEventListener('input', () => {
     clearTimeout(debounceId);
     debounceId = setTimeout(atualizar, 400);
+  }));
+  // Ao sair do campo a mascara completa mes/ano sozinha ("06/10" -> "06/10/2026")
+  // sem disparar 'input' - recalcula aqui, ja com a data completa. (Este
+  // listener foi registrado depois do da mascara, entao roda depois dele.)
+  [inicioInput, fimInput].forEach((el) => el.addEventListener('blur', () => {
+    clearTimeout(debounceId);
+    atualizar();
   }));
 
   const relatoriosSalvos = criarRelatoriosSalvos({

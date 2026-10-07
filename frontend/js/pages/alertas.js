@@ -75,6 +75,7 @@ export async function render(container) {
 
   const tabelaOcorrencias = criarDataTable({
     colunas: [
+      { chave: 'conjunto', titulo: 'Conjunto', render: (r) => r.conjunto || '-' },
       { chave: 'placa', titulo: 'Veiculo' },
       { chave: 'regra_descricao', titulo: 'Regra', truncar: true },
       { chave: 'km_atual_no_disparo', titulo: 'KM no disparo', render: (r) => r.km_atual_no_disparo.toLocaleString('pt-BR') },
@@ -109,6 +110,7 @@ export async function render(container) {
 
   const tabelaRegras = criarDataTable({
     colunas: [
+      { chave: 'conjunto', titulo: 'Conjunto', render: (r) => r.conjunto || '-' },
       { chave: 'placa', titulo: 'Veiculo' },
       { chave: 'descricao', titulo: 'Descricao', truncar: true },
       { chave: 'intervalo_km', titulo: 'Intervalo (km)', render: (r) => r.intervalo_km.toLocaleString('pt-BR') },

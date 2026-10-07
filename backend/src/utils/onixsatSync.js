@@ -2,7 +2,7 @@ const db = require('../config/db');
 const ApiError = require('./ApiError');
 const { registrarAuditoria } = require('./audit');
 const { withTransaction } = require('./transaction');
-const { verificarAlertasDoVeiculo } = require('./alertaEngine');
+const { verificarAlertasDoConjunto } = require('./alertaEngine');
 const { requestVeiculo, requestMensagemCB } = require('./onixsatClient');
 
 function normalizarPlaca(txt) {
@@ -171,7 +171,7 @@ async function sincronizarEmpresa(empresaId, usuarioId = null) {
 
   const alertasDisparados = [];
   for (const veiculoId of veiculosComHodometroAtualizado) {
-    alertasDisparados.push(...verificarAlertasDoVeiculo(veiculoId));
+    alertasDisparados.push(...verificarAlertasDoConjunto(veiculoId));
   }
 
   return {

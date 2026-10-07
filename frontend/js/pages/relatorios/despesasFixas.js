@@ -1,6 +1,8 @@
 import { get } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
+import { criarMultiSearchableSelect } from '../../components/multiSearchableSelect.js';
+import { buscarConjuntos } from '../../components/conjuntoOpcoes.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
@@ -8,6 +10,7 @@ import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } fro
 const CATALOGO_COLUNAS = [
   { chave: 'data', titulo: 'Data', padrao: true, render: (r) => formatarDataBr(r.data) },
   { chave: 'categoria_nome', titulo: 'Categoria', padrao: true, render: (r) => r.categoria_nome || '-' },
+  { chave: 'conjunto', titulo: 'Conjunto', padrao: true, render: (r) => r.conjunto || '-' },
   { chave: 'veiculo_placa', titulo: 'Veiculo/Centro de custo', padrao: true, render: (r) => r.veiculo_placa || '-' },
   { chave: 'descricao', titulo: 'Descricao', padrao: true, render: (r) => r.descricao || '-', truncar: true },
   { chave: 'recorrente', titulo: 'Recorrente', padrao: false, render: (r) => (r.recorrente ? 'Sim' : 'Nao') },
@@ -18,6 +21,7 @@ const COLUNA_VALOR = { chave: 'valor', titulo: 'Valor', render: (r) => formatarM
 const OPCOES_AGRUPAR = [
   { value: '', label: 'Nenhum' },
   { value: 'categoria_nome', label: 'Categoria' },
+  { value: 'conjunto', label: 'Conjunto' },
   { value: 'veiculo_placa', label: 'Veiculo/Centro de custo' },
 ];
 
@@ -42,6 +46,7 @@ export async function render(container) {
           ${categorias.map((c) => `<option value="${c.id}">${c.nome}</option>`).join('')}
         </select>
       </div>
+      <div><label class="label">Conjunto</label><div data-filtro-conjunto></div></div>
       <div><label class="label">Veiculo/Centro de custo</label><div data-filtro-veiculo></div></div>
       <div><label class="label">Data de</label><input type="text" class="input" data-filtro-data-de placeholder="dd/mm/aaaa" /></div>
       <div><label class="label">Data ate</label><input type="text" class="input" data-filtro-data-ate placeholder="dd/mm/aaaa" /></div>
@@ -88,6 +93,8 @@ export async function render(container) {
 
   const veiculoSelect = criarSearchableSelect({ buscar: buscarVeiculos, placeholder: 'Pesquisar placa...', onChange: (id) => { veiculoId = id; recarregarDados(); } });
   container.querySelector('[data-filtro-veiculo]').appendChild(veiculoSelect.el);
+  const conjuntoSelect = criarMultiSearchableSelect({ buscar: buscarConjuntos, placeholder: 'Pesquisar conjunto...', onChange: () => recarregarDados() });
+  container.querySelector('[data-filtro-conjunto]').appendChild(conjuntoSelect.el);
 
   attachDataMask(inputDataDe);
   attachDataMask(inputDataAte);
@@ -145,13 +152,14 @@ export async function render(container) {
         const params = new URLSearchParams();
         if (selectCategoria.value) params.set('categoria_id', selectCategoria.value);
         if (veiculoId) params.set('veiculo_id', veiculoId);
+        for (const id of conjuntoSelect.getValues()) params.append('conjunto_id', id);
         if (inputDataDe.value) params.set('data_de', parseDataBrParaIso(inputDataDe.value));
         if (inputDataAte.value) params.set('data_ate', parseDataBrParaIso(inputDataAte.value));
         const query = params.toString();
         const todos = await get(`/relatorios/despesas-fixas${query ? `?${query}` : ''}`);
         const termoLower = (termo || '').toLowerCase();
         const dados = termoLower
-          ? todos.filter((r) => [r.categoria_nome, r.veiculo_placa, r.descricao].some((v) => (v || '').toLowerCase().includes(termoLower)))
+          ? todos.filter((r) => [r.categoria_nome, r.veiculo_placa, r.conjunto, r.descricao].some((v) => (v || '').toLowerCase().includes(termoLower)))
           : todos;
         const total = dados.reduce((t, r) => t + r.valor, 0);
         resumoEl.innerHTML = `
@@ -174,6 +182,7 @@ export async function render(container) {
     obterFiltros: () => ({
       categoriaId: selectCategoria.value,
       veiculoId, veiculoLabel: veiculoSelect.getLabel(),
+      conjuntoIds: conjuntoSelect.getValues(), conjuntoLabels: conjuntoSelect.getLabels(),
       dataDe: inputDataDe.value, dataAte: inputDataAte.value,
       agrupar: selectAgrupar.value,
       colunas: colunasSelecionadas().map((c) => c.chave),
@@ -182,6 +191,7 @@ export async function render(container) {
       selectCategoria.value = f.categoriaId || '';
       veiculoId = f.veiculoId || null;
       veiculoSelect.setValue(f.veiculoId || null, f.veiculoLabel || '');
+      conjuntoSelect.setValues(f.conjuntoIds || [], f.conjuntoLabels || []);
       inputDataDe.value = f.dataDe || '';
       inputDataAte.value = f.dataAte || '';
       selectAgrupar.value = f.agrupar || '';
@@ -200,6 +210,7 @@ export async function render(container) {
     const grupo = calcularGrupo(dados);
     const filtros = [];
     if (selectCategoria.value) filtros.push(`Categoria: ${selectCategoria.options[selectCategoria.selectedIndex].text}`);
+    if (conjuntoSelect.getValues().length) filtros.push(`Conjunto: ${conjuntoSelect.getLabels().join(', ')}`);
     if (veiculoSelect.getValue()) filtros.push(`Veiculo: ${veiculoSelect.getLabel()}`);
     if (inputDataDe.value) filtros.push(`Data de: ${inputDataDe.value}`);
     if (inputDataAte.value) filtros.push(`Data ate: ${inputDataAte.value}`);

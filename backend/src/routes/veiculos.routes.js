@@ -7,7 +7,8 @@ const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { condicaoEmpresa } = require('../utils/empresaScope');
 const { registrarAuditoria } = require('../utils/audit');
 const { withTransaction } = require('../utils/transaction');
-const { verificarAlertasDoVeiculo } = require('../utils/alertaEngine');
+const { verificarAlertasDoConjunto } = require('../utils/alertaEngine');
+const { hodometroDoConjuntoDoVeiculo } = require('../utils/conjuntoRelatorioHelper');
 
 const router = express.Router();
 const TIPOS = ['Cavalo', 'Carreta', 'Dolly', 'Truck', 'Toco'];
@@ -46,13 +47,14 @@ router.get('/', requerAcessoModulo('veiculos', 'Visualizar'), exigirEmpresaEspec
   if (tipo) { condicoes.push('tipo = ?'); params.push(tipo); }
   const where = `WHERE ${condicoes.join(' AND ')}`;
   const veiculos = db.prepare(`SELECT * FROM veiculos ${where} ORDER BY placa`).all(...params);
-  res.json(comCarretaPadraoPlaca(veiculos, req.empresaId));
+  res.json(comCarretaPadraoPlaca(veiculos, req.empresaId).map((v) => ({ ...v, hodometro_conjunto: hodometroDoConjuntoDoVeiculo(v) })));
 }));
 
 router.get('/:id', requerAcessoModulo('veiculos', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const veiculo = db.prepare('SELECT * FROM veiculos WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
   if (!veiculo) throw new ApiError(404, 'Veiculo nao encontrado.');
-  res.json(comCarretaPadraoPlaca([veiculo], req.empresaId)[0]);
+  // hodometro_conjunto: o KM que vale para o veiculo dentro da composicao (a carreta usa o da tratora).
+  res.json({ ...comCarretaPadraoPlaca([veiculo], req.empresaId)[0], hodometro_conjunto: hodometroDoConjuntoDoVeiculo(veiculo) });
 }));
 
 router.post('/', requerAcessoModulo('veiculos', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
@@ -223,7 +225,7 @@ router.post('/:id/hodometro', requerAcessoModulo('veiculos', 'Gerenciar'), exigi
   });
 
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'veiculos', registroId: veiculo.id, acao: 'UPDATE', antes: { hodometro_atual: veiculo.hodometro_atual }, depois: { hodometro_atual: km } });
-  const alertasDisparados = verificarAlertasDoVeiculo(veiculo.id);
+  const alertasDisparados = verificarAlertasDoConjunto(veiculo.id);
   res.status(201).json({ ...evento, alertasDisparados });
 }));
 

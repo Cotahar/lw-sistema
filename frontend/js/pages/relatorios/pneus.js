@@ -1,6 +1,8 @@
 import { get } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
+import { criarMultiSearchableSelect } from '../../components/multiSearchableSelect.js';
+import { buscarConjuntos } from '../../components/conjuntoOpcoes.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
@@ -16,6 +18,7 @@ export async function render(container) {
     <h1 class="mb-1 text-xl font-bold text-slate-900">Pneus - Custo e Vida Util</h1>
     <p class="mb-4 text-sm text-slate-500">Eventos de aquisicao/instalacao/remocao/recapagem - agrupe por pneu para ver custo total e km rodado no periodo filtrado.</p>
     <div class="card mb-4 grid grid-cols-2 gap-3 p-4 lg:grid-cols-4">
+      <div><label class="label">Conjunto</label><div data-filtro-conjunto></div></div>
       <div><label class="label">Veiculo</label><div data-filtro-veiculo></div></div>
       <div><label class="label">Numero de fogo</label><input type="text" class="input" data-filtro-fogo placeholder="Buscar por numero de fogo" /></div>
       <div>
@@ -45,6 +48,8 @@ export async function render(container) {
   let veiculoId = null;
   const veiculoSelect = criarSearchableSelect({ buscar: buscarVeiculos, placeholder: 'Pesquisar placa...', onChange: (id) => { veiculoId = id; tabela.recarregar(); } });
   container.querySelector('[data-filtro-veiculo]').appendChild(veiculoSelect.el);
+  const conjuntoSelect = criarMultiSearchableSelect({ buscar: buscarConjuntos, placeholder: 'Pesquisar conjunto...', onChange: () => tabela.recarregar() });
+  container.querySelector('[data-filtro-conjunto]').appendChild(conjuntoSelect.el);
 
   const inputFogo = container.querySelector('[data-filtro-fogo]');
   const selectTipoEvento = container.querySelector('[data-filtro-tipo-evento]');
@@ -113,6 +118,7 @@ export async function render(container) {
       { chave: 'data', titulo: 'Data', render: (r) => formatarDataBr(r.data) },
       { chave: 'numero_fogo', titulo: 'Numero de fogo', render: (r) => r.numero_fogo },
       { chave: 'tipo_evento', titulo: 'Evento', render: (r) => r.tipo_evento },
+      { chave: 'conjunto', titulo: 'Conjunto', render: (r) => r.conjunto || '-' },
       { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => r.veiculo_placa || '-' },
       { chave: 'posicao', titulo: 'Posicao', render: (r) => (r.eixo ? `Eixo ${r.eixo} - ${r.lado}` : '-') },
       { chave: 'km_veiculo', titulo: 'KM', render: (r) => (r.km_veiculo != null ? r.km_veiculo.toLocaleString('pt-BR') : '-') },
@@ -124,6 +130,7 @@ export async function render(container) {
     buscarDados: async (termo) => {
       const params = new URLSearchParams();
       if (veiculoId) params.set('veiculo_id', veiculoId);
+      for (const id of conjuntoSelect.getValues()) params.append('conjunto_id', id);
       if (inputFogo.value.trim()) params.set('numero_fogo', inputFogo.value.trim());
       if (selectTipoEvento.value) params.set('tipo_evento', selectTipoEvento.value);
       if (inputDataDe.value) params.set('data_de', parseDataBrParaIso(inputDataDe.value));
@@ -132,7 +139,7 @@ export async function render(container) {
       const todos = await get(`/relatorios/pneus${query ? `?${query}` : ''}`);
       const termoLower = (termo || '').toLowerCase();
       const dados = termoLower
-        ? todos.filter((r) => [r.numero_fogo, r.veiculo_placa, r.fornecedor_nome].some((v) => (v || '').toLowerCase().includes(termoLower)))
+        ? todos.filter((r) => [r.numero_fogo, r.veiculo_placa, r.conjunto, r.fornecedor_nome].some((v) => (v || '').toLowerCase().includes(termoLower)))
         : todos;
       renderResumoGrupo(dados);
       return dados;
@@ -145,12 +152,14 @@ export async function render(container) {
     rota: '/relatorios/pneus',
     obterFiltros: () => ({
       veiculoId, veiculoLabel: veiculoSelect.getLabel(),
+      conjuntoIds: conjuntoSelect.getValues(), conjuntoLabels: conjuntoSelect.getLabels(),
       fogo: inputFogo.value, tipoEvento: selectTipoEvento.value,
       dataDe: inputDataDe.value, dataAte: inputDataAte.value, agrupar: checkAgrupar.checked,
     }),
     aplicarFiltros: (f) => {
       veiculoId = f.veiculoId || null;
       veiculoSelect.setValue(f.veiculoId || null, f.veiculoLabel || '');
+      conjuntoSelect.setValues(f.conjuntoIds || [], f.conjuntoLabels || []);
       inputFogo.value = f.fogo || '';
       selectTipoEvento.value = f.tipoEvento || '';
       inputDataDe.value = f.dataDe || '';
@@ -164,6 +173,7 @@ export async function render(container) {
   container.querySelector('[data-exportar-pdf]').addEventListener('click', () => {
     const dados = tabela.dados();
     const filtros = [];
+    if (conjuntoSelect.getValues().length) filtros.push(`Conjunto: ${conjuntoSelect.getLabels().join(', ')}`);
     if (veiculoSelect.getValue()) filtros.push(`Veiculo: ${veiculoSelect.getLabel()}`);
     if (inputFogo.value.trim()) filtros.push(`Numero de fogo: ${inputFogo.value.trim()}`);
     if (selectTipoEvento.value) filtros.push(`Evento: ${selectTipoEvento.value}`);
@@ -173,9 +183,9 @@ export async function render(container) {
     abrirRelatorioImpressao({
       titulo: 'Pneus - Custo e Vida Util',
       filtros,
-      colunas: ['Data', 'Numero de fogo', 'Evento', 'Veiculo', 'Posicao', 'KM', 'Fornecedor/Recapadora', { titulo: 'Custo', alinhar: 'right' }],
+      colunas: ['Data', 'Numero de fogo', 'Evento', 'Conjunto', 'Veiculo', 'Posicao', 'KM', 'Fornecedor/Recapadora', { titulo: 'Custo', alinhar: 'right' }],
       linhas: dados.map((r) => [
-        formatarDataBr(r.data), r.numero_fogo, r.tipo_evento, r.veiculo_placa || '-',
+        formatarDataBr(r.data), r.numero_fogo, r.tipo_evento, r.conjunto || '-', r.veiculo_placa || '-',
         r.eixo ? `Eixo ${r.eixo} - ${r.lado}` : '-', r.km_veiculo != null ? r.km_veiculo.toLocaleString('pt-BR') : '-',
         r.fornecedor_nome || '-', r.custo != null ? formatarMoeda(r.custo) : '-',
       ]),

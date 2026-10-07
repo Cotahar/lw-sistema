@@ -247,6 +247,7 @@ export async function render(container) {
   const tabela = criarDataTable({
     colunas: [
       { chave: 'data', titulo: 'Data', render: (r) => formatarDataBr(r.data) },
+      { chave: 'conjunto', titulo: 'Conjunto', render: (r) => r.conjunto || '-' },
       { chave: 'placa', titulo: 'Veiculo' },
       { chave: 'tipo', titulo: 'Tipo' },
       { chave: 'hodometro', titulo: 'Hodometro', render: (r) => (r.hodometro != null ? `${r.hodometro.toLocaleString('pt-BR')} km` : '-') },

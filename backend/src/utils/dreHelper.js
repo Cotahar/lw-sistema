@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const { buscarCentroCustoDoVeiculo } = require('./conjuntoHelper');
+const { hojeIsoBrasilia } = require('./dataHora');
 
 // Extraido de dre.routes.js pra ser reaproveitado tambem pelo Ranking de
 // Veiculos (relatorios.routes.js) - a mesma conta de receita/custo/lucro
@@ -12,6 +13,15 @@ function somar(lista) {
 
 function periodoOuTudo(dataInicio, dataFim) {
   return { inicio: dataInicio || '0000-01-01', fim: dataFim || '9999-12-31' };
+}
+
+// Periodo da DRE: e um demonstrativo do que JA aconteceu, entao sem data final
+// o limite e HOJE - nunca o fim dos tempos. Com "9999-12-31" a DRE somava as
+// 60 parcelas de cada financiamento (ate 2031) e mostrava mais de R$ 1 milhao
+// de custo num conjunto que gasta ~R$ 90 mil no periodo. Quem escolhe uma
+// data final futura de proposito continua recebendo o que vence ate la.
+function periodoRealizado(dataInicio, dataFim) {
+  return { inicio: dataInicio || '0000-01-01', fim: dataFim || hojeIsoBrasilia() };
 }
 
 // Custos fixos + parcelas de financiamento de um centro de custo no periodo.
@@ -225,7 +235,7 @@ function totaisGeraisDoPeriodo(empresaId, inicio, fim) {
 }
 
 module.exports = {
-  somar, periodoOuTudo, custosDoCentroCusto, receitaECustosDaViagemPorCentro, custosDiretosDoVeiculo, resultadoDoVeiculo, totaisGeraisDoPeriodo,
+  somar, periodoOuTudo, periodoRealizado, custosDoCentroCusto, receitaECustosDaViagemPorCentro, custosDiretosDoVeiculo, resultadoDoVeiculo, totaisGeraisDoPeriodo,
   DATA_RECEITA_SQL, CATEGORIAS_CUSTO, receitaTotalDoPeriodo, receitaDoConjunto, custosDoVeiculo, conjuntoDonoPorVeiculo, veiculosDoConjunto,
   resultadoDoConjunto, custosDeVeiculosSemComposicao,
 };

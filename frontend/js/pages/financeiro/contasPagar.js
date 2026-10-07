@@ -77,6 +77,137 @@ function abrirEditarVencimento(conta, recarregar) {
   abrirModal({ titulo: 'Editar vencimento', conteudo: form, largura: 'max-w-sm' });
 }
 
+// Baixa em massa: uma tabela so com as contas marcadas na lista. Cada linha
+// traz o restante, o valor a pagar (editavel, comeca no restante), um desconto
+// opcional e a conta de saida (comeca na conta do lote, mas pode mudar por
+// linha). Tudo ou nada: se o servidor recusar qualquer linha, nada e baixado.
+async function abrirBaixaLote(contas, recarregar) {
+  const contasBancarias = (await get('/contas-bancarias')).filter((c) => c.ativo);
+  if (!contasBancarias.length) {
+    mostrarErro(new Error('Cadastre uma conta bancaria ativa para registrar os pagamentos.'));
+    return;
+  }
+  const restanteDe = (c) => c.valor - c.valor_pago - c.valor_descontado;
+  const opcoesConta = contasBancarias.map((c) => `<option value="${c.id}">${c.nome} (saldo ${formatarMoeda(c.saldo_atual)})</option>`).join('');
+  const corpo = document.createElement('form');
+  corpo.className = 'space-y-4';
+  corpo.innerHTML = `
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div class="sm:col-span-2"><label class="label">Pagar com a conta *</label><select name="conta_lote" class="input" required>${opcoesConta}</select></div>
+      <div><label class="label">Data do pagamento</label><input type="text" name="data_pagamento" class="input" /></div>
+    </div>
+    <div class="overflow-x-auto rounded-lg border border-slate-200">
+      <table class="w-full min-w-max text-sm">
+        <thead class="bg-slate-50 text-left text-xs uppercase text-slate-500">
+          <tr><th class="px-2 py-1.5">Conta a pagar</th><th class="px-2 py-1.5">Venc.</th><th class="px-2 py-1.5 text-right">Restante</th><th class="px-2 py-1.5">Valor a pagar</th><th class="px-2 py-1.5">Desconto</th><th class="px-2 py-1.5">Conta de saida</th></tr>
+        </thead>
+        <tbody data-linhas>
+          ${contas.map((c) => `
+            <tr class="border-t border-slate-100" data-linha data-id="${c.id}" data-restante="${restanteDe(c)}">
+              <td class="px-2 py-1.5"><p class="font-medium">${c.descricao}</p><p class="text-xs text-slate-400">${c.fornecedor_nome || 'Sem fornecedor'}</p></td>
+              <td class="px-2 py-1.5 whitespace-nowrap">${formatarDataBr(c.data_vencimento)}</td>
+              <td class="px-2 py-1.5 text-right whitespace-nowrap">${formatarMoeda(restanteDe(c))}</td>
+              <td class="px-2 py-1.5"><input type="text" class="input w-32" data-valor /></td>
+              <td class="px-2 py-1.5"><input type="text" class="input w-28" data-desconto /></td>
+              <td class="px-2 py-1.5"><select class="input w-44" data-conta-linha>${opcoesConta}</select></td>
+            </tr>
+          `).join('')}
+        </tbody>
+        <tfoot class="border-t border-slate-200 bg-slate-50 font-semibold">
+          <tr><td class="px-2 py-1.5" colspan="3">Total do lote (<span data-qtd>${contas.length}</span> conta(s))</td><td class="px-2 py-1.5" data-total-pago colspan="3"></td></tr>
+        </tfoot>
+      </table>
+    </div>
+    <p class="hidden text-sm text-red-600" data-erro></p>
+    <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Confirmar pagamentos</button></div>
+  `;
+  attachDataMask(corpo.data_pagamento, hojeIsoLocal());
+
+  const linhas = [...corpo.querySelectorAll('[data-linha]')];
+  const contaPadrao = contasBancarias[0].id;
+  corpo.conta_lote.value = String(contaPadrao);
+  const contaEditadaNaLinha = new Set(); // linhas em que o usuario escolheu outra conta
+  for (const tr of linhas) {
+    const restante = Number(tr.dataset.restante);
+    attachMoedaMaskReais(tr.querySelector('[data-valor]'), restante);
+    attachMoedaMaskReais(tr.querySelector('[data-desconto]'), 0);
+    tr.querySelector('[data-conta-linha]').value = String(contaPadrao);
+    tr.querySelector('[data-conta-linha]').addEventListener('change', () => contaEditadaNaLinha.add(tr.dataset.id));
+  }
+
+  function lerLinha(tr) {
+    return {
+      id: Number(tr.dataset.id),
+      restante: Number(tr.dataset.restante),
+      valor_pago: getMoedaValue(tr.querySelector('[data-valor]')),
+      desconto: getMoedaValue(tr.querySelector('[data-desconto]')),
+      conta_bancaria_id: Number(tr.querySelector('[data-conta-linha]').value),
+    };
+  }
+
+  function atualizarTotal() {
+    const lidas = linhas.map(lerLinha);
+    const total = lidas.reduce((t, l) => t + l.valor_pago, 0);
+    const desconto = lidas.reduce((t, l) => t + l.desconto, 0);
+    corpo.querySelector('[data-total-pago]').textContent = `${formatarMoeda(total)} a pagar${desconto ? ` + ${formatarMoeda(desconto)} de desconto` : ''}`;
+  }
+  corpo.conta_lote.addEventListener('change', () => {
+    for (const tr of linhas) {
+      if (!contaEditadaNaLinha.has(tr.dataset.id)) tr.querySelector('[data-conta-linha]').value = corpo.conta_lote.value;
+    }
+  });
+  corpo.addEventListener('input', atualizarTotal);
+  atualizarTotal();
+
+  const erro = corpo.querySelector('[data-erro]');
+  corpo.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    erro.classList.add('hidden');
+    const lidas = linhas.map(lerLinha);
+    for (const l of lidas) {
+      const conta = contas.find((c) => c.id === l.id);
+      if (l.valor_pago + l.desconto <= 0) { erro.textContent = `"${conta.descricao}": informe um valor a pagar ou um desconto.`; erro.classList.remove('hidden'); return; }
+      if (l.valor_pago + l.desconto > l.restante) { erro.textContent = `"${conta.descricao}": valor a pagar + desconto passa do restante (${formatarMoeda(l.restante)}). Ajuste o valor ou faca a baixa individual dessa conta.`; erro.classList.remove('hidden'); return; }
+    }
+    const dataIso = corpo.data_pagamento.value ? parseDataBrParaIso(corpo.data_pagamento.value) : null;
+    if (corpo.data_pagamento.value && !dataIso) { erro.textContent = 'Informe uma data de pagamento valida (dd/mm/aaaa).'; erro.classList.remove('hidden'); return; }
+
+    // Saldo: avisa (sem bloquear) quando a saida do lote deixa alguma conta negativa.
+    const saidaPorConta = new Map();
+    for (const l of lidas) saidaPorConta.set(l.conta_bancaria_id, (saidaPorConta.get(l.conta_bancaria_id) || 0) + l.valor_pago);
+    const negativas = [...saidaPorConta].map(([id, saida]) => ({ conta: contasBancarias.find((c) => c.id === id), saida }))
+      .filter(({ conta, saida }) => conta && saida > conta.saldo_atual);
+    if (negativas.length) {
+      const ok = await confirmarAcao({
+        titulo: 'Saldo insuficiente',
+        mensagem: negativas.map(({ conta, saida }) => `${conta.nome} tem ${formatarMoeda(conta.saldo_atual)} e vai pagar ${formatarMoeda(saida)}.`).join('<br />') + '<br />Continuar mesmo assim?',
+        textoConfirmar: 'Pagar mesmo assim',
+        perigo: false,
+      });
+      if (!ok) return;
+    }
+
+    const botao = corpo.querySelector('button[type="submit"]');
+    botao.disabled = true;
+    try {
+      const res = await post('/contas-pagar/baixar-lote', {
+        conta_bancaria_id: Number(corpo.conta_lote.value),
+        data_pagamento: dataIso,
+        itens: lidas.map((l) => ({ id: l.id, valor_pago: l.valor_pago, desconto: l.desconto, conta_bancaria_id: l.conta_bancaria_id })),
+      });
+      fecharModal();
+      mostrarToast(`${res.quantidade} conta(s) paga(s): ${formatarMoeda(res.total_pago)}.`);
+      recarregar();
+    } catch (err) {
+      erro.textContent = err.message;
+      erro.classList.remove('hidden');
+    } finally {
+      botao.disabled = false;
+    }
+  });
+  abrirModal({ titulo: `Baixar ${contas.length} conta(s) a pagar`, conteudo: corpo, largura: 'max-w-5xl' });
+}
+
 async function abrirNovaConta(recarregar) {
   const form = document.createElement('form');
   form.className = 'space-y-4';
@@ -480,6 +611,9 @@ export async function render(container, params, query) {
       return get(`/contas-pagar${query ? `?${query}` : ''}`);
     },
     onNovo: gerenciar ? () => abrirNovaConta(tabela.recarregar) : undefined,
+    // Marque varias contas e pague todas numa tabela so (so contas ainda com saldo a pagar).
+    acoesLote: gerenciar ? [{ label: 'Baixar selecionadas', onClick: (linhas) => abrirBaixaLote(linhas, tabela.recarregar) }] : undefined,
+    selecionavel: (r) => r.status === 'Pendente' || r.status === 'Parcial',
     acoesExtras: (r) => {
       const acoes = [
         { label: 'Detalhes', onClick: (c) => abrirDetalhes(c, tabela.recarregar, gerenciar) },

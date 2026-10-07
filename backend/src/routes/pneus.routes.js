@@ -8,6 +8,8 @@ const { condicaoEmpresa } = require('../utils/empresaScope');
 const { registrarAuditoria } = require('../utils/audit');
 const { withTransaction } = require('../utils/transaction');
 
+const { veiculoIdsDosConjuntos, conjuntoPorVeiculo, hodometroDoConjuntoDoVeiculo } = require('../utils/conjuntoRelatorioHelper');
+
 const router = express.Router();
 
 function registrarEvento({ empresaId, pneuId, tipoEvento, veiculoId, eixo, lado, kmVeiculo, fornecedorId, custo, observacao, usuarioId }) {
@@ -19,15 +21,26 @@ function registrarEvento({ empresaId, pneuId, tipoEvento, veiculoId, eixo, lado,
 }
 
 router.get('/', requerAcessoModulo('pneus', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const { status, veiculo_id, search } = req.query;
+  const { status, veiculo_id, conjunto_id, search } = req.query;
   const condicoes = [];
   const params = [];
   condicaoEmpresa(condicoes, params, req);
   if (status) { condicoes.push('status = ?'); params.push(status); }
   if (veiculo_id) { condicoes.push('veiculo_id = ?'); params.push(veiculo_id); }
+  // Filtro por conjunto: pneus instalados em qualquer unidade (cavalo ou carreta) da composicao.
+  const veiculosDoConjunto = veiculoIdsDosConjuntos(conjunto_id, req.empresaId);
+  if (veiculosDoConjunto) { condicoes.push(`veiculo_id IN (${veiculosDoConjunto.map(() => '?').join(',')})`); params.push(...veiculosDoConjunto); }
   if (search) { condicoes.push('numero_fogo LIKE ?'); params.push(`%${search}%`); }
   const where = `WHERE ${condicoes.join(' AND ')}`;
-  res.json(db.prepare(`SELECT * FROM pneus ${where} ORDER BY numero_fogo`).all(...params));
+  const pneus = db.prepare(`SELECT * FROM pneus ${where} ORDER BY numero_fogo`).all(...params);
+  // Placa e conjunto de cada pneu instalado (1 consulta, sem N+1 no frontend).
+  const placas = new Map(db.prepare('SELECT id, placa, tipo FROM veiculos WHERE empresa_id = ?').all(req.empresaId).map((v) => [v.id, v]));
+  const conjuntos = conjuntoPorVeiculo(req.empresaId);
+  res.json(pneus.map((p) => {
+    const v = p.veiculo_id ? placas.get(p.veiculo_id) : null;
+    const c = p.veiculo_id ? conjuntos.get(p.veiculo_id) : null;
+    return { ...p, placa_veiculo: v ? v.placa : null, tipo_veiculo: v ? v.tipo : null, conjunto_id: c ? c.conjunto_id : null, conjunto: c ? c.conjunto : null };
+  }));
 }));
 
 router.get('/:id', requerAcessoModulo('pneus', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
@@ -104,15 +117,17 @@ router.post('/:id/instalar', requerAcessoModulo('pneus', 'Gerenciar'), exigirEmp
     const atual = db.prepare('SELECT * FROM pneus WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
     if (!atual) throw new ApiError(404, 'Pneu nao encontrado.');
     if (atual.status !== 'Estoque') throw new ApiError(400, `So e possivel instalar um pneu que esta em Estoque (status atual: ${atual.status}).`);
-    const veiculo = db.prepare('SELECT id FROM veiculos WHERE id = ? AND empresa_id = ?').get(veiculo_id, req.empresaId);
+    const veiculo = db.prepare('SELECT id, tipo, hodometro_atual FROM veiculos WHERE id = ? AND empresa_id = ?').get(veiculo_id, req.empresaId);
     if (!veiculo) throw new ApiError(400, 'Veiculo nao encontrado nesta empresa.');
     pneuAntes = atual;
+    // Sem KM informado, usa o do conjunto: a carreta nao tem hodometro proprio.
+    const kmInstalacao = km_veiculo || hodometroDoConjuntoDoVeiculo(veiculo) || null;
 
     // custo_pendente_dre e o que ainda nao foi lancado no DRE de nenhum veiculo:
     // custo de aquisicao na 1a instalacao, ou so o valor da ultima recapagem
     // nas instalacoes seguintes. E consumido (zerado) aqui.
     registrarEvento({
-      empresaId: req.empresaId, pneuId: atual.id, tipoEvento: 'Instalacao', veiculoId: veiculo_id, eixo, lado, kmVeiculo: km_veiculo,
+      empresaId: req.empresaId, pneuId: atual.id, tipoEvento: 'Instalacao', veiculoId: veiculo_id, eixo, lado, kmVeiculo: kmInstalacao,
       custo: atual.custo_pendente_dre, usuarioId: req.usuario.id,
     });
 
@@ -136,10 +151,12 @@ router.post('/:id/remover', requerAcessoModulo('pneus', 'Gerenciar'), exigirEmpr
     if (!atual) throw new ApiError(404, 'Pneu nao encontrado.');
     if (atual.status !== 'Instalado') throw new ApiError(400, 'So e possivel remover um pneu que esta Instalado.');
     pneuAntes = atual;
+    const veiculoDoPneu = db.prepare('SELECT id, tipo, hodometro_atual FROM veiculos WHERE id = ?').get(atual.veiculo_id);
+    const kmRemocao = km_veiculo || (veiculoDoPneu ? hodometroDoConjuntoDoVeiculo(veiculoDoPneu) : null) || null;
 
     registrarEvento({
       empresaId: req.empresaId, pneuId: atual.id, tipoEvento: 'Remocao', veiculoId: atual.veiculo_id, eixo: atual.eixo, lado: atual.lado,
-      kmVeiculo: km_veiculo, observacao, usuarioId: req.usuario.id,
+      kmVeiculo: kmRemocao, observacao, usuarioId: req.usuario.id,
     });
 
     db.prepare(`UPDATE pneus SET status = 'Estoque', veiculo_id = NULL, eixo = NULL, lado = NULL WHERE id = ?`).run(atual.id);

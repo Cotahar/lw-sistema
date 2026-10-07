@@ -6,6 +6,7 @@ const { requerAcessoModulo, requerAdmin } = require('../middleware/auth');
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { registrarAuditoria } = require('../utils/audit');
 const { withTransaction } = require('../utils/transaction');
+const { baixarContaPagar, TABELA_PARCELA_POR_ORIGEM } = require('../utils/contaPagarBaixaHelper');
 
 const router = express.Router();
 
@@ -13,14 +14,6 @@ function formatarMoeda(centavos) {
   return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-// Parcela de origem cujo status precisa ficar em sincronia com a conta a
-// pagar (financiamento/despesa fixa/OS parcelados) - usado tanto ao baixar
-// (marca Paga) quanto ao estornar (volta pra Pendente).
-const TABELA_PARCELA_POR_ORIGEM = {
-  FinanciamentoParcela: 'financiamento_parcelas',
-  DespesaFixaParcela: 'despesa_fixa_parcelas',
-  OrdemServicoParcela: 'os_parcelas',
-};
 
 // Join usado tanto na listagem quanto na busca por :id - traz o nome da
 // categoria e o veiculo/viagem de origem (quando a conta veio de uma despesa
@@ -259,66 +252,58 @@ router.post('/:id/baixar', requerAcessoModulo('contas_pagar', 'Gerenciar'), exig
   const { conta_bancaria_id, valor_pago, desconto, data_pagamento, ajustarValorConta } = req.body;
   if (!conta_bancaria_id) throw new ApiError(400, 'Informe a conta bancaria de origem do pagamento.');
 
-  const resultado = withTransaction(db, () => {
-    const contaPagar = db.prepare('SELECT * FROM contas_pagar WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
-    if (!contaPagar) throw new ApiError(404, 'Conta a pagar nao encontrada.');
-    if (contaPagar.status === 'Pago') throw new ApiError(400, 'Esta conta ja esta paga.');
-    const contaBancaria = db.prepare('SELECT * FROM contas_bancarias WHERE id = ? AND empresa_id = ?').get(conta_bancaria_id, req.empresaId);
-    if (!contaBancaria) throw new ApiError(400, 'Conta bancaria nao encontrada.');
-
-    const restante = contaPagar.valor - contaPagar.valor_pago - contaPagar.valor_descontado;
-    const valorBaixa = valor_pago !== undefined && valor_pago !== null ? valor_pago : restante;
-    const valorDesconto = desconto || 0;
-    const totalBaixa = valorBaixa + valorDesconto;
-    if (valorBaixa < 0 || valorDesconto < 0 || totalBaixa <= 0) throw new ApiError(400, 'Valor de baixa invalido.');
-
-    let valorContaFinal = contaPagar.valor;
-    if (totalBaixa > restante) {
-      if (!ajustarValorConta) {
-        throw new ApiError(409, `O valor a baixar (${(totalBaixa / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}) e maior que o restante da conta (${(restante / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}). Confirme para ajustar o valor do lancamento.`);
-      }
-      valorContaFinal = contaPagar.valor_pago + contaPagar.valor_descontado + totalBaixa;
-    }
-
-    const novoValorPago = contaPagar.valor_pago + valorBaixa;
-    const novoValorDescontado = contaPagar.valor_descontado + valorDesconto;
-    const novoStatus = (novoValorPago + novoValorDescontado) >= valorContaFinal ? 'Pago' : 'Parcial';
-    db.prepare(`
-      UPDATE contas_pagar SET valor = ?, valor_pago = ?, valor_descontado = ?, status = ?, data_pagamento = COALESCE(?, date('now', '-3 hours')), conta_bancaria_id = ?
-      WHERE id = ?
-    `).run(valorContaFinal, novoValorPago, novoValorDescontado, novoStatus, data_pagamento || null, conta_bancaria_id, contaPagar.id);
-
-    let movimentacao = null;
-    if (valorBaixa > 0) {
-      const movInfo = db.prepare(`
-        INSERT INTO movimentacoes_caixa (empresa_id, conta_bancaria_id, tipo, valor, data, descricao, origem_tipo, origem_id, criado_por)
-        VALUES (?, ?, 'Saida', ?, COALESCE(?, date('now', '-3 hours')), ?, 'ContaPagar', ?, ?)
-      `).run(req.empresaId, conta_bancaria_id, valorBaixa, data_pagamento || null, contaPagar.descricao, contaPagar.id, req.usuario.id);
-      db.prepare('UPDATE contas_bancarias SET saldo_atual = saldo_atual - ? WHERE id = ?').run(valorBaixa, conta_bancaria_id);
-      movimentacao = db.prepare('SELECT * FROM movimentacoes_caixa WHERE id = ?').get(movInfo.lastInsertRowid);
-    }
-
-    // Sincroniza o status na tabela de origem tambem (financiamento/despesa
-    // fixa/OS parcelados) - sem isso a parcela ficava "Pendente" pra sempre
-    // nessas tabelas mesmo depois de paga aqui, por mais que a conta a pagar
-    // (a fonte de verdade pro financeiro) estivesse correta.
-    if (novoStatus === 'Pago') {
-      const tabelaParcela = TABELA_PARCELA_POR_ORIGEM[contaPagar.origem_tipo];
-      if (tabelaParcela) {
-        db.prepare(`UPDATE ${tabelaParcela} SET status = 'Paga', data_pagamento = COALESCE(?, date('now', '-3 hours')) WHERE id = ?`)
-          .run(data_pagamento || null, contaPagar.origem_id);
-      }
-    }
-
-    return {
-      antes: contaPagar,
-      contaPagar: db.prepare('SELECT * FROM contas_pagar WHERE id = ?').get(contaPagar.id),
-      movimentacao,
-    };
-  });
+  const resultado = withTransaction(db, () => baixarContaPagar({
+    empresaId: req.empresaId, usuarioId: req.usuario.id, contaId: req.params.id, contaBancariaId: conta_bancaria_id,
+    valorPago: valor_pago, desconto, dataPagamento: data_pagamento, ajustarValorConta,
+  }));
 
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'contas_pagar', registroId: resultado.contaPagar.id, acao: 'UPDATE', antes: resultado.antes, depois: resultado.contaPagar });
   res.json(resultado);
+}));
+
+// Baixa em lote: paga varias contas de uma vez (uma tabela so na tela). Tudo
+// ou nada - se qualquer linha for invalida (ja paga, valor acima do restante,
+// conta inexistente) NADA e baixado e a resposta diz qual linha falhou. Cada
+// conta gera a propria movimentacao de caixa e o proprio registro de
+// auditoria, igual a baixa individual. Valor acima do restante nao e aceito
+// aqui (o ajuste de valor continua sendo feito na baixa individual).
+// itens: [{ id, valor_pago?, desconto?, conta_bancaria_id? }] - sem valor_pago,
+// paga o restante; sem conta_bancaria_id na linha, usa a conta do lote.
+router.post('/baixar-lote', requerAcessoModulo('contas_pagar', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { conta_bancaria_id, data_pagamento, itens } = req.body;
+  if (!Array.isArray(itens) || !itens.length) throw new ApiError(400, 'Selecione ao menos uma conta a pagar.');
+  if (itens.length > 200) throw new ApiError(400, 'Maximo de 200 contas por lote.');
+  const ids = itens.map((i) => Number(i.id));
+  if (ids.some((id) => !Number.isInteger(id) || id <= 0)) throw new ApiError(400, 'Linha de lote sem id de conta valido.');
+  if (new Set(ids).size !== ids.length) throw new ApiError(400, 'A mesma conta aparece mais de uma vez no lote.');
+  if (data_pagamento && (!/^\d{4}-\d{2}-\d{2}$/.test(String(data_pagamento)) || Number.isNaN(Date.parse(`${data_pagamento}T00:00:00Z`)))) {
+    throw new ApiError(400, 'Informe uma data de pagamento valida (AAAA-MM-DD).');
+  }
+
+  const resultados = withTransaction(db, () => itens.map((item) => {
+    const contaBancariaId = item.conta_bancaria_id || conta_bancaria_id;
+    if (!contaBancariaId) throw new ApiError(400, 'Informe a conta bancaria de origem do pagamento.');
+    try {
+      return baixarContaPagar({
+        empresaId: req.empresaId, usuarioId: req.usuario.id, contaId: item.id, contaBancariaId,
+        valorPago: item.valor_pago, desconto: item.desconto, dataPagamento: data_pagamento, ajustarValorConta: false,
+      });
+    } catch (err) {
+      // Diz QUAL conta barrou o lote (o erro original so fala do valor/status).
+      if (err instanceof ApiError) throw new ApiError(err.status === 409 ? 400 : err.status, `Conta #${item.id}: ${err.message}`);
+      throw err;
+    }
+  }));
+
+  for (const r of resultados) {
+    registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'contas_pagar', registroId: r.contaPagar.id, acao: 'UPDATE', antes: r.antes, depois: r.contaPagar });
+  }
+  res.json({
+    quantidade: resultados.length,
+    total_pago: resultados.reduce((t, r) => t + (r.movimentacao ? r.movimentacao.valor : 0), 0),
+    total_desconto: resultados.reduce((t, r) => t + (r.contaPagar.valor_descontado - r.antes.valor_descontado), 0),
+    contas: resultados.map((r) => r.contaPagar),
+  });
 }));
 
 // Historico de baixas desta conta (uma linha por chamada a POST /:id/baixar

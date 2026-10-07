@@ -5,7 +5,8 @@ const { requerAcessoModulo, requerAdmin } = require('../middleware/auth');
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
-const { periodoOuTudo, resultadoDoVeiculo, totaisGeraisDoPeriodo } = require('../utils/dreHelper');
+const { periodoOuTudo, periodoRealizado, resultadoDoVeiculo, totaisGeraisDoPeriodo, resultadoDoConjunto, conjuntoDonoPorVeiculo } = require('../utils/dreHelper');
+const { rotulosDosConjuntos, veiculoIdsDosConjuntos, comConjuntoDoVeiculo, TIPOS_TRATORA } = require('../utils/conjuntoRelatorioHelper');
 const { hojeIsoBrasilia } = require('../utils/dataHora');
 
 const router = express.Router();
@@ -104,7 +105,7 @@ router.get('/saldos-em-aberto', requerAcessoModulo('dre', 'Visualizar'), exigirE
 // combinacao possivel.
 router.get('/despesas', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const {
-    categoria_id, veiculo_id, motorista_id, pago_por, posto_fornecedor_id, viagem_id,
+    categoria_id, veiculo_id, conjunto_id, motorista_id, pago_por, posto_fornecedor_id, viagem_id,
     data_de, data_ate,
   } = req.query;
 
@@ -113,6 +114,9 @@ router.get('/despesas', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEs
   if (categoria_id) { condicoes.push('dv.categoria_id = ?'); params.push(categoria_id); }
   const veiculoIds = comoLista(veiculo_id);
   if (veiculoIds.length) { condicoes.push(clausulaIn('cc.veiculo_id', veiculoIds)); params.push(...veiculoIds); }
+  // Conjunto = o da VIAGEM a que a despesa pertence (cavalo e carreta juntos).
+  const conjuntoIds = comoLista(conjunto_id);
+  if (conjuntoIds.length) { condicoes.push(clausulaIn('vg.conjunto_id', conjuntoIds)); params.push(...conjuntoIds); }
   const motoristaIds = comoLista(motorista_id);
   if (motoristaIds.length) { condicoes.push(clausulaIn('vg.motorista_id', motoristaIds)); params.push(...motoristaIds); }
   if (pago_por) { condicoes.push('dv.pago_por = ?'); params.push(pago_por); }
@@ -124,7 +128,7 @@ router.get('/despesas', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEs
 
   const linhas = db.prepare(`
     SELECT dv.id, dv.data, dv.valor, dv.pago_por, dv.descricao, dv.litragem, dv.preco_litro,
-           dv.km_abastecimento, dv.tanque_completo, dv.data_vencimento, dv.viagem_id,
+           dv.km_abastecimento, dv.tanque_completo, dv.data_vencimento, dv.viagem_id, vg.conjunto_id,
            cat.nome AS categoria_nome,
            cc.tipo AS centro_custo_tipo, v.placa AS veiculo_placa,
            mo.nome AS motorista_nome,
@@ -145,8 +149,10 @@ router.get('/despesas', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEs
   // Despesa lancada no centro "Base/Administrativo" nao tem veiculo (por
   // definicao) - mostra o nome do centro de custo em vez de deixar em
   // branco, senao parece um dado faltando por engano.
+  const rotulos = rotulosDosConjuntos(req.empresaId);
   res.json(linhas.map((r) => ({
     ...r,
+    conjunto: rotulos.get(r.conjunto_id) || null,
     veiculo_placa: r.veiculo_placa || (r.centro_custo_tipo === 'Base' ? 'BASE/ADMINISTRATIVO' : null),
   })));
 }));
@@ -156,12 +162,14 @@ router.get('/despesas', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEs
 // saldo>0 do Saldos em Aberto (aqui e visao completa: recebido ou nao).
 router.get('/fretes', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const {
-    veiculo_id, motorista_id, viagem_id, transportadora_id,
+    veiculo_id, conjunto_id, motorista_id, viagem_id, transportadora_id,
     data_carregamento_de, data_carregamento_ate,
   } = req.query;
 
   const condicoes = ['cr.empresa_id = ?'];
   const params = [req.empresaId];
+  const conjuntoIds = comoLista(conjunto_id);
+  if (conjuntoIds.length) { condicoes.push(clausulaIn('vg.conjunto_id', conjuntoIds)); params.push(...conjuntoIds); }
   const motoristaIds = comoLista(motorista_id);
   if (motoristaIds.length) { condicoes.push(clausulaIn('vg.motorista_id', motoristaIds)); params.push(...motoristaIds); }
   const viagemIds = comoLista(viagem_id);
@@ -224,17 +232,19 @@ router.get('/conta-corrente-motorista', requerAcessoModulo('dre', 'Visualizar'),
 // custo/periodo - mesmo padrao de resolucao de veiculo_placa de /despesas
 // (Base/Administrativo quando o centro de custo nao e de um veiculo).
 router.get('/despesas-fixas', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const { categoria_id, veiculo_id, data_de, data_ate } = req.query;
+  const { categoria_id, veiculo_id, conjunto_id, data_de, data_ate } = req.query;
   const condicoes = ['df.empresa_id = ?'];
   const params = [req.empresaId];
   if (categoria_id) { condicoes.push('df.categoria_id = ?'); params.push(categoria_id); }
   if (veiculo_id) { condicoes.push('cc.veiculo_id = ?'); params.push(veiculo_id); }
+  const veiculosDoConjunto = veiculoIdsDosConjuntos(conjunto_id, req.empresaId);
+  if (veiculosDoConjunto) { condicoes.push(clausulaIn('cc.veiculo_id', veiculosDoConjunto)); params.push(...veiculosDoConjunto); }
   if (data_de) { condicoes.push('df.data >= ?'); params.push(data_de); }
   if (data_ate) { condicoes.push('df.data <= ?'); params.push(data_ate); }
 
   const linhas = db.prepare(`
     SELECT df.id, df.data, df.valor, df.recorrente, df.qtd_parcelas, df.descricao,
-           cat.nome AS categoria_nome, cc.tipo AS centro_custo_tipo, v.placa AS veiculo_placa
+           cat.nome AS categoria_nome, cc.tipo AS centro_custo_tipo, cc.veiculo_id AS veiculo_id, v.placa AS veiculo_placa
     FROM despesas_fixas df
     LEFT JOIN categorias_despesa cat ON cat.id = df.categoria_id
     LEFT JOIN centros_custo cc ON cc.id = df.centro_custo_id
@@ -243,20 +253,22 @@ router.get('/despesas-fixas', requerAcessoModulo('dre', 'Visualizar'), exigirEmp
     ORDER BY df.data DESC, df.id DESC
   `).all(...params);
 
-  res.json(linhas.map((r) => ({
+  res.json(comConjuntoDoVeiculo(linhas.map((r) => ({
     ...r,
     veiculo_placa: r.veiculo_placa || (r.centro_custo_tipo === 'Base' ? 'BASE/ADMINISTRATIVO' : null),
-  })));
+  })), req.empresaId));
 }));
 
 // Parcelas de financiamento: pagas, a vencer ou atrasadas, por veiculo -
 // status vem direto da coluna (mantida pela rota de financiamentos), sem
 // recalcular nada aqui.
 router.get('/parcelas-financiamento', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const { veiculo_id, status, data_de, data_ate } = req.query;
+  const { veiculo_id, conjunto_id, status, data_de, data_ate } = req.query;
   const condicoes = ['fp.empresa_id = ?'];
   const params = [req.empresaId];
   if (veiculo_id) { condicoes.push('cc.veiculo_id = ?'); params.push(veiculo_id); }
+  const veiculosDoConjunto = veiculoIdsDosConjuntos(conjunto_id, req.empresaId);
+  if (veiculosDoConjunto) { condicoes.push(clausulaIn('cc.veiculo_id', veiculosDoConjunto)); params.push(...veiculosDoConjunto); }
   if (status) { condicoes.push('fp.status = ?'); params.push(status); }
   if (data_de) { condicoes.push('fp.data_vencimento >= ?'); params.push(data_de); }
   if (data_ate) { condicoes.push('fp.data_vencimento <= ?'); params.push(data_ate); }
@@ -264,7 +276,7 @@ router.get('/parcelas-financiamento', requerAcessoModulo('dre', 'Visualizar'), e
   const linhas = db.prepare(`
     SELECT fp.id, fp.numero_parcela, fp.data_vencimento, fp.valor_parcela, fp.data_pagamento, fp.status,
            f.descricao AS financiamento_descricao, cred.nome AS credor_nome,
-           cc.tipo AS centro_custo_tipo, v.placa AS veiculo_placa
+           cc.tipo AS centro_custo_tipo, cc.veiculo_id AS veiculo_id, v.placa AS veiculo_placa
     FROM financiamento_parcelas fp
     JOIN financiamentos f ON f.id = fp.financiamento_id
     LEFT JOIN fornecedores cred ON cred.id = f.credor_fornecedor_id
@@ -274,10 +286,10 @@ router.get('/parcelas-financiamento', requerAcessoModulo('dre', 'Visualizar'), e
     ORDER BY fp.data_vencimento
   `).all(...params);
 
-  res.json(linhas.map((r) => ({
+  res.json(comConjuntoDoVeiculo(linhas.map((r) => ({
     ...r,
     veiculo_placa: r.veiculo_placa || (r.centro_custo_tipo === 'Base' ? 'BASE/ADMINISTRATIVO' : null),
-  })));
+  })), req.empresaId));
 }));
 
 // Multas por motorista/veiculo - valor, status de indicacao de condutor,
@@ -338,10 +350,12 @@ router.get('/atividade-usuarios', requerAdmin, asyncHandler(async (req, res) => 
 // filtra e ja embute os itens de cada OS (mesmo padrao de "ultima_baixa"
 // em /saldos-em-aberto: 1 query extra por linha, aceitavel neste volume).
 router.get('/ordens-servico', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const { veiculo_id, tipo, fornecedor_id, data_de, data_ate } = req.query;
+  const { veiculo_id, conjunto_id, tipo, fornecedor_id, data_de, data_ate } = req.query;
   const condicoes = ['os.empresa_id = ?'];
   const params = [req.empresaId];
   if (veiculo_id) { condicoes.push('os.veiculo_id = ?'); params.push(veiculo_id); }
+  const veiculosDoConjunto = veiculoIdsDosConjuntos(conjunto_id, req.empresaId);
+  if (veiculosDoConjunto) { condicoes.push(clausulaIn('os.veiculo_id', veiculosDoConjunto)); params.push(...veiculosDoConjunto); }
   if (tipo) { condicoes.push('os.tipo = ?'); params.push(tipo); }
   if (fornecedor_id) { condicoes.push('os.fornecedor_id = ?'); params.push(fornecedor_id); }
   if (data_de) { condicoes.push('os.data >= ?'); params.push(data_de); }
@@ -349,7 +363,7 @@ router.get('/ordens-servico', requerAcessoModulo('dre', 'Visualizar'), exigirEmp
 
   const linhas = db.prepare(`
     SELECT os.id, os.data, os.hodometro, os.tipo, os.valor_pecas, os.valor_mao_obra, os.descricao,
-           v.placa AS veiculo_placa, forn.nome AS fornecedor_nome
+           os.veiculo_id, v.placa AS veiculo_placa, v.tipo AS veiculo_tipo, forn.nome AS fornecedor_nome
     FROM ordens_servico os
     JOIN veiculos v ON v.id = os.veiculo_id
     LEFT JOIN fornecedores forn ON forn.id = os.fornecedor_id
@@ -357,7 +371,7 @@ router.get('/ordens-servico', requerAcessoModulo('dre', 'Visualizar'), exigirEmp
     ORDER BY os.data DESC, os.id DESC
   `).all(...params);
 
-  res.json(linhas.map((r) => {
+  res.json(comConjuntoDoVeiculo(linhas, req.empresaId).map((r) => {
     const itens = db.prepare('SELECT descricao, quantidade, valor_unitario FROM os_itens WHERE os_id = ?').all(r.id);
     return { ...r, valor_total: r.valor_pecas + r.valor_mao_obra, itens };
   }));
@@ -397,10 +411,12 @@ router.get('/estoque', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEsp
 // calculada no frontend ao agrupar por pneu (maior km_veiculo - menor
 // km_veiculo do conjunto filtrado), nao ha uma coluna pronta pra isso.
 router.get('/pneus', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const { veiculo_id, numero_fogo, tipo_evento, data_de, data_ate } = req.query;
+  const { veiculo_id, conjunto_id, numero_fogo, tipo_evento, data_de, data_ate } = req.query;
   const condicoes = ['pe.empresa_id = ?'];
   const params = [req.empresaId];
   if (veiculo_id) { condicoes.push('pe.veiculo_id = ?'); params.push(veiculo_id); }
+  const veiculosDoConjunto = veiculoIdsDosConjuntos(conjunto_id, req.empresaId);
+  if (veiculosDoConjunto) { condicoes.push(clausulaIn('pe.veiculo_id', veiculosDoConjunto)); params.push(...veiculosDoConjunto); }
   if (numero_fogo) { condicoes.push('p.numero_fogo LIKE ?'); params.push(`%${numero_fogo}%`); }
   if (tipo_evento) { condicoes.push('pe.tipo_evento = ?'); params.push(tipo_evento); }
   if (data_de) { condicoes.push('pe.data >= ?'); params.push(data_de); }
@@ -409,7 +425,7 @@ router.get('/pneus', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspec
   const linhas = db.prepare(`
     SELECT pe.id, pe.tipo_evento, pe.eixo, pe.lado, pe.km_veiculo, pe.custo, pe.data, pe.observacao,
            p.id AS pneu_id, p.numero_fogo, p.marca, p.modelo, p.medida,
-           v.placa AS veiculo_placa, forn.nome AS fornecedor_nome
+           pe.veiculo_id, v.placa AS veiculo_placa, forn.nome AS fornecedor_nome
     FROM pneu_eventos pe
     JOIN pneus p ON p.id = pe.pneu_id
     LEFT JOIN veiculos v ON v.id = pe.veiculo_id
@@ -417,30 +433,32 @@ router.get('/pneus', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspec
     WHERE ${condicoes.join(' AND ')}
     ORDER BY pe.data DESC, pe.id DESC
   `).all(...params);
-  res.json(linhas);
+  res.json(comConjuntoDoVeiculo(linhas, req.empresaId));
 }));
 
 // Alertas de manutencao (versao exportavel/imprimivel da tela de Alertas
 // ja existente - mesmo join de alertas.routes.js:/ocorrencias).
 router.get('/alertas', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const { veiculo_id, status, data_de, data_ate } = req.query;
+  const { veiculo_id, conjunto_id, status, data_de, data_ate } = req.query;
   const condicoes = ['ao.empresa_id = ?'];
   const params = [req.empresaId];
   if (veiculo_id) { condicoes.push('ao.veiculo_id = ?'); params.push(veiculo_id); }
+  const veiculosDoConjunto = veiculoIdsDosConjuntos(conjunto_id, req.empresaId);
+  if (veiculosDoConjunto) { condicoes.push(clausulaIn('ao.veiculo_id', veiculosDoConjunto)); params.push(...veiculosDoConjunto); }
   if (status) { condicoes.push('ao.status = ?'); params.push(status); }
   if (data_de) { condicoes.push('date(ao.data_disparo) >= ?'); params.push(data_de); }
   if (data_ate) { condicoes.push('date(ao.data_disparo) <= ?'); params.push(data_ate); }
 
   const linhas = db.prepare(`
     SELECT ao.id, ao.km_atual_no_disparo, ao.data_disparo, ao.status, ao.resolvido_em,
-           v.placa AS veiculo_placa, ar.descricao AS regra_descricao, ar.intervalo_km
+           ao.veiculo_id, v.placa AS veiculo_placa, ar.descricao AS regra_descricao, ar.intervalo_km
     FROM alertas_ocorrencias ao
     JOIN veiculos v ON v.id = ao.veiculo_id
     JOIN alertas_regras ar ON ar.id = ao.regra_id
     WHERE ${condicoes.join(' AND ')}
     ORDER BY ao.data_disparo DESC
   `).all(...params);
-  res.json(linhas);
+  res.json(comConjuntoDoVeiculo(linhas, req.empresaId));
 }));
 
 // CNH a vencer: motoristas ativos com validade dentro da janela de dias
@@ -490,7 +508,7 @@ router.get('/aging-contas-pagar', requerAcessoModulo('dre', 'Visualizar'), exigi
 // so que numa lista comparavel/ordenavel em vez de tela por veiculo -
 // reusa resultadoDoVeiculo (dreHelper.js) pra nunca divergir da DRE.
 router.get('/ranking-veiculos', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const { inicio, fim } = periodoOuTudo(req.query.data_de, req.query.data_ate);
+  const { inicio, fim } = periodoRealizado(req.query.data_de, req.query.data_ate);
   const veiculos = db.prepare('SELECT id, placa, tipo FROM veiculos WHERE empresa_id = ?').all(req.empresaId);
   const linhas = veiculos.map((v) => {
     const resultado = resultadoDoVeiculo(v, inicio, fim);
@@ -499,6 +517,31 @@ router.get('/ranking-veiculos', requerAcessoModulo('dre', 'Visualizar'), exigirE
       veiculo_id: v.id, placa: v.placa, tipo: v.tipo,
       receita: resultado.receita, custo: resultado.custoTotal, lucro: resultado.lucro,
       margem_pct: resultado.receita > 0 ? (resultado.lucro / resultado.receita) * 100 : null,
+    };
+  }).filter(Boolean);
+  res.json(linhas);
+}));
+
+// Ranking de Conjuntos: a mesma conta da DRE por conjunto (receita, custo e
+// lucro da composicao inteira, cavalo + carreta) numa lista comparavel. E o
+// ranking que faz sentido: no Ranking de Veiculos a carreta aparecia sempre
+// com prejuizo (a receita fica toda na tratora). Reusa resultadoDoConjunto
+// (dreHelper.js) pra nunca divergir da DRE.
+router.get('/ranking-conjuntos', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { inicio, fim } = periodoRealizado(req.query.data_de, req.query.data_ate);
+  const conjuntos = db.prepare('SELECT * FROM conjuntos WHERE empresa_id = ? ORDER BY id').all(req.empresaId);
+  const dono = conjuntoDonoPorVeiculo(req.empresaId);
+  const rotulos = rotulosDosConjuntos(req.empresaId);
+  const linhas = conjuntos.map((c) => {
+    const r = resultadoDoConjunto(c, inicio, fim, dono);
+    if (!c.ativo && r.receita === 0 && r.custos.total === 0) return null;
+    const custoTratora = r.porVeiculo.filter((v) => TIPOS_TRATORA.includes(v.tipo)).reduce((t, v) => t + v.custos.total, 0);
+    return {
+      conjunto_id: c.id, conjunto: rotulos.get(c.id), nome: c.nome || `Conjunto #${c.id}`,
+      placas: r.porVeiculo.map((v) => v.placa).join(' + '),
+      receita: r.receita, custo: r.custos.total, lucro: r.lucro,
+      custo_tratora: custoTratora, custo_reboque: r.custos.total - custoTratora,
+      margem_pct: r.receita > 0 ? (r.lucro / r.receita) * 100 : null,
     };
   }).filter(Boolean);
   res.json(linhas);
@@ -664,16 +707,28 @@ function ultimosMeses(mesFinalIso, quantidade) {
 router.get('/dre-multi-periodo', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const quantidade = Math.min(Math.max(Number(req.query.meses) || 6, 2), 24);
   const mesFinal = req.query.mes_final || hojeIsoBrasilia().slice(0, 7);
-  const { veiculo_id } = req.query;
+  const { veiculo_id, conjunto_id } = req.query;
   const veiculo = veiculo_id ? db.prepare('SELECT id, placa FROM veiculos WHERE id = ? AND empresa_id = ?').get(veiculo_id, req.empresaId) : null;
+  const conjunto = conjunto_id ? db.prepare('SELECT * FROM conjuntos WHERE id = ? AND empresa_id = ?').get(conjunto_id, req.empresaId) : null;
+  const dono = conjunto ? conjuntoDonoPorVeiculo(req.empresaId) : null;
 
   const linhas = ultimosMeses(mesFinal, quantidade).map((m) => {
-    const resultado = veiculo ? resultadoDoVeiculo(veiculo, m.inicio, m.fim) : totaisGeraisDoPeriodo(req.empresaId, m.inicio, m.fim);
+    let resultado;
+    if (conjunto) {
+      const r = resultadoDoConjunto(conjunto, m.inicio, m.fim, dono);
+      resultado = { receita: r.receita, custoTotal: r.custos.total, lucro: r.lucro };
+    } else {
+      resultado = veiculo ? resultadoDoVeiculo(veiculo, m.inicio, m.fim) : totaisGeraisDoPeriodo(req.empresaId, m.inicio, m.fim);
+    }
     const receita = resultado.receita ?? resultado.receitaTotal;
     const lucro = resultado.lucro ?? resultado.lucroLiquido;
     return { periodo: m.label, inicio: m.inicio, fim: m.fim, receita, custo: resultado.custoTotal, lucro };
   });
-  res.json({ veiculo: veiculo || null, meses: linhas });
+  res.json({
+    veiculo: veiculo || null,
+    conjunto: conjunto ? { id: conjunto.id, nome: conjunto.nome, rotulo: rotulosDosConjuntos(req.empresaId).get(conjunto.id) } : null,
+    meses: linhas,
+  });
 }));
 
 // Relatorio de Viagens: uma linha por viagem (duracao, km rodado,

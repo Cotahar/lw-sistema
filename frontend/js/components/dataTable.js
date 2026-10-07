@@ -15,6 +15,10 @@ const SETA_DESC = '<svg class="inline h-3 w-3" viewBox="0 0 24 24" fill="current
 //   editavel: true + onSalvarCampo habilita duplo-clique pra editar a celula.
 //   exportar: (linha) => valor pra exportacao XLSX (plano, sem HTML); sem
 //   isso, usa linha[chave] direto (nunca o HTML de render()).
+// acoesLote: [{ label, onClick(linhasSelecionadas) }] - botoes que aparecem
+//   quando ha linhas marcadas (alem de, ou no lugar de, onExcluirLote).
+// selecionavel: (linha) => boolean - quais linhas mostram a caixa de selecao
+//   (padrao: todas).
 export function criarDataTable({
   colunas,
   buscarDados,
@@ -22,6 +26,8 @@ export function criarDataTable({
   onEditar,
   onExcluir,
   onExcluirLote,
+  acoesLote,
+  selecionavel = () => true,
   acoesExtras,
   tituloNovo = 'Novo',
   vazio = 'Nenhum registro encontrado.',
@@ -33,7 +39,7 @@ export function criarDataTable({
 }) {
   const el = document.createElement('div');
   el.className = 'card border-gray-300';
-  const temSelecao = Boolean(onExcluirLote);
+  const temSelecao = Boolean(onExcluirLote || acoesLote);
   let ordenacao = ordenacaoInicial ? { ...ordenacaoInicial } : null;
   let paginaAtual = 1;
 
@@ -42,6 +48,7 @@ export function criarDataTable({
       <input type="text" class="input sm:max-w-xs ${mostrarBusca ? '' : 'hidden'}" placeholder="Pesquisar..." data-busca />
       <div class="flex items-center gap-2">
         ${exportar ? '<button type="button" class="btn-secondary btn-sm" data-exportar>Exportar XLSX</button>' : ''}
+        ${(acoesLote || []).map((a, i) => `<button type="button" class="btn-primary hidden" data-acao-lote="${i}">${a.label}</button>`).join('')}
         <button type="button" class="btn-danger hidden" data-excluir-lote>Excluir selecionados</button>
         ${onNovo ? `<button type="button" class="btn-primary" data-novo>+ ${tituloNovo}</button>` : ''}
       </div>
@@ -83,10 +90,22 @@ export function criarDataTable({
     return [...corpo.querySelectorAll('[data-linha-check]:checked')].map((c) => c.dataset.id);
   }
 
+  function linhasSelecionadas() {
+    const ids = new Set(idsSelecionados());
+    return dadosAtuais.filter((l) => ids.has(String(l.id)));
+  }
+
   function atualizarBotaoLote() {
     const ids = idsSelecionados();
-    btnExcluirLote.classList.toggle('hidden', ids.length === 0);
-    btnExcluirLote.textContent = `Excluir selecionados (${ids.length})`;
+    if (onExcluirLote) {
+      btnExcluirLote.classList.toggle('hidden', ids.length === 0);
+      btnExcluirLote.textContent = `Excluir selecionados (${ids.length})`;
+    }
+    (acoesLote || []).forEach((a, i) => {
+      const btn = el.querySelector(`[data-acao-lote="${i}"]`);
+      btn.classList.toggle('hidden', ids.length === 0);
+      btn.textContent = `${a.label} (${ids.length})`;
+    });
   }
 
   function compararValores(a, b) {
@@ -212,7 +231,7 @@ export function criarDataTable({
       if (temSelecao) {
         const tdCheck = document.createElement('td');
         tdCheck.className = 'table-td';
-        tdCheck.innerHTML = `<input type="checkbox" data-linha-check data-id="${linha.id}" />`;
+        tdCheck.innerHTML = selecionavel(linha) ? `<input type="checkbox" data-linha-check data-id="${linha.id}" />` : '';
         tr.appendChild(tdCheck);
       }
       for (const c of colunas) {
@@ -372,7 +391,10 @@ export function criarDataTable({
       corpo.querySelectorAll('[data-linha-check]').forEach((c) => { c.checked = checkTodos.checked; });
       atualizarBotaoLote();
     });
-    btnExcluirLote.addEventListener('click', async () => {
+    (acoesLote || []).forEach((a, i) => {
+      el.querySelector(`[data-acao-lote="${i}"]`).addEventListener('click', () => a.onClick(linhasSelecionadas()));
+    });
+    if (onExcluirLote) btnExcluirLote.addEventListener('click', async () => {
       const ids = idsSelecionados();
       const ok = await confirmarAcao({ titulo: 'Excluir em lote', mensagem: `Tem certeza que deseja excluir ${ids.length} registro(s)? Essa acao nao pode ser desfeita.`, textoConfirmar: 'Excluir todos' });
       if (!ok) return;

@@ -147,3 +147,34 @@ test('veiculo em dois conjuntos so tem o custo contado uma vez no total da frota
   assert.equal(original.custoPorVeiculo.find((v) => v.placa === 'DRC2B22').custoTotal, 0, 'a carreta passou a ser contabilizada no conjunto mais recente');
   assert.equal(novo.custoTotal, 20000);
 });
+
+test('sem data final o DRE vai so ate hoje: parcelas futuras de financiamento nao entram (bug do "1 milhao")', async () => {
+  const hoje = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+  const mesPassado = new Date(Date.now() - 3 * 3600 * 1000);
+  mesPassado.setUTCDate(1);
+  mesPassado.setUTCMonth(mesPassado.getUTCMonth() - 1);
+  const contrato = mesPassado.toISOString().slice(0, 10);
+  const fin = await admin().post('/api/financiamentos').send({
+    centro_custo_id: centroDoVeiculo(cavaloId), descricao: 'Financiamento DRE Conjunto', valor_total: 6000000, qtd_parcelas: 60,
+    data_contrato: contrato, primeira_parcela_vencimento: contrato,
+  });
+  assert.equal(fin.status, 201, JSON.stringify(fin.body));
+  const parcelas = db.prepare('SELECT data_vencimento, valor_parcela FROM financiamento_parcelas WHERE financiamento_id = ? ORDER BY numero_parcela').all(fin.body.id);
+  assert.equal(parcelas.length, 60);
+  const vencidas = parcelas.filter((p) => p.data_vencimento <= hoje);
+  assert.ok(vencidas.length >= 1 && vencidas.length < 60);
+
+  // So data inicial (como quando o campo "Ate" esta vazio/ainda em digitacao).
+  const aberto = await admin().get(`/api/dre/conjunto/${conjuntoId}?data_inicio=2026-01-01`);
+  assert.equal(aberto.status, 200);
+  assert.equal(aberto.body.periodo.fim, hoje);
+  assert.equal(aberto.body.custos.financiamento, vencidas.reduce((t, p) => t + p.valor_parcela, 0), 'so parcelas ja vencidas');
+  assert.ok(aberto.body.custos.financiamento < 6000000, 'nunca o financiamento inteiro');
+
+  // Data final futura escolhida de proposito continua valendo.
+  const futuro = await admin().get(`/api/dre/conjunto/${conjuntoId}?data_inicio=2026-01-01&data_fim=2040-12-31`);
+  assert.equal(futuro.body.custos.financiamento, 6000000);
+
+  const geral = await admin().get('/api/dre/geral?data_inicio=2026-01-01');
+  assert.equal(geral.body.periodo.fim, hoje);
+});

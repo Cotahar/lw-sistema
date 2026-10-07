@@ -2,6 +2,7 @@ import { get } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { criarMultiSearchableSelect } from '../../components/multiSearchableSelect.js';
+import { buscarConjuntos } from '../../components/conjuntoOpcoes.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { periodoAnteriorEquivalente, renderComparativoPeriodo } from '../../components/comparativoPeriodo.js';
@@ -55,6 +56,7 @@ export async function render(container) {
     <h1 class="mb-1 text-xl font-bold text-slate-900">Relatorio de Fretes / Receitas</h1>
     <p class="mb-4 text-sm text-slate-500">Todos os fretes (recebidos ou nao), com filtros e colunas escolhiveis - o par deste relatorio com o de Despesas.</p>
     <div class="card mb-4 grid grid-cols-2 gap-3 p-4 lg:grid-cols-4">
+      <div><label class="label">Conjunto</label><div data-filtro-conjunto></div></div>
       <div><label class="label">Veiculo</label><div data-filtro-veiculo></div></div>
       <div><label class="label">Motorista</label><div data-filtro-motorista></div></div>
       <div><label class="label">Viagem</label><div data-filtro-viagem></div></div>
@@ -110,6 +112,8 @@ export async function render(container) {
 
   const veiculoSelect = criarMultiSearchableSelect({ buscar: buscarVeiculos, placeholder: 'Pesquisar placa...', onChange: () => recarregarDados() });
   container.querySelector('[data-filtro-veiculo]').appendChild(veiculoSelect.el);
+  const conjuntoSelect = criarMultiSearchableSelect({ buscar: buscarConjuntos, placeholder: 'Pesquisar conjunto...', onChange: () => recarregarDados() });
+  container.querySelector('[data-filtro-conjunto]').appendChild(conjuntoSelect.el);
   const motoristaSelect = criarMultiSearchableSelect({ buscar: buscarMotoristas, placeholder: 'Pesquisar motorista...', onChange: () => recarregarDados() });
   container.querySelector('[data-filtro-motorista]').appendChild(motoristaSelect.el);
   const viagemSelect = criarMultiSearchableSelect({ buscar: buscarViagens, placeholder: 'Pesquisar viagem...', onChange: () => recarregarDados() });
@@ -131,6 +135,7 @@ export async function render(container) {
     if (!anterior) { comparativoEl.innerHTML = ''; return; }
     const params = new URLSearchParams();
     for (const id of veiculoSelect.getValues()) params.append('veiculo_id', id);
+    for (const id of conjuntoSelect.getValues()) params.append('conjunto_id', id);
     for (const id of motoristaSelect.getValues()) params.append('motorista_id', id);
     for (const id of viagemSelect.getValues()) params.append('viagem_id', id);
     if (transportadoraId) params.set('transportadora_id', transportadoraId);
@@ -199,6 +204,7 @@ export async function render(container) {
       buscarDados: async (termo) => {
         const params = new URLSearchParams();
         for (const id of veiculoSelect.getValues()) params.append('veiculo_id', id);
+        for (const id of conjuntoSelect.getValues()) params.append('conjunto_id', id);
         for (const id of motoristaSelect.getValues()) params.append('motorista_id', id);
         for (const id of viagemSelect.getValues()) params.append('viagem_id', id);
         if (transportadoraId) params.set('transportadora_id', transportadoraId);
@@ -233,6 +239,7 @@ export async function render(container) {
     rota: '/relatorios/fretes',
     obterFiltros: () => ({
       veiculoIds: veiculoSelect.getValues(), veiculoLabels: veiculoSelect.getLabels(),
+      conjuntoIds: conjuntoSelect.getValues(), conjuntoLabels: conjuntoSelect.getLabels(),
       motoristaIds: motoristaSelect.getValues(), motoristaLabels: motoristaSelect.getLabels(),
       viagemIds: viagemSelect.getValues(), viagemLabels: viagemSelect.getLabels(),
       transportadoraId, transportadoraLabel: transportadoraSelect.getLabel(),
@@ -243,6 +250,7 @@ export async function render(container) {
     }),
     aplicarFiltros: (f) => {
       veiculoSelect.setValues(f.veiculoIds || [], f.veiculoLabels || []);
+      conjuntoSelect.setValues(f.conjuntoIds || [], f.conjuntoLabels || []);
       motoristaSelect.setValues(f.motoristaIds || [], f.motoristaLabels || []);
       viagemSelect.setValues(f.viagemIds || [], f.viagemLabels || []);
       transportadoraId = f.transportadoraId || null;
@@ -266,6 +274,7 @@ export async function render(container) {
     const pendente = dados.reduce((t, r) => t + r.saldo_pendente, 0);
     const grupo = calcularGrupo(dados);
     const filtros = [];
+    if (conjuntoSelect.getValues().length) filtros.push(`Conjunto: ${conjuntoSelect.getLabels().join(', ')}`);
     if (veiculoSelect.getValues().length) filtros.push(`Veiculo: ${veiculoSelect.getLabels().join(', ')}`);
     if (motoristaSelect.getValues().length) filtros.push(`Motorista: ${motoristaSelect.getLabels().join(', ')}`);
     if (viagemSelect.getValues().length) filtros.push(`Viagem: ${viagemSelect.getLabels().join(', ')}`);

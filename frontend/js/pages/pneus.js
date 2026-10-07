@@ -1,6 +1,7 @@
 import { get, post, podeGerenciar } from '../api.js';
 import { criarDataTable } from '../components/dataTable.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
+import { buscarConjuntos } from '../components/conjuntoOpcoes.js';
 import { criarNovoFornecedor } from '../components/fornecedorQuickCreate.js';
 import { abrirModal, fecharModal, confirmarAcao } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
@@ -24,7 +25,7 @@ async function buscarFornecedores(termo) {
   return (await get(`/fornecedores${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((f) => ({ value: f.id, label: f.nome }));
 }
 async function buscarVeiculos(termo) {
-  return (await get(`/veiculos${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((v) => ({ value: v.id, label: v.placa }));
+  return (await get(`/veiculos${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((v) => ({ value: v.id, label: `${v.placa} (${v.tipo})` }));
 }
 
 function campoTexto(label, name, tipo = 'text') {
@@ -111,11 +112,26 @@ async function abrirInstalar(pneu, recarregar) {
       <div><label class="label">Eixo *</label><input type="number" name="eixo" class="input" required min="1" /></div>
       <div><label class="label">Lado *</label><select name="lado" class="input" required><option value="Esquerdo">Esquerdo</option><option value="Direito">Direito</option></select></div>
     </div>
-    <div><label class="label">KM do veiculo</label><input type="number" name="km_veiculo" class="input" /></div>
+    <div>
+      <label class="label">KM do conjunto</label>
+      <input type="number" name="km_veiculo" class="input" />
+      <p class="mt-1 text-xs text-slate-400" data-dica-km>A carreta nao tem hodometro proprio: o KM sugerido e o do conjunto (cavalo). Pode corrigir.</p>
+    </div>
     <p class="hidden text-sm text-red-600" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Instalar</button></div>
   `;
-  const veiculoSelect = criarSearchableSelect({ buscar: buscarVeiculos, placeholder: 'Pesquisar placa...' });
+  const veiculoSelect = criarSearchableSelect({
+    buscar: buscarVeiculos,
+    placeholder: 'Pesquisar placa...',
+    // Ao escolher a placa, sugere o KM do conjunto dela (se o campo ainda estiver vazio).
+    onChange: async (id) => {
+      if (!id || form.km_veiculo.value) return;
+      try {
+        const veiculo = await get(`/veiculos/${id}`);
+        if (!form.km_veiculo.value && veiculo.hodometro_conjunto) form.km_veiculo.value = veiculo.hodometro_conjunto;
+      } catch { /* sem sugestao de KM - o usuario digita */ }
+    },
+  });
   form.querySelector('[data-veiculo]').appendChild(veiculoSelect.el);
   const erro = form.querySelector('[data-erro]');
   form.addEventListener('submit', async (ev) => {
@@ -218,7 +234,7 @@ function eixosDeTracao(tipoTracao) {
 // amarelo. Cada pneu instalado e clicavel (abre o historico); posicao vazia
 // so avisa que esta livre - instalar continua pela tabela (escolhe o pneu
 // de estoque primeiro, ai sim a posicao).
-function svgDiagramaEixos(qtdEixos, tipoTracao, pneusPorPosicao) {
+function svgDiagramaEixos(qtdEixos, tipoTracao, pneusPorPosicao, veiculoId = '') {
   const tracao = eixosDeTracao(tipoTracao);
   const espacamento = 64;
   const altura = 32 + qtdEixos * espacamento;
@@ -233,7 +249,7 @@ function svgDiagramaEixos(qtdEixos, tipoTracao, pneusPorPosicao) {
       const cor = pneu ? (ehTracao ? '#F5C518' : '#8B8894') : '#2B2A30';
       const cursor = pneu ? 'cursor-pointer' : '';
       circulos.push(`
-        <circle data-eixo="${eixo}" data-lado="${lado}" cx="${x}" cy="${y}" r="16" fill="${cor}" stroke="#54525c" stroke-width="1.5" class="${cursor}" />
+        <circle data-veiculo="${veiculoId}" data-eixo="${eixo}" data-lado="${lado}" cx="${x}" cy="${y}" r="16" fill="${cor}" stroke="#54525c" stroke-width="1.5" class="${cursor}" />
         <text x="${x}" y="${y + 4}" text-anchor="middle" font-size="9" fill="#131217" font-weight="700" style="pointer-events:none">${pneu ? pneu.numero_fogo.slice(-3) : ''}</text>
       `);
     }
@@ -247,31 +263,42 @@ function svgDiagramaEixos(qtdEixos, tipoTracao, pneusPorPosicao) {
   `;
 }
 
+// Diagrama de eixos do CONJUNTO: cavalo e carreta lado a lado, cada um com os
+// seus eixos e pneus - a posicao do pneu continua sendo da unidade fisica, mas
+// a visao e a da composicao inteira.
 async function abrirDiagramaEixos() {
   const corpo = document.createElement('div');
   corpo.innerHTML = `
-    <div class="mb-4"><label class="label">Veiculo</label><div data-veiculo-diagrama></div></div>
-    <div data-diagrama-resultado class="text-center text-sm text-slate-400">Selecione um veiculo.</div>
+    <div class="mb-4"><label class="label">Conjunto</label><div data-conjunto-diagrama></div></div>
+    <div data-diagrama-resultado class="text-center text-sm text-slate-400">Selecione um conjunto.</div>
   `;
-  const veiculoSelect = criarSearchableSelect({
-    buscar: buscarVeiculos,
-    placeholder: 'Pesquisar placa...',
-    onChange: async (veiculoId) => {
+  const conjuntoSelect = criarSearchableSelect({
+    buscar: buscarConjuntos,
+    placeholder: 'Pesquisar conjunto ou placa...',
+    onChange: async (conjuntoId) => {
       const resultadoEl = corpo.querySelector('[data-diagrama-resultado]');
-      if (!veiculoId) { resultadoEl.innerHTML = 'Selecione um veiculo.'; return; }
+      if (!conjuntoId) { resultadoEl.innerHTML = 'Selecione um conjunto.'; return; }
       resultadoEl.innerHTML = '<p class="text-sm text-slate-400">Carregando...</p>';
       try {
-        const [veiculo, pneus] = await Promise.all([get(`/veiculos/${veiculoId}`), get(`/pneus?veiculo_id=${veiculoId}`)]);
-        const instalados = pneus.filter((p) => p.status === 'Instalado' && p.veiculo_id === Number(veiculoId));
+        const [conjunto, pneus] = await Promise.all([get(`/conjuntos/${conjuntoId}`), get(`/pneus?conjunto_id=${conjuntoId}`)]);
+        const veiculos = await Promise.all(conjunto.itens.map((i) => get(`/veiculos/${i.veiculo_id}`)));
+        const instalados = pneus.filter((p) => p.status === 'Instalado');
         const pneusPorPosicao = {};
-        for (const p of instalados) pneusPorPosicao[`${p.eixo}-${p.lado}`] = p;
+        for (const p of instalados) pneusPorPosicao[`${p.veiculo_id}-${p.eixo}-${p.lado}`] = p;
         resultadoEl.innerHTML = `
-          <p class="mb-2 text-xs uppercase text-slate-500">${veiculo.placa} - ${veiculo.qtd_eixos} eixo(s)${veiculo.tipo_tracao ? ` - tracao ${veiculo.tipo_tracao}` : ''}</p>
-          ${svgDiagramaEixos(veiculo.qtd_eixos, veiculo.tipo_tracao, pneusPorPosicao)}
+          <p class="mb-3 text-xs uppercase text-slate-500">${conjunto.nome || `Conjunto #${conjunto.id}`} &middot; ${instalados.length} pneu(s) instalado(s)</p>
+          <div class="flex flex-wrap justify-center gap-6">
+            ${veiculos.map((v) => `
+              <div>
+                <p class="mb-1 text-xs font-medium uppercase text-slate-500">${v.placa} (${v.tipo}) - ${v.qtd_eixos} eixo(s)${v.tipo_tracao ? ` - tracao ${v.tipo_tracao}` : ''}</p>
+                ${svgDiagramaEixos(v.qtd_eixos, v.tipo_tracao, Object.fromEntries(instalados.filter((p) => p.veiculo_id === v.id).map((p) => [`${p.eixo}-${p.lado}`, p])), v.id)}
+              </div>
+            `).join('')}
+          </div>
           <p class="mt-2 text-xs text-slate-500">Amarelo = eixo de tracao. Clique num pneu instalado pra ver o historico.</p>
         `;
         resultadoEl.querySelectorAll('circle[data-eixo]').forEach((circulo) => {
-          const pneu = pneusPorPosicao[`${circulo.dataset.eixo}-${circulo.dataset.lado}`];
+          const pneu = pneusPorPosicao[`${circulo.dataset.veiculo}-${circulo.dataset.eixo}-${circulo.dataset.lado}`];
           if (pneu) circulo.addEventListener('click', () => abrirHistorico(pneu));
         });
       } catch (err) {
@@ -279,8 +306,8 @@ async function abrirDiagramaEixos() {
       }
     },
   });
-  corpo.querySelector('[data-veiculo-diagrama]').appendChild(veiculoSelect.el);
-  abrirModal({ titulo: 'Diagrama de eixos', conteudo: corpo, largura: 'max-w-md' });
+  corpo.querySelector('[data-conjunto-diagrama]').appendChild(conjuntoSelect.el);
+  abrirModal({ titulo: 'Diagrama de eixos do conjunto', conteudo: corpo, largura: 'max-w-3xl' });
 }
 
 async function sucatear(pneu, recarregar) {
@@ -299,21 +326,20 @@ export async function render(container) {
   container.innerHTML = `
     <div class="mb-4 flex items-center justify-between">
       <h1 class="text-xl font-bold text-slate-900">Pneus</h1>
-      <button type="button" class="btn-secondary btn-sm" data-diagrama>Ver diagrama de eixos</button>
+      <button type="button" class="btn-secondary btn-sm" data-diagrama>Ver diagrama de eixos do conjunto</button>
+    </div>
+    <div class="card mb-4 grid grid-cols-1 gap-3 p-4 sm:grid-cols-3">
+      <div class="sm:col-span-2"><label class="label">Conjunto</label><div data-filtro-conjunto></div></div>
     </div>
     <div data-tabela></div>
   `;
   container.querySelector('[data-diagrama]').addEventListener('click', abrirDiagramaEixos);
   const gerenciar = podeGerenciar('pneus');
 
-  const veiculosCache = {};
-  async function nomeVeiculo(id) {
-    if (!id) return '-';
-    if (!veiculosCache[id]) {
-      try { veiculosCache[id] = (await get(`/veiculos/${id}`)).placa; } catch { veiculosCache[id] = `#${id}`; }
-    }
-    return veiculosCache[id];
-  }
+  // Filtro por conjunto: mostra os pneus instalados em qualquer unidade (cavalo ou carreta) da composicao.
+  let conjuntoId = null;
+  const conjuntoSelect = criarSearchableSelect({ buscar: buscarConjuntos, placeholder: 'Todos os conjuntos...', onChange: (id) => { conjuntoId = id; tabela.recarregar(); } });
+  container.querySelector('[data-filtro-conjunto]').appendChild(conjuntoSelect.el);
 
   const tabela = criarDataTable({
     colunas: [
@@ -321,14 +347,17 @@ export async function render(container) {
       { chave: 'marca_modelo', titulo: 'Marca/Modelo', render: (r) => [r.marca, r.modelo].filter(Boolean).join(' ') || '-' },
       { chave: 'medida', titulo: 'Medida' },
       { chave: 'status', titulo: 'Status', render: (r) => `<span class="${STATUS_BADGE[r.status]}">${STATUS_ICONE[r.status] || ''}${r.status}</span>` },
-      { chave: 'posicao', titulo: 'Posicao', render: (r) => (r.status === 'Instalado' ? `${r.placa_veiculo || '#' + r.veiculo_id} - eixo ${r.eixo} ${r.lado}` : '-') },
+      { chave: 'conjunto', titulo: 'Conjunto', render: (r) => (r.status === 'Instalado' ? (r.conjunto || '-') : '-') },
+      { chave: 'posicao', titulo: 'Posicao', render: (r) => (r.status === 'Instalado' ? `${r.placa_veiculo || '#' + r.veiculo_id} (${r.tipo_veiculo || '-'}) - eixo ${r.eixo} ${r.lado}` : '-') },
       { chave: 'numero_recapagens', titulo: 'Recapagens' },
       { chave: 'custo_unitario', titulo: 'Custo Aquisicao', render: (r) => formatarMoeda(r.custo_unitario) },
     ],
     buscarDados: async (termo) => {
-      const pneus = await get(`/pneus${termo ? `?search=${encodeURIComponent(termo)}` : ''}`);
-      for (const p of pneus) if (p.status === 'Instalado') p.placa_veiculo = await nomeVeiculo(p.veiculo_id);
-      return pneus;
+      const params = new URLSearchParams();
+      if (termo) params.set('search', termo);
+      if (conjuntoId) params.set('conjunto_id', conjuntoId);
+      const query = params.toString();
+      return get(`/pneus${query ? `?${query}` : ''}`);
     },
     onNovo: gerenciar ? () => abrirFormularioAquisicao(tabela.recarregar) : undefined,
     acoesExtras: (r) => {

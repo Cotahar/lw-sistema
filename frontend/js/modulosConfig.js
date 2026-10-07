@@ -60,7 +60,7 @@ export const GRUPOS_MENU = [
       { chave: 'dre', label: 'DRE Multi-periodo', rota: '/relatorios/dre-multi-periodo', secao: 'Gestao' },
       { chave: 'dre', label: 'Relatorio de Viagens', rota: '/relatorios/viagens', secao: 'Gestao' },
       { chave: 'dre', label: 'Fluxo de Caixa', rota: '/relatorios/fluxo-caixa', secao: 'Gestao' },
-      { chave: 'dre', label: 'Ranking de Veiculos', rota: '/relatorios/ranking-veiculos', secao: 'Gestao' },
+      { chave: 'dre', label: 'Ranking de Conjuntos', rota: '/relatorios/ranking-veiculos', secao: 'Gestao' },
       { chave: 'dre', label: 'Ranking de Motoristas', rota: '/relatorios/ranking-motoristas', secao: 'Gestao' },
       { chave: 'dre', label: 'Rentabilidade por Rota', rota: '/relatorios/rentabilidade-rota', secao: 'Gestao' },
       { chave: 'dre', label: 'Comparativo de Consumo', rota: '/relatorios/comparativo-consumo', secao: 'Combustivel' },
