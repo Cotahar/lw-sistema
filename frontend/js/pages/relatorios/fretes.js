@@ -6,7 +6,7 @@ import { buscarConjuntos } from '../../components/conjuntoOpcoes.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { periodoAnteriorEquivalente, renderComparativoPeriodo } from '../../components/comparativoPeriodo.js';
-import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
+import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso, hojeIsoLocal } from '../../masks.js';
 
 // Sem badge de cor no status aqui (diferente de contasReceber.js/
 // saldosEmAberto.js): o render() de cada coluna deste catalogo e
@@ -199,7 +199,7 @@ export async function render(container) {
     tabela = criarDataTable({
       colunas: [...colunasEscolhidas, COLUNA_VALOR],
       ordenacaoInicial: { chave: 'data_carregamento', direcao: 'desc' },
-      corLinha: (r) => (r.status === 'Atrasado' ? 'bg-red-950/40' : ''),
+      corLinha: (r) => (r.status !== 'Recebido' && r.data_prevista < hojeIsoLocal() ? 'bg-red-950/40' : ''),
       exportar: { nomeArquivo: 'relatorio-fretes' },
       buscarDados: async (termo) => {
         const params = new URLSearchParams();

@@ -85,6 +85,28 @@ export function criarDataTable({
   corpo.innerHTML = esqueletoLinhasTabela(colspanInicial);
   let debounceId = null;
   let dadosAtuais = [];
+  // Cada recarga ganha um numero: se uma resposta antiga chegar depois de uma mais nova (filtros
+  // mudados em sequencia), ela e descartada - antes a lista podia mostrar o resultado de um filtro
+  // que ja nao estava na tela.
+  let sequenciaBusca = 0;
+  // buscarDados() sem parametro nao recebe o termo digitado (a tela nao busca no servidor): a
+  // caixa "Pesquisar..." filtra aqui mesmo, pelo texto que as colunas mostram.
+  const buscaNoServidor = buscarDados.length > 0;
+
+  function semAcento(texto) {
+    return String(texto ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  }
+  function textoDaLinha(linha) {
+    return semAcento(colunas.map((c) => {
+      if (c.render) return String(c.render(linha) ?? '').replace(/<[^>]*>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ');
+      if (c.exportar) return String(c.exportar(linha) ?? '');
+      return String(linha[c.chave] ?? '');
+    }).join(' '));
+  }
+  function combinaComBusca(linha, termo) {
+    const alvo = textoDaLinha(linha);
+    return semAcento(termo).split(/\s+/).filter(Boolean).every((palavra) => alvo.includes(palavra));
+  }
 
   function idsSelecionados() {
     return [...corpo.querySelectorAll('[data-linha-check]:checked')].map((c) => c.dataset.id);
@@ -322,13 +344,17 @@ export function criarDataTable({
   }
 
   async function recarregar() {
+    const minhaBusca = ++sequenciaBusca;
     try {
-      const dados = await buscarDados(inputBusca.value.trim());
+      const termo = inputBusca.value.trim();
+      let dados = await buscarDados(termo);
+      if (minhaBusca !== sequenciaBusca) return; // chegou depois de uma busca mais nova
+      if (termo && !buscaNoServidor) dados = dados.filter((linha) => combinaComBusca(linha, termo));
       dadosAtuais = dados;
       paginaAtual = 1;
       renderCorpo();
     } catch (err) {
-      mostrarErro(err);
+      if (minhaBusca === sequenciaBusca) mostrarErro(err);
     }
   }
 

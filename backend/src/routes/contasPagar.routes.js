@@ -7,6 +7,8 @@ const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { registrarAuditoria } = require('../utils/audit');
 const { withTransaction } = require('../utils/transaction');
 const { baixarContaPagar, TABELA_PARCELA_POR_ORIGEM } = require('../utils/contaPagarBaixaHelper');
+const { condicaoBusca } = require('../utils/busca');
+const { hojeIsoBrasilia } = require('../utils/dataHora');
 
 const router = express.Router();
 
@@ -27,10 +29,11 @@ const SELECT_LISTA = `
          cat.nome AS categoria_nome,
          dv.viagem_id AS viagem_id,
          av.viagem_id AS acerto_viagem_id,
-         vc.placa AS veiculo_placa
+         COALESCE(vc.placa, vcc.placa) AS veiculo_placa
   FROM contas_pagar cp
   LEFT JOIN fornecedores f ON f.id = cp.fornecedor_id
   LEFT JOIN centros_custo cc ON cc.id = cp.centro_custo_id
+  LEFT JOIN veiculos vcc ON vcc.id = cc.veiculo_id
   LEFT JOIN despesas_viagem dv ON cp.origem_tipo = 'DespesaViagem' AND dv.id = cp.origem_id
   LEFT JOIN despesas_fixas df ON cp.origem_tipo = 'DespesaFixa' AND df.id = cp.origem_id
   LEFT JOIN acertos_viagem av ON cp.origem_tipo = 'AcertoViagem' AND av.id = cp.origem_id
@@ -49,7 +52,12 @@ router.get('/', requerAcessoModulo('contas_pagar', 'Visualizar'), exigirEmpresaE
   } = req.query;
   const condicoes = ['cp.empresa_id = ?'];
   const params = [req.empresaId];
-  if (status) { condicoes.push('cp.status = ?'); params.push(status); }
+  // "Pendente" = em aberto (Pendente + Parcial, como em Contas a Receber): uma conta com baixa
+  // parcial continua devendo e nao pode sumir da lista. "Atrasado" nunca e gravado no banco: e
+  // uma conta em aberto cujo vencimento ja passou.
+  if (status === 'Pendente') { condicoes.push("cp.status IN ('Pendente', 'Parcial')"); }
+  else if (status === 'Atrasado') { condicoes.push("cp.status IN ('Pendente', 'Parcial')", 'cp.data_vencimento < ?'); params.push(hojeIsoBrasilia()); }
+  else if (status) { condicoes.push('cp.status = ?'); params.push(status); }
   if (origem_tipo) { condicoes.push('cp.origem_tipo = ?'); params.push(origem_tipo); }
   // Number(...) e necessario aqui porque o valor chega como string da
   // query string, mas o lado esquerdo e uma expressao COALESCE (nao uma
@@ -59,8 +67,12 @@ router.get('/', requerAcessoModulo('contas_pagar', 'Visualizar'), exigirEmpresaE
   // "sao os mesmos". Os outros filtros desta rota nao precisam disso
   // porque comparam contra coluna de verdade (cp.status, vc.id...).
   if (categoria_id) { condicoes.push('COALESCE(dv.categoria_id, df.categoria_id) = ?'); params.push(Number(categoria_id)); }
-  if (veiculo_id) { condicoes.push('vc.id = ?'); params.push(veiculo_id); }
-  if (search) { condicoes.push('cp.descricao LIKE ?'); params.push(`%${search}%`); }
+  if (veiculo_id) {
+    condicoes.push('(cc.veiculo_id = ? OR EXISTS (SELECT 1 FROM conjunto_itens ci WHERE ci.conjunto_id = vg.conjunto_id AND ci.veiculo_id = ?))');
+    params.push(Number(veiculo_id), Number(veiculo_id));
+  }
+  const busca = condicaoBusca(['cp.descricao', 'f.nome'], search);
+  if (busca) { condicoes.push(busca.sql); params.push(...busca.params); }
   if (financiamento_id) {
     condicoes.push(`cp.origem_tipo = 'FinanciamentoParcela' AND cp.origem_id IN (SELECT id FROM financiamento_parcelas WHERE financiamento_id = ?)`);
     params.push(financiamento_id);

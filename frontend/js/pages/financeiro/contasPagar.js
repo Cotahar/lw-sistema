@@ -10,10 +10,10 @@ import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, setMoedaValue, atta
 const STATUS_BADGE = { Pendente: 'badge-atencao', Parcial: 'badge-atencao', Pago: 'badge-sucesso', Atrasado: 'badge-critico' };
 const STATUS_OPCOES = [
   { value: '', label: 'Todos' },
-  { value: 'Pendente', label: 'Pendente' },
+  { value: 'Pendente', label: 'Pendente (inclui parciais)' },
   { value: 'Parcial', label: 'Parcial' },
   { value: 'Pago', label: 'Pago' },
-  { value: 'Atrasado', label: 'Atrasado' },
+  { value: 'Atrasado', label: 'Atrasado (vencidas em aberto)' },
 ];
 
 async function buscarFornecedores(termo) {
@@ -665,7 +665,7 @@ export async function render(container, params, query) {
       { chave: 'status', titulo: 'Status', render: (r) => `<span class="${STATUS_BADGE[r.status]}">${r.status}</span>`, exportar: (r) => r.status },
     ],
     ordenacaoInicial: { chave: 'data_vencimento', direcao: 'asc' },
-    corLinha: (r) => (r.status === 'Atrasado' ? 'bg-red-950/40' : ''),
+    corLinha: (r) => (r.status !== 'Pago' && r.data_vencimento < hojeIsoLocal() ? 'bg-red-950/40' : ''),
     exportar: { nomeArquivo: 'contas-a-pagar' },
     buscarDados: async (termo) => {
       const params = new URLSearchParams();

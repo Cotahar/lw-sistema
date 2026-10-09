@@ -3,6 +3,8 @@ const db = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 
+const { condicaoBusca } = require('../utils/busca');
+
 const router = express.Router();
 
 // Leitura simples (sem gate de modulo especifico): usado como lookup em
@@ -13,8 +15,9 @@ const router = express.Router();
 // centro de custo de outra empresa num lancamento.
 router.get('/', exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const { search } = req.query;
-  const rows = search
-    ? db.prepare('SELECT * FROM centros_custo WHERE empresa_id = ? AND nome LIKE ? ORDER BY tipo, nome').all(req.empresaId, `%${search}%`)
+  const busca = condicaoBusca(['nome'], search);
+  const rows = busca
+    ? db.prepare(`SELECT * FROM centros_custo WHERE empresa_id = ? AND ${busca.sql} ORDER BY tipo, nome`).all(req.empresaId, ...busca.params)
     : db.prepare('SELECT * FROM centros_custo WHERE empresa_id = ? ORDER BY tipo, nome').all(req.empresaId);
   res.json(rows);
 }));

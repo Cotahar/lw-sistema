@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
+const { condicaoBusca } = require('../utils/busca');
 const ApiError = require('../utils/ApiError');
 const { requerAcessoModulo } = require('../middleware/auth');
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
@@ -30,7 +31,8 @@ router.get('/', requerAcessoModulo('pneus', 'Visualizar'), exigirEmpresaEspecifi
   // Filtro por conjunto: pneus instalados em qualquer unidade (cavalo ou carreta) da composicao.
   const veiculosDoConjunto = veiculoIdsDosConjuntos(conjunto_id, req.empresaId);
   if (veiculosDoConjunto) { condicoes.push(`veiculo_id IN (${veiculosDoConjunto.map(() => '?').join(',')})`); params.push(...veiculosDoConjunto); }
-  if (search) { condicoes.push('numero_fogo LIKE ?'); params.push(`%${search}%`); }
+  const busca = condicaoBusca(['numero_fogo'], search);
+  if (busca) { condicoes.push(busca.sql); params.push(...busca.params); }
   const where = `WHERE ${condicoes.join(' AND ')}`;
   const pneus = db.prepare(`SELECT * FROM pneus ${where} ORDER BY numero_fogo`).all(...params);
   // Placa e conjunto de cada pneu instalado (1 consulta, sem N+1 no frontend).

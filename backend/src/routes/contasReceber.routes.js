@@ -6,6 +6,7 @@ const { requerAcessoModulo } = require('../middleware/auth');
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { registrarAuditoria } = require('../utils/audit');
 const { buscarUnidadeTratora } = require('../utils/conjuntoHelper');
+const { hojeIsoBrasilia } = require('../utils/dataHora');
 
 const router = express.Router();
 
@@ -45,6 +46,8 @@ router.get('/', requerAcessoModulo('contas_receber', 'Visualizar'), exigirEmpres
   // baixa ainda; sem isso o filtro padrao escondia justamente os saldos
   // parciais, que sao os mais importantes de acompanhar.
   if (status === 'Pendente') { condicoes.push("cr.status IN ('Pendente', 'Parcial')"); }
+  // "Atrasado" nunca e gravado: e um saldo em aberto cuja previsao ja passou.
+  else if (status === 'Atrasado') { condicoes.push("cr.status IN ('Pendente', 'Parcial')", 'cr.data_prevista < ?'); params.push(hojeIsoBrasilia()); }
   else if (status) { condicoes.push('cr.status = ?'); params.push(status); }
   if (data_cadastro_de) { condicoes.push('date(cr.criado_em) >= ?'); params.push(data_cadastro_de); }
   if (data_cadastro_ate) { condicoes.push('date(cr.criado_em) <= ?'); params.push(data_cadastro_ate); }

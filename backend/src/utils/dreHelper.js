@@ -24,6 +24,10 @@ function periodoRealizado(dataInicio, dataFim) {
   return { inicio: dataInicio || '0000-01-01', fim: dataFim || hojeIsoBrasilia() };
 }
 
+// ATENCAO: estoque_movimentacoes.data e pneu_eventos.data guardam DATA E HORA ('2026-10-31 14:20:00').
+// Comparar direto com '2026-10-31' deixava de fora tudo o que aconteceu no ULTIMO dia do periodo
+// (e, no DRE multi-periodo, o ultimo dia de cada mes nao entrava em mes nenhum) - por isso date(data).
+
 // Custos fixos + parcelas de financiamento de um centro de custo no periodo.
 // Usado igualmente por veiculos e pelo centro Base/Administrativo.
 function custosDoCentroCusto(centroCustoId, inicio, fim) {
@@ -72,7 +76,7 @@ function receitaECustosDaViagemPorCentro(centroCustoId, inicio, fim) {
 function custosDiretosDoVeiculo(veiculoId, inicio, fim) {
   const custoPecasDireto = db.prepare(`
     SELECT COALESCE(SUM(quantidade * custo_unitario), 0) AS total FROM estoque_movimentacoes
-    WHERE tipo = 'Saida' AND veiculo_destino_id = ? AND os_id IS NULL AND data BETWEEN ? AND ?
+    WHERE tipo = 'Saida' AND veiculo_destino_id = ? AND os_id IS NULL AND date(data) BETWEEN ? AND ?
   `).get(veiculoId, inicio, fim).total;
 
   const custoOrdensServico = db.prepare(`
@@ -82,7 +86,7 @@ function custosDiretosDoVeiculo(veiculoId, inicio, fim) {
 
   const custoPneus = db.prepare(`
     SELECT COALESCE(SUM(custo), 0) AS total FROM pneu_eventos
-    WHERE tipo_evento = 'Instalacao' AND veiculo_id = ? AND data BETWEEN ? AND ?
+    WHERE tipo_evento = 'Instalacao' AND veiculo_id = ? AND date(data) BETWEEN ? AND ?
   `).get(veiculoId, inicio, fim).total;
 
   return { custoPecasDireto, custoOrdensServico, custoPneus };

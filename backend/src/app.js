@@ -8,6 +8,7 @@ require('./config/db'); // garante que o banco/tabelas existam antes de subir as
 const { autenticar } = require('./middleware/auth');
 const { resolverEmpresa } = require('./middleware/empresa');
 const errorHandler = require('./middleware/errorHandler');
+const limparQuery = require('./middleware/limparQuery');
 
 const authRoutes = require('./routes/auth.routes');
 const usuariosRoutes = require('./routes/usuarios.routes');
@@ -50,6 +51,8 @@ const recibosRoutes = require('./routes/recibos.routes');
 const app = express();
 app.use(cors());
 app.use(express.json());
+// Parametro de query "null"/"undefined" (texto) = parametro nao enviado.
+app.use('/api', limparQuery);
 
 // Frontend (HTML/CSS/JS estatico) e a API rodam no mesmo servidor/porta -
 // simplifica o "rodar localmente" (um so `npm start`). O roteamento de tela

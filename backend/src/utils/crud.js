@@ -6,6 +6,7 @@ const { requerPerfilMinimo, requerAcessoModulo } = require('../middleware/auth')
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { registrarAuditoria } = require('./audit');
 const { withTransaction } = require('./transaction');
+const { condicaoBusca } = require('./busca');
 
 // Router CRUD generico para cadastros simples (fornecedores, motoristas,
 // tipos de dominio etc.). Tabelas com regras de negocio proprias (estoque,
@@ -63,10 +64,9 @@ function createCrudRouter({
     const condicoes = [];
     const params = [];
     if (empresaScoped) { condicoes.push('empresa_id = ?'); params.push(req.empresaId); }
-    if (search && searchFields.length) {
-      condicoes.push(`(${searchFields.map((f) => `${f} LIKE ?`).join(' OR ')})`);
-      params.push(...searchFields.map(() => `%${search}%`));
-    }
+    // Sem acento/maiuscula; CPF/CNPJ digitado com pontuacao acha o cadastro (guarda so digitos).
+    const busca = search && searchFields.length ? condicaoBusca(searchFields, search, { colunasDigitos: searchFields.filter((f) => f === 'cpf' || f === 'cnpj') }) : null;
+    if (busca) { condicoes.push(busca.sql); params.push(...busca.params); }
     const where = condicoes.length ? `WHERE ${condicoes.join(' AND ')}` : '';
     const rows = db.prepare(`SELECT * FROM ${table} ${where} ORDER BY ${order}`).all(...params);
     res.json(rows);

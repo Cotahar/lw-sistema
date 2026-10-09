@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
+const { condicaoBusca } = require('../utils/busca');
 const ApiError = require('../utils/ApiError');
 const { requerAcessoModulo } = require('../middleware/auth');
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
@@ -19,7 +20,8 @@ router.get('/itens', requerAcessoModulo('estoque', 'Visualizar'), exigirEmpresaE
   const { search } = req.query;
   const condicoes = []; const params = [];
   condicaoEmpresa(condicoes, params, req);
-  if (search) { condicoes.push('nome LIKE ?'); params.push(`%${search}%`); }
+  const busca = condicaoBusca(['nome'], search);
+  if (busca) { condicoes.push(busca.sql); params.push(...busca.params); }
   res.json(db.prepare(`SELECT * FROM estoque_itens WHERE ${condicoes.join(' AND ')} ORDER BY nome`).all(...params));
 }));
 

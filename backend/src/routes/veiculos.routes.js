@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
+const { condicaoBusca } = require('../utils/busca');
 const ApiError = require('../utils/ApiError');
 const { requerAcessoModulo } = require('../middleware/auth');
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
@@ -43,7 +44,8 @@ router.get('/', requerAcessoModulo('veiculos', 'Visualizar'), exigirEmpresaEspec
   const condicoes = [];
   const params = [];
   condicaoEmpresa(condicoes, params, req);
-  if (search) { condicoes.push('(placa LIKE ? OR marca LIKE ? OR modelo LIKE ?)'); params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
+  const busca = condicaoBusca(['placa', 'marca', 'modelo'], search);
+  if (busca) { condicoes.push(busca.sql); params.push(...busca.params); }
   if (tipo) { condicoes.push('tipo = ?'); params.push(tipo); }
   const where = `WHERE ${condicoes.join(' AND ')}`;
   const veiculos = db.prepare(`SELECT * FROM veiculos ${where} ORDER BY placa`).all(...params);

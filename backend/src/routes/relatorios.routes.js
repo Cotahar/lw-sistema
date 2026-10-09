@@ -50,8 +50,8 @@ router.get('/saldos-em-aberto', requerAcessoModulo('dre', 'Visualizar'), exigirE
   const viagemIds = comoLista(viagem_id);
   if (viagemIds.length) { condicoes.push(clausulaIn('f.viagem_id', viagemIds)); params.push(...viagemIds); }
   if (transportadora_id) { condicoes.push('f.transportadora_id = ?'); params.push(transportadora_id); }
-  if (data_carregamento_de) { condicoes.push('f.data_carregamento >= ?'); params.push(data_carregamento_de); }
-  if (data_carregamento_ate) { condicoes.push('f.data_carregamento <= ?'); params.push(data_carregamento_ate); }
+  if (data_carregamento_de) { condicoes.push('COALESCE(f.data_carregamento, vg.data_inicio) >= ?'); params.push(data_carregamento_de); }
+  if (data_carregamento_ate) { condicoes.push('COALESCE(f.data_carregamento, vg.data_inicio) <= ?'); params.push(data_carregamento_ate); }
   // Sem status 'Atrasado' de verdade no banco (nunca e escrito - ver
   // frontend/js/pages/financeiro/contasReceber.js:badgePrazo): "vencido" e
   // sempre calculado comparando data_prevista com hoje, aqui e la.
@@ -175,8 +175,8 @@ router.get('/fretes', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspe
   const viagemIds = comoLista(viagem_id);
   if (viagemIds.length) { condicoes.push(clausulaIn('f.viagem_id', viagemIds)); params.push(...viagemIds); }
   if (transportadora_id) { condicoes.push('f.transportadora_id = ?'); params.push(transportadora_id); }
-  if (data_carregamento_de) { condicoes.push('f.data_carregamento >= ?'); params.push(data_carregamento_de); }
-  if (data_carregamento_ate) { condicoes.push('f.data_carregamento <= ?'); params.push(data_carregamento_ate); }
+  if (data_carregamento_de) { condicoes.push('COALESCE(f.data_carregamento, vg.data_inicio) >= ?'); params.push(data_carregamento_de); }
+  if (data_carregamento_ate) { condicoes.push('COALESCE(f.data_carregamento, vg.data_inicio) <= ?'); params.push(data_carregamento_ate); }
   const veiculoIds = comoLista(veiculo_id);
   if (veiculoIds.length) {
     const centroCustoIds = veiculoIds.map((id) => { const c = buscarCentroCustoDoVeiculo(id); return c ? c.id : -1; });
@@ -419,8 +419,8 @@ router.get('/pneus', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspec
   if (veiculosDoConjunto) { condicoes.push(clausulaIn('pe.veiculo_id', veiculosDoConjunto)); params.push(...veiculosDoConjunto); }
   if (numero_fogo) { condicoes.push('p.numero_fogo LIKE ?'); params.push(`%${numero_fogo}%`); }
   if (tipo_evento) { condicoes.push('pe.tipo_evento = ?'); params.push(tipo_evento); }
-  if (data_de) { condicoes.push('pe.data >= ?'); params.push(data_de); }
-  if (data_ate) { condicoes.push('pe.data <= ?'); params.push(data_ate); }
+  if (data_de) { condicoes.push('date(pe.data) >= ?'); params.push(data_de); }
+  if (data_ate) { condicoes.push('date(pe.data) <= ?'); params.push(data_ate); }
 
   const linhas = db.prepare(`
     SELECT pe.id, pe.tipo_evento, pe.eixo, pe.lado, pe.km_veiculo, pe.custo, pe.data, pe.observacao,
@@ -667,12 +667,12 @@ router.get('/rentabilidade-rota', requerAcessoModulo('dre', 'Visualizar'), exigi
   const condicoes = ['f.empresa_id = ?'];
   const params = [req.empresaId];
   if (transportadora_id) { condicoes.push('f.transportadora_id = ?'); params.push(transportadora_id); }
-  if (data_de) { condicoes.push('f.data_carregamento >= ?'); params.push(data_de); }
-  if (data_ate) { condicoes.push('f.data_carregamento <= ?'); params.push(data_ate); }
+  if (data_de) { condicoes.push('COALESCE(f.data_carregamento, vg.data_inicio) >= ?'); params.push(data_de); }
+  if (data_ate) { condicoes.push('COALESCE(f.data_carregamento, vg.data_inicio) <= ?'); params.push(data_ate); }
 
   const fretes = db.prepare(`
     SELECT f.origem_cidade, f.origem_uf, f.destino_cidade, f.destino_uf, f.frete_bruto
-    FROM fretes f WHERE ${condicoes.join(' AND ')}
+    FROM fretes f JOIN viagens vg ON vg.id = f.viagem_id WHERE ${condicoes.join(' AND ')}
   `).all(...params);
 
   const mapa = new Map();

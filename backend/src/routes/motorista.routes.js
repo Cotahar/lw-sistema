@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const multer = require('multer');
 const db = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
+const { condicaoBusca } = require('../utils/busca');
 const ApiError = require('../utils/ApiError');
 const { requerMotorista } = require('../middleware/auth');
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
@@ -265,7 +266,8 @@ router.get('/postos', asyncHandler(async (req, res) => {
   const tipoId = buscarPostoTipoId();
   const condicoes = ['empresa_id = ?', 'tipo_id = ?'];
   const params = [req.empresaId, tipoId];
-  if (search) { condicoes.push('nome LIKE ?'); params.push(`%${search}%`); }
+  const busca = condicaoBusca(['nome'], search);
+  if (busca) { condicoes.push(busca.sql); params.push(...busca.params); }
   const postos = db.prepare(`SELECT id, nome, localizacao FROM fornecedores WHERE ${condicoes.join(' AND ')} ORDER BY nome`).all(...params);
   res.json(postos);
 }));

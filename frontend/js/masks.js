@@ -158,8 +158,11 @@ export function parseDataBrParaIso(valorBr) {
   const dia = digitos.slice(0, 2);
   const mes = digitos.slice(2, 4);
   const ano = digitos.slice(4, 8);
-  const data = new Date(`${ano}-${mes}-${dia}T00:00:00`);
-  if (Number.isNaN(data.getTime()) || data.getUTCDate() !== Number(dia) || data.getUTCMonth() + 1 !== Number(mes)) return null;
+  // UTC so como calendario (sem depender do fuso do navegador). Rejeita dia/mes que
+  // "viram" outra data (31/02) e anos fora de 1900-2999 (evita 0026 -> 1926).
+  const data = new Date(Date.UTC(Number(ano), Number(mes) - 1, Number(dia)));
+  if (Number.isNaN(data.getTime()) || data.getUTCFullYear() !== Number(ano) || data.getUTCMonth() + 1 !== Number(mes) || data.getUTCDate() !== Number(dia)) return null;
+  if (Number(ano) < 1900) return null;
   return `${ano}-${mes}-${dia}`;
 }
 
@@ -169,27 +172,52 @@ function formatarDigitosData(digitos) {
   return digitos;
 }
 
+// Completa uma data digitada pela metade (so dia; dia+mes; dia+mes+ano de 2 digitos) com o
+// mes/ano atuais - agiliza o preenchimento sem impedir a data completa.
+function completarDigitosData(digitos) {
+  const agora = new Date();
+  const ano = String(agora.getFullYear());
+  const mesAtual = String(agora.getMonth() + 1).padStart(2, '0');
+  if (digitos.length === 1 || digitos.length === 2) return `${digitos.padStart(2, '0')}${mesAtual}${ano}`;
+  if (digitos.length === 3 || digitos.length === 4) return `${digitos.slice(0, 2)}${digitos.slice(2).padStart(2, '0')}${ano}`;
+  if (digitos.length === 6) return `${digitos.slice(0, 4)}${ano.slice(0, 2)}${digitos.slice(4)}`; // 31/10/26 -> 31/10/2026
+  return digitos;
+}
+
 export function attachDataMask(input, isoInicial) {
   input.placeholder = 'DD/MM/AAAA';
+
+  // Marca em vermelho uma data completa que nao existe (ex.: 31/02/2026) ou incompleta.
+  function sinalizarInvalida() {
+    const invalida = Boolean(input.value) && !parseDataBrParaIso(input.value);
+    input.classList.toggle('input-data-invalida', invalida);
+    input.title = invalida ? 'Data invalida - use dd/mm/aaaa' : '';
+  }
+
+  function completar() {
+    const digitos = apenasDigitos(input.value).slice(0, 8);
+    const completo = completarDigitosData(digitos);
+    if (completo !== digitos) input.value = formatarDigitosData(completo);
+    sinalizarInvalida();
+  }
+
   input.addEventListener('input', () => {
     const digitos = apenasDigitos(input.value).slice(0, 8);
     input.value = formatarDigitosData(digitos);
+    input.classList.remove('input-data-invalida');
+    input.title = '';
   });
-  // Completa mes/ano (ou so ano) com a data atual quando o usuario sai do
-  // campo tendo digitado so o dia, ou so dia+mes - agiliza o preenchimento
-  // sem impedir que ele digite a data completa se quiser.
+  // O navegador dispara 'change' ANTES do 'blur'. Completar a data ja no 'change' (este
+  // listener e registrado antes dos das telas) faz os filtros lerem a data completa; antes,
+  // a busca saia com a data pela metade ("06/10" virava "null") e, ao sair do campo, a
+  // mascara completava o texto sem refazer a busca - a lista nao batia com o filtro mostrado.
+  input.addEventListener('change', completar);
+  // Rede de seguranca: se por algum motivo o 'change' nao completou, completa no 'blur' e
+  // avisa quem escuta 'change' (so quando o texto realmente mudou).
   input.addEventListener('blur', () => {
-    const digitos = apenasDigitos(input.value).slice(0, 8);
-    const agora = new Date();
-    if (digitos.length === 1 || digitos.length === 2) {
-      const dia = digitos.padStart(2, '0');
-      const mes = String(agora.getMonth() + 1).padStart(2, '0');
-      input.value = formatarDigitosData(`${dia}${mes}${agora.getFullYear()}`);
-    } else if (digitos.length === 3 || digitos.length === 4) {
-      const dia = digitos.slice(0, 2);
-      const mes = digitos.slice(2, 4).padStart(2, '0');
-      input.value = formatarDigitosData(`${dia}${mes}${agora.getFullYear()}`);
-    }
+    const antes = input.value;
+    completar();
+    if (input.value !== antes) input.dispatchEvent(new Event('change', { bubbles: true }));
   });
   if (isoInicial) input.value = formatarDataBr(isoInicial);
 }

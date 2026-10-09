@@ -109,7 +109,7 @@ function lancamentosDoVeiculo(veiculo, centroCusto, categoria, inicio, fim) {
       SELECT em.id, em.data, (em.quantidade * em.custo_unitario) AS valor, em.quantidade, ei.nome AS item_nome
       FROM estoque_movimentacoes em
       JOIN estoque_itens ei ON ei.id = em.item_id
-      WHERE em.tipo = 'Saida' AND em.veiculo_destino_id = ? AND em.os_id IS NULL AND em.data BETWEEN ? AND ?
+      WHERE em.tipo = 'Saida' AND em.veiculo_destino_id = ? AND em.os_id IS NULL AND date(em.data) BETWEEN ? AND ?
       ORDER BY em.data DESC
     `).all(veiculo.id, inicio, fim);
   }
@@ -126,7 +126,7 @@ function lancamentosDoVeiculo(veiculo, centroCusto, categoria, inicio, fim) {
       SELECT pe.id, pe.data, pe.custo AS valor, p.numero_fogo
       FROM pneu_eventos pe
       JOIN pneus p ON p.id = pe.pneu_id
-      WHERE pe.tipo_evento = 'Instalacao' AND pe.veiculo_id = ? AND pe.data BETWEEN ? AND ?
+      WHERE pe.tipo_evento = 'Instalacao' AND pe.veiculo_id = ? AND date(pe.data) BETWEEN ? AND ?
       ORDER BY pe.data DESC
     `).all(veiculo.id, inicio, fim);
   }

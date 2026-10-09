@@ -119,7 +119,23 @@ export async function api(method, path, body) {
   return data;
 }
 
-export const get = (path) => api('GET', path);
+// Parametro de query vazio/nulo vira o TEXTO "null"/"undefined" quando alguem monta a URL com
+// um valor que nao existe (ex.: data digitada pela metade) - o servidor entendia "null" como
+// uma data e a lista vinha errada/vazia. Aqui esses parametros simplesmente nao sao enviados.
+function semParametrosNulos(path) {
+  const i = path.indexOf('?');
+  if (i < 0) return path;
+  const params = new URLSearchParams(path.slice(i + 1));
+  let mudou = false;
+  for (const [chave, valor] of [...params]) {
+    if (valor === 'null' || valor === 'undefined') { params.delete(chave, valor); mudou = true; }
+  }
+  if (!mudou) return path;
+  const query = params.toString();
+  return query ? `${path.slice(0, i)}?${query}` : path.slice(0, i);
+}
+
+export const get = (path) => api('GET', semParametrosNulos(path));
 export const post = (path, body) => api('POST', path, body);
 export const put = (path, body) => api('PUT', path, body);
 export const patch = (path, body) => api('PATCH', path, body);

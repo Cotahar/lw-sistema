@@ -9,10 +9,10 @@ import { abrirBaixasFrete } from '../../components/baixasFrete.js';
 const STATUS_BADGE = { Pendente: 'badge-atencao', Parcial: 'badge-atencao', Recebido: 'badge-sucesso', Atrasado: 'badge-critico' };
 const STATUS_OPCOES = [
   { value: '', label: 'Todos' },
-  { value: 'Pendente', label: 'Pendente' },
+  { value: 'Pendente', label: 'Pendente (inclui parciais)' },
   { value: 'Parcial', label: 'Parcial' },
   { value: 'Recebido', label: 'Recebido' },
-  { value: 'Atrasado', label: 'Atrasado' },
+  { value: 'Atrasado', label: 'Atrasado (vencidas em aberto)' },
 ];
 
 function saldoEmAberto(r) {
@@ -139,7 +139,7 @@ export async function render(container) {
       { chave: 'status', titulo: 'Status', render: (r) => `<span class="${STATUS_BADGE[r.status]}">${r.status}</span>`, exportar: (r) => r.status },
     ],
     ordenacaoInicial: { chave: 'data_prevista', direcao: 'asc' },
-    corLinha: (r) => (r.status === 'Atrasado' ? 'bg-red-950/40' : ''),
+    corLinha: (r) => (r.status !== 'Recebido' && r.data_prevista < hojeIsoLocal() ? 'bg-red-950/40' : ''),
     exportar: { nomeArquivo: 'contas-a-receber' },
     buscarDados: async () => {
       const params = new URLSearchParams();
