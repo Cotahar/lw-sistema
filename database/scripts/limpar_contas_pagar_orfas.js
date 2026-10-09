@@ -1,63 +1,70 @@
-// Remove contas_pagar orfas (origem_tipo aponta pra um registro que nao
-// existe mais - ver verificar_contas_pagar_orfas.js) - causadas pelo bug de
-// reversao na Auditoria corrigido em 2026-09-26 (admin.routes.js so apagava
-// a linha "mae" da OS/financiamento/despesa fixa, sem saber que precisava
-// tambem apagar as contas_pagar vinculadas por origem_tipo/origem_id).
-// So remove conta SEM nenhum pagamento/desconto ja lancado (valor_pago=0 e
-// valor_descontado=0) - uma conta orfa que ja teve dinheiro de verdade
-// baixado nao e seguro apagar sozinho, precisa de olho humano.
-// Dry-run por padrao (so lista o que seria apagado). Rodar de verdade:
-// `node database/scripts/limpar_contas_pagar_orfas.js --confirmo`
+// Contas a pagar ORFAS: a origem (despesa de viagem, compra de estoque, parcela...) foi revertida/
+// apagada mas a conta a pagar ficou. Causa corrigida em admin.routes.js (reversao da auditoria);
+// este script limpa o que ja tinha ficado para tras.
+//   node database/scripts/limpar_contas_pagar_orfas.js                                (so lista)
+//   node database/scripts/limpar_contas_pagar_orfas.js --aplicar --ids=773,774,775    (apaga SO esses)
+// Recusa apagar conta que ja teve pagamento/desconto, que nao seja orfa, ou sem --ids.
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 
-const CONFIRMAR = process.argv.includes('--confirmo');
+const aplicar = process.argv.includes('--aplicar');
+const idsArg = (process.argv.find((a) => a.startsWith('--ids=')) || '').slice(6);
+const ids = idsArg ? idsArg.split(',').map(Number).filter(Number.isInteger) : [];
 const DB_PATH = path.resolve(__dirname, '../../backend', process.env.DB_PATH || './data/frotista.db');
 const db = new DatabaseSync(DB_PATH);
 
-const ORIGENS = [
-  { origemTipo: 'OrdemServico', tabelaPai: 'ordens_servico' },
-  { origemTipo: 'OrdemServicoParcela', tabelaPai: 'os_parcelas' },
-  { origemTipo: 'FinanciamentoParcela', tabelaPai: 'financiamento_parcelas' },
-  { origemTipo: 'DespesaFixa', tabelaPai: 'despesas_fixas' },
-  { origemTipo: 'DespesaFixaParcela', tabelaPai: 'despesa_fixa_parcelas' },
-];
+const ORIGEM = {
+  DespesaViagem: 'despesas_viagem',
+  DespesaFixa: 'despesas_fixas',
+  DespesaFixaParcela: 'despesa_fixa_parcelas',
+  FinanciamentoParcela: 'financiamento_parcelas',
+  OrdemServico: 'ordens_servico',
+  OrdemServicoParcela: 'os_parcelas',
+  AcertoViagem: 'acertos_viagem',
+  EstoqueMovimentacao: 'estoque_movimentacoes',
+  PneuEvento: 'pneu_eventos',
+};
+
+function orfas() {
+  const lista = [];
+  for (const [tipo, tabela] of Object.entries(ORIGEM)) {
+    lista.push(...db.prepare(`
+      SELECT cp.* FROM contas_pagar cp
+      WHERE cp.origem_tipo = ? AND cp.origem_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM ${tabela} o WHERE o.id = cp.origem_id)
+    `).all(tipo));
+  }
+  return lista.sort((a, b) => a.id - b.id);
+}
+
+const todas = orfas();
+console.log(`${aplicar ? 'APLICANDO' : 'LISTA'} - ${todas.length} conta(s) a pagar orfa(s):`);
+for (const c of todas) {
+  console.log(`  #${c.id} ${c.origem_tipo}#${c.origem_id} ${c.descricao} | R$ ${(c.valor / 100).toFixed(2)} | ${c.status} | pago ${c.valor_pago} desc ${c.valor_descontado} | venc ${c.data_vencimento}`);
+}
+
+if (!aplicar) {
+  console.log('Nada foi alterado. Para apagar: --aplicar --ids=<ids separados por virgula>.');
+  process.exit(0);
+}
+if (!ids.length) { console.error('Informe --ids=... (nunca apaga tudo de uma vez).'); process.exit(1); }
 
 try {
-  let totalRemovidas = 0;
-  let totalIgnoradas = 0;
-
   db.exec('BEGIN');
-  for (const { origemTipo, tabelaPai } of ORIGENS) {
-    const orfas = db.prepare(`
-      SELECT cp.* FROM contas_pagar cp
-      WHERE cp.origem_tipo = ?
-        AND NOT EXISTS (SELECT 1 FROM ${tabelaPai} p WHERE p.id = cp.origem_id)
-    `).all(origemTipo);
-
-    for (const o of orfas) {
-      if (o.valor_pago > 0 || o.valor_descontado > 0) {
-        console.log(`IGNORADA (ja tem pagamento/desconto lancado): id=${o.id} descricao="${o.descricao}" valor_pago=${(o.valor_pago / 100).toFixed(2)}`);
-        totalIgnoradas++;
-        continue;
-      }
-      console.log(`${CONFIRMAR ? 'REMOVENDO' : '[dry-run] removeria'}: id=${o.id} origem_tipo=${origemTipo} descricao="${o.descricao}" valor=${(o.valor / 100).toFixed(2)}`);
-      if (CONFIRMAR) db.prepare('DELETE FROM contas_pagar WHERE id = ?').run(o.id);
-      totalRemovidas++;
-    }
+  for (const id of ids) {
+    const conta = todas.find((c) => c.id === id);
+    if (!conta) throw new Error(`#${id} nao e uma conta orfa (ou nao existe) - nada foi apagado.`);
+    if (conta.status !== 'Pendente' || conta.valor_pago > 0 || conta.valor_descontado > 0) throw new Error(`#${id} ja teve pagamento/desconto - nao apago.`);
+    const filhas = db.prepare('SELECT COUNT(*) AS n FROM despesas_viagem WHERE contas_pagar_id = ?').get(id).n;
+    if (filhas > 0) throw new Error(`#${id} ainda e referenciada por ${filhas} despesa(s) - nao apago.`);
+    db.prepare('DELETE FROM contas_pagar WHERE id = ?').run(id);
+    db.prepare(`INSERT INTO logs_auditoria (empresa_id, usuario_id, tabela_afetada, registro_id, acao, dados_antes) VALUES (?, NULL, 'contas_pagar', ?, 'DELETE', ?)`)
+      .run(conta.empresa_id, id, JSON.stringify(conta));
+    console.log(`  apagada #${id}`);
   }
-
-  if (CONFIRMAR) {
-    db.exec('COMMIT');
-    console.log(`\n${totalRemovidas} conta(s) a pagar orfa(s) removida(s). ${totalIgnoradas} ignorada(s) (ja tinham pagamento).`);
-  } else {
-    db.exec('ROLLBACK');
-    console.log(`\n[dry-run] ${totalRemovidas} conta(s) seriam removidas, ${totalIgnoradas} seriam ignoradas. Rode com --confirmo para aplicar de verdade.`);
-  }
+  db.exec('COMMIT');
+  console.log(`Concluido: ${ids.length} conta(s) apagada(s).`);
 } catch (err) {
   db.exec('ROLLBACK');
-  console.error('\nErro, rollback aplicado:', err.message);
+  console.error('ERRO (nada foi alterado):', err.message);
   process.exitCode = 1;
-} finally {
-  db.close();
 }

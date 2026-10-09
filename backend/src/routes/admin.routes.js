@@ -44,6 +44,10 @@ const HANDLERS_ESPECIFICOS = {
   ordens_servico: reverterOrdensServico,
   financiamentos: reverterFinanciamentos,
   despesas_fixas: reverterDespesasFixas,
+  despesas_viagem: reverterDespesasViagem,
+  estoque_movimentacoes: reverterEstoqueMovimentacoes,
+  viagem_adiantamentos: reverterAdiantamentos,
+  contas_receber_baixas: reverterBaixasFrete,
 };
 
 const TABELA_REGEX = /^[a-z_]+$/;
@@ -233,6 +237,204 @@ function reverterDespesasFixas(log) {
     if (contaPagar) db.prepare('DELETE FROM contas_pagar WHERE id = ?').run(contaPagar.id);
   }
   db.prepare('DELETE FROM despesas_fixas WHERE id = ?').run(despesa.id);
+}
+
+// ---- Despesas de viagem ----
+// Criar uma despesa de empresa gera uma Conta a Pagar (diesel + Arla numa conta so, presa na
+// despesa principal). O snapshot generico so apagava a despesa e a conta ficava ORFA em
+// Contas a Pagar (bug reportado: "revertemos a despesa #195 e o lancamento no contas a pagar nao
+// foi apagado"). Mesmo padrao das rotas DELETE: nao reverte se ja houve pagamento, apaga a
+// despesa (que segura as referencias) antes da conta e leva a Arla vinculada junto.
+function contaDaDespesaViagem(despesa) {
+  const pelaReferencia = despesa.contas_pagar_id ? db.prepare('SELECT * FROM contas_pagar WHERE id = ?').get(despesa.contas_pagar_id) : null;
+  return pelaReferencia || db.prepare("SELECT * FROM contas_pagar WHERE origem_tipo = 'DespesaViagem' AND origem_id = ?").get(despesa.id) || null;
+}
+
+function exigirContaSemPagamento(conta, rotulo) {
+  if (!conta) return;
+  if (conta.origem_tipo !== 'DespesaViagem') {
+    throw new ApiError(400, `${rotulo} foi incluida numa fatura consolidada (conta a pagar #${conta.id}) e nao pode ser revertida pela auditoria.`);
+  }
+  if (conta.status !== 'Pendente' || conta.valor_pago > 0 || conta.valor_descontado > 0) {
+    throw new ApiError(400, `${rotulo} ja possui pagamento lancado na conta a pagar #${conta.id}. Estorne o pagamento (Contas a Pagar > Detalhes > Estornar baixa) antes de reverter.`);
+  }
+}
+
+// Depois de restaurar uma despesa editada, a conta a pagar dela volta a refletir o valor
+// (diesel + Arla - pago em dinheiro). So mexe em conta ainda Pendente e sem nenhum pagamento.
+function sincronizarContaDaDespesaViagem(despesaId) {
+  const despesa = db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(despesaId);
+  if (!despesa || !despesa.contas_pagar_id) return;
+  const conta = db.prepare('SELECT * FROM contas_pagar WHERE id = ?').get(despesa.contas_pagar_id);
+  if (!conta || conta.origem_tipo !== 'DespesaViagem' || conta.status !== 'Pendente' || conta.valor_pago > 0 || conta.valor_descontado > 0) return;
+  const arla = despesa.despesa_arla_id ? db.prepare('SELECT valor FROM despesas_viagem WHERE id = ?').get(despesa.despesa_arla_id) : null;
+  const valor = despesa.valor + (arla ? arla.valor : 0) - (despesa.valor_pago_dinheiro || 0);
+  if (valor > 0) db.prepare('UPDATE contas_pagar SET valor = ? WHERE id = ?').run(valor, conta.id);
+}
+
+function reverterDespesasViagem(log) {
+  if (log.acao === 'DELETE') {
+    const antes = parseJson(log.dados_antes);
+    if (antes && (antes.contas_pagar_id || antes.despesa_arla_id)) {
+      throw new ApiError(400, 'Uma despesa excluida que gerou conta a pagar (ou tem Arla vinculada) nao pode ser restaurada pela auditoria. Lance a despesa novamente na viagem.');
+    }
+    return reverterGenerico(log);
+  }
+  if (log.acao === 'UPDATE') {
+    reverterGenerico(log);
+    sincronizarContaDaDespesaViagem(log.registro_id);
+    return;
+  }
+
+  const despesa = db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(log.registro_id);
+  if (!despesa) throw new ApiError(400, 'Esta despesa ja foi revertida ou nao existe mais.');
+  const conta = contaDaDespesaViagem(despesa);
+  exigirContaSemPagamento(conta, 'Esta despesa');
+  const arla = despesa.despesa_arla_id ? db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(despesa.despesa_arla_id) : null;
+  const contaArla = arla ? contaDaDespesaViagem(arla) : null;
+  exigirContaSemPagamento(contaArla, 'A despesa de Arla vinculada');
+
+  // A despesa principal segura as referencias (conta e Arla): sai primeiro.
+  db.prepare('DELETE FROM despesas_viagem WHERE id = ?').run(despesa.id);
+  if (conta) db.prepare('DELETE FROM contas_pagar WHERE id = ?').run(conta.id);
+  if (arla) {
+    db.prepare('DELETE FROM despesas_viagem WHERE id = ?').run(arla.id);
+    if (contaArla) db.prepare('DELETE FROM contas_pagar WHERE id = ?').run(contaArla.id);
+  }
+}
+
+// ---- Compra/saida de estoque ----
+// Entrada soma no estoque (media ponderada do custo) e gera Conta a Pagar; Saida baixa o estoque.
+// O snapshot generico so apagava a movimentacao: a quantidade do item e a conta a pagar ficavam
+// como se a compra tivesse acontecido.
+function reverterEstoqueMovimentacoes(log) {
+  if (log.acao !== 'INSERT') return reverterGenerico(log);
+  const mov = db.prepare('SELECT * FROM estoque_movimentacoes WHERE id = ?').get(log.registro_id);
+  if (!mov) throw new ApiError(400, 'Esta movimentacao de estoque ja foi revertida ou nao existe mais.');
+  const item = db.prepare('SELECT * FROM estoque_itens WHERE id = ?').get(mov.item_id);
+
+  if (mov.tipo === 'Entrada') {
+    const conta = db.prepare("SELECT * FROM contas_pagar WHERE origem_tipo = 'EstoqueMovimentacao' AND origem_id = ?").get(mov.id);
+    if (conta && (conta.status !== 'Pendente' || conta.valor_pago > 0 || conta.valor_descontado > 0)) {
+      throw new ApiError(400, `Esta compra de estoque ja possui pagamento lancado na conta a pagar #${conta.id}. Estorne o pagamento antes de reverter.`);
+    }
+    if (item) {
+      const novaQuantidade = item.quantidade_atual - mov.quantidade;
+      if (novaQuantidade < -1e-9) throw new ApiError(400, 'O estoque desta compra ja foi consumido: reverter deixaria o item com saldo negativo.');
+      // Desfaz a media ponderada: tira o valor desta entrada do valor total em estoque.
+      const novoCustoMedio = novaQuantidade > 0
+        ? Math.max(0, Math.round((item.quantidade_atual * item.custo_medio - mov.quantidade * mov.custo_unitario) / novaQuantidade))
+        : item.custo_medio;
+      db.prepare("UPDATE estoque_itens SET quantidade_atual = ?, custo_medio = ?, atualizado_em = datetime('now', '-3 hours') WHERE id = ?")
+        .run(Math.max(0, novaQuantidade), novoCustoMedio, item.id);
+    }
+    if (conta) db.prepare('DELETE FROM contas_pagar WHERE id = ?').run(conta.id);
+  } else if (item) {
+    db.prepare("UPDATE estoque_itens SET quantidade_atual = quantidade_atual + ?, atualizado_em = datetime('now', '-3 hours') WHERE id = ?").run(mov.quantidade, item.id);
+  }
+  db.prepare('DELETE FROM estoque_movimentacoes WHERE id = ?').run(mov.id);
+}
+
+// ---- Adiantamentos ao motorista ----
+// Com conta bancaria informada o adiantamento e uma saida de caixa de verdade (movimentacao +
+// saldo da conta). Reverter so a linha do adiantamento deixava o saldo bancario errado.
+function exigirViagemAberta(viagemId) {
+  const viagem = db.prepare('SELECT status FROM viagens WHERE id = ?').get(viagemId);
+  if (viagem && viagem.status === 'Finalizada') {
+    throw new ApiError(400, 'A viagem ja foi finalizada (acerto fechado). Reverta o acerto antes de desfazer lancamentos desta viagem.');
+  }
+}
+
+function tirarAdiantamentoDoCaixa(adiantamento) {
+  if (!adiantamento.conta_bancaria_id) return;
+  db.prepare("DELETE FROM movimentacoes_caixa WHERE origem_tipo = 'ViagemAdiantamento' AND origem_id = ?").run(adiantamento.id);
+  db.prepare('UPDATE contas_bancarias SET saldo_atual = saldo_atual + ? WHERE id = ?').run(adiantamento.valor, adiantamento.conta_bancaria_id);
+}
+
+function porAdiantamentoNoCaixa(adiantamento, usuarioId) {
+  if (!adiantamento.conta_bancaria_id) return;
+  db.prepare(`
+    INSERT INTO movimentacoes_caixa (empresa_id, conta_bancaria_id, tipo, valor, data, descricao, origem_tipo, origem_id, criado_por)
+    VALUES (?, ?, 'Saida', ?, ?, ?, 'ViagemAdiantamento', ?, ?)
+  `).run(adiantamento.empresa_id, adiantamento.conta_bancaria_id, adiantamento.valor, adiantamento.data, adiantamento.descricao || `Adiantamento ao motorista - viagem #${adiantamento.viagem_id}`, adiantamento.id, usuarioId);
+  db.prepare('UPDATE contas_bancarias SET saldo_atual = saldo_atual - ? WHERE id = ?').run(adiantamento.valor, adiantamento.conta_bancaria_id);
+}
+
+function reverterAdiantamentos(log) {
+  const antes = parseJson(log.dados_antes);
+  if (log.acao === 'INSERT') {
+    const atual = db.prepare('SELECT * FROM viagem_adiantamentos WHERE id = ?').get(log.registro_id);
+    if (!atual) throw new ApiError(400, 'Este adiantamento ja foi revertido ou nao existe mais.');
+    exigirViagemAberta(atual.viagem_id);
+    tirarAdiantamentoDoCaixa(atual);
+    db.prepare('DELETE FROM viagem_adiantamentos WHERE id = ?').run(atual.id);
+    return;
+  }
+  if (log.acao === 'DELETE') {
+    if (!antes) throw new ApiError(400, 'Sem dados suficientes para restaurar este adiantamento.');
+    exigirViagemAberta(antes.viagem_id);
+    reverterGenerico(log);
+    porAdiantamentoNoCaixa(antes, log.usuario_id);
+    return;
+  }
+  const atual = db.prepare('SELECT * FROM viagem_adiantamentos WHERE id = ?').get(log.registro_id);
+  if (!atual) throw new ApiError(400, 'Este adiantamento nao existe mais.');
+  exigirViagemAberta(atual.viagem_id);
+  tirarAdiantamentoDoCaixa(atual);
+  reverterGenerico(log);
+  porAdiantamentoNoCaixa({ ...atual, ...antes }, log.usuario_id);
+}
+
+// ---- Baixas (recebimentos) de frete ----
+// Uma baixa soma em valor_recebido/valor_descontado do recebivel, muda o status e, com conta
+// bancaria, e uma entrada de caixa. Tudo e derivado das baixas restantes, entao basta apagar/
+// restaurar a baixa e recalcular.
+function recalcularRecebivel(contasReceberId) {
+  const receber = db.prepare('SELECT * FROM contas_receber WHERE id = ?').get(contasReceberId);
+  if (!receber) return;
+  const soma = db.prepare(`
+    SELECT COALESCE(SUM(CASE WHEN tipo = 'Desconto' THEN 0 ELSE valor END), 0) AS recebido,
+           COALESCE(SUM(CASE WHEN tipo = 'Desconto' THEN valor ELSE 0 END), 0) AS descontado,
+           MAX(data) AS ultima
+    FROM contas_receber_baixas WHERE contas_receber_id = ?
+  `).get(contasReceberId);
+  const total = soma.recebido + soma.descontado;
+  const status = total >= receber.valor ? 'Recebido' : (total > 0 ? 'Parcial' : 'Pendente');
+  db.prepare('UPDATE contas_receber SET valor_recebido = ?, valor_descontado = ?, status = ?, data_recebimento = ? WHERE id = ?')
+    .run(soma.recebido, soma.descontado, status, soma.ultima || null, contasReceberId);
+}
+
+function reverterBaixasFrete(log) {
+  if (log.acao === 'INSERT') {
+    const baixa = db.prepare('SELECT * FROM contas_receber_baixas WHERE id = ?').get(log.registro_id);
+    if (!baixa) throw new ApiError(400, 'Esta baixa ja foi revertida ou nao existe mais.');
+    if (baixa.conta_bancaria_id) {
+      db.prepare("DELETE FROM movimentacoes_caixa WHERE origem_tipo = 'ContaReceber' AND origem_id = ?").run(baixa.id);
+      db.prepare('UPDATE contas_bancarias SET saldo_atual = saldo_atual - ? WHERE id = ?').run(baixa.valor, baixa.conta_bancaria_id);
+    }
+    db.prepare('DELETE FROM contas_receber_baixas WHERE id = ?').run(baixa.id);
+    recalcularRecebivel(baixa.contas_receber_id);
+    return;
+  }
+  if (log.acao === 'DELETE') {
+    const antes = parseJson(log.dados_antes);
+    if (!antes) throw new ApiError(400, 'Sem dados suficientes para restaurar esta baixa.');
+    const receber = db.prepare('SELECT * FROM contas_receber WHERE id = ?').get(antes.contas_receber_id);
+    if (!receber) throw new ApiError(400, 'O recebivel desta baixa nao existe mais.');
+    const jaBaixado = receber.valor_recebido + receber.valor_descontado;
+    if (jaBaixado + antes.valor > receber.valor) throw new ApiError(400, 'Restaurar esta baixa passaria o valor do recebivel (ha baixas mais novas).');
+    reverterGenerico(log);
+    if (antes.conta_bancaria_id) {
+      db.prepare(`
+        INSERT INTO movimentacoes_caixa (empresa_id, conta_bancaria_id, tipo, valor, data, descricao, origem_tipo, origem_id, criado_por)
+        VALUES (?, ?, 'Entrada', ?, ?, ?, 'ContaReceber', ?, ?)
+      `).run(antes.empresa_id, antes.conta_bancaria_id, antes.valor, antes.data, antes.descricao || `Baixa ${antes.tipo}`, antes.id, log.usuario_id);
+      db.prepare('UPDATE contas_bancarias SET saldo_atual = saldo_atual + ? WHERE id = ?').run(antes.valor, antes.conta_bancaria_id);
+    }
+    recalcularRecebivel(antes.contas_receber_id);
+    return;
+  }
+  return reverterGenerico(log);
 }
 
 router.post('/logs/:id/reverter', asyncHandler(async (req, res) => {
