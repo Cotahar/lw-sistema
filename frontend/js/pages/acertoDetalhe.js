@@ -326,9 +326,12 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
       esc(a.descricao || '-'),
       a.conta_bancaria_id ? esc(nomeContaBancaria[a.conta_bancaria_id] || 'Caixa') : 'Em especie',
       formatarMoeda(a.valor),
-      botoesAcao(acoes, a.id),
+      `<a href="#/viagens/${viagem.id}/recibos?adiantamento=${a.id}" target="_blank" rel="noopener" class="mr-2 text-xs text-gray-900 hover:underline">Recibo</a>${botoesAcao(acoes, a.id)}`,
     ]);
-    return secao('Adiantamentos ao motorista', 'novo-adiantamento', '+ Adiantamento', tabelaSecao({
+    const botaoRecibos = p.adiantamentos.length
+      ? `<div class="mb-2 flex justify-end"><a href="#/viagens/${viagem.id}/recibos?tipo=adiantamentos" target="_blank" rel="noopener" class="btn-secondary btn-sm">Imprimir recibos de adiantamento (${p.adiantamentos.length}) para assinatura</a></div>`
+      : '';
+    return botaoRecibos + secao('Adiantamentos ao motorista', 'novo-adiantamento', '+ Adiantamento', tabelaSecao({
       colunas: [{ titulo: 'Data' }, { titulo: 'Descricao' }, { titulo: 'Saiu de' }, { titulo: 'Valor', direita: true }, { titulo: '' }],
       linhas,
       vazio: 'Nenhum adiantamento lancado.',
@@ -609,6 +612,7 @@ async function renderFechado(container, viagem, motorista, acerto, gerenciar) {
       <div class="flex gap-2">
         <button type="button" class="btn-secondary" data-relatorio="resumido">Relatorio resumido (PDF)</button>
         <button type="button" class="btn-secondary" data-relatorio="detalhado">Relatorio detalhado (PDF)</button>
+        <button type="button" class="btn-secondary" data-recibos title="Recibos de cada adiantamento e do pagamento do acerto, para o motorista assinar">Imprimir recibos</button>
         <button type="button" class="btn-primary" data-whatsapp>Gerar resumo WhatsApp</button>
       </div>
     </div>
@@ -732,6 +736,9 @@ async function renderFechado(container, viagem, motorista, acerto, gerenciar) {
     btn.addEventListener('click', () => {
       window.open(`${window.location.pathname}#/acertos/${viagem.id}/relatorio?tipo=${btn.dataset.relatorio}`, '_blank');
     });
+  });
+  container.querySelector('[data-recibos]').addEventListener('click', () => {
+    window.open(`${window.location.pathname}#/viagens/${viagem.id}/recibos`, '_blank');
   });
 
   container.querySelector('[data-whatsapp]').addEventListener('click', async () => {

@@ -6,7 +6,7 @@ import { buscarConjuntos } from '../../components/conjuntoOpcoes.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { periodoAnteriorEquivalente, renderComparativoPeriodo } from '../../components/comparativoPeriodo.js';
-import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
+import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso, formatarLitros } from '../../masks.js';
 
 const CHAVE_COLUNAS = 'frottex-colunas-relatorio-despesas';
 
@@ -24,7 +24,7 @@ const CATALOGO_COLUNAS = [
   { chave: 'fornecedor_nome', titulo: 'Fornecedor', padrao: true, render: (r) => r.fornecedor_nome || '-' },
   { chave: 'pago_por', titulo: 'Pago por', padrao: true, render: (r) => r.pago_por },
   { chave: 'descricao', titulo: 'Descricao', padrao: false, render: (r) => r.descricao || '-', truncar: true },
-  { chave: 'litragem', titulo: 'Litros', padrao: false, render: (r) => (r.litragem ? `${Number(r.litragem).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} L` : '-') },
+  { chave: 'litragem', titulo: 'Litros', padrao: false, render: (r) => (r.litragem ? `${formatarLitros(r.litragem)} L` : '-') },
   { chave: 'preco_litro', titulo: 'R$/Litro', padrao: false, render: (r) => (r.preco_litro !== null ? formatarMoeda(r.preco_litro) : '-') },
   { chave: 'km_abastecimento', titulo: 'KM', padrao: false, render: (r) => (r.km_abastecimento !== null ? r.km_abastecimento.toLocaleString('pt-BR') : '-') },
   { chave: 'tanque_completo', titulo: 'Tanque', padrao: false, render: (r) => (r.tanque_completo ? 'Cheio' : '-') },

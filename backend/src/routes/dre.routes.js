@@ -9,7 +9,7 @@ const { hojeIsoBrasilia } = require('../utils/dataHora');
 const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
 const {
   somar, periodoRealizado, custosDoCentroCusto, receitaECustosDaViagemPorCentro, custosDiretosDoVeiculo, totaisGeraisDoPeriodo,
-  DATA_RECEITA_SQL, CATEGORIAS_CUSTO, CATEGORIAS_CUSTO_CONJUNTO, DATA_VIAGEM_SQL, conjuntoDonoPorVeiculo, resultadoDoConjunto, custosDeVeiculosSemComposicao,
+  DATA_RECEITA_SQL, CATEGORIAS_CUSTO, DATA_VIAGEM_SQL, TRATORA_DA_VIAGEM_SQL, comissaoDaTratora, conjuntoDonoPorVeiculo, resultadoDoConjunto, custosDeVeiculosSemComposicao,
 } = require('../utils/dreHelper');
 
 const router = express.Router();
@@ -67,8 +67,9 @@ router.get('/veiculo/:veiculoId', requerAcessoModulo('dre', 'Visualizar'), exigi
   const { receita, custosViagem } = receitaECustosDaViagemPorCentro(centroCusto.id, inicio, fim);
   const { custoPecasDireto, custoOrdensServico, custoPneus } = custosDiretosDoVeiculo(veiculo.id, inicio, fim);
   const custosFixosEFinanciamento = custosDoCentroCusto(centroCusto.id, inicio, fim);
+  const comissaoMotorista = comissaoDaTratora(veiculo.id, inicio, fim);
 
-  const custoTotal = custosViagem + custoPecasDireto + custoOrdensServico + custoPneus + custosFixosEFinanciamento.total;
+  const custoTotal = custosViagem + custoPecasDireto + custoOrdensServico + custoPneus + custosFixosEFinanciamento.total + comissaoMotorista;
   const lucro = receita - custoTotal;
 
   res.json({
@@ -81,6 +82,7 @@ router.get('/veiculo/:veiculoId', requerAcessoModulo('dre', 'Visualizar'), exigi
       pneus: custoPneus,
       despesasFixas: custosFixosEFinanciamento.despesasFixas,
       financiamento: custosFixosEFinanciamento.financiamento,
+      comissaoMotorista,
       total: custoTotal,
     },
     lucro,
@@ -127,6 +129,15 @@ function lancamentosDoVeiculo(veiculo, centroCusto, categoria, inicio, fim) {
       WHERE pe.tipo_evento = 'Instalacao' AND pe.veiculo_id = ? AND pe.data BETWEEN ? AND ?
       ORDER BY pe.data DESC
     `).all(veiculo.id, inicio, fim);
+  }
+  if (categoria === 'comissaoMotorista') {
+    return db.prepare(`
+      SELECT a.id, ${DATA_VIAGEM_SQL} AS data, a.valor_comissao AS valor, vg.id AS viagem_id, m.nome AS motorista_nome,
+             a.percentual_comissao_aplicado AS percentual
+      FROM acertos_viagem a JOIN viagens vg ON vg.id = a.viagem_id JOIN motoristas m ON m.id = vg.motorista_id
+      WHERE a.status = 'Fechado' AND ${DATA_VIAGEM_SQL} BETWEEN ? AND ? AND ${TRATORA_DA_VIAGEM_SQL} = ?
+      ORDER BY data DESC, a.id DESC
+    `).all(inicio, fim, veiculo.id);
   }
   if (categoria === 'despesasFixas') {
     return db.prepare(`
@@ -176,7 +187,7 @@ router.get('/conjunto/:conjuntoId', requerAcessoModulo('dre', 'Visualizar'), exi
   res.json({ conjunto, periodo: { inicio, fim }, ...resultado });
 }));
 
-const CATEGORIAS_DETALHE_CONJUNTO = ['receita', ...CATEGORIAS_CUSTO, ...CATEGORIAS_CUSTO_CONJUNTO];
+const CATEGORIAS_DETALHE_CONJUNTO = ['receita', ...CATEGORIAS_CUSTO];
 router.get('/conjunto/:conjuntoId/detalhe/:categoria', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const conjunto = buscarConjuntoDaEmpresa(req.params.conjuntoId, req.empresaId);
   const { categoria } = req.params;
@@ -192,18 +203,6 @@ router.get('/conjunto/:conjuntoId/detalhe/:categoria', requerAcessoModulo('dre',
       ORDER BY data DESC, f.id DESC
     `).all(conjunto.id, inicio, fim);
     return res.json(fretes);
-  }
-
-  // Custo do conjunto que nao e de uma placa: pagamento do motorista (comissao
-  // do acerto fechado), por viagem.
-  if (categoria === 'comissaoMotorista') {
-    return res.json(db.prepare(`
-      SELECT a.id, ${DATA_VIAGEM_SQL} AS data, a.valor_comissao AS valor, vg.id AS viagem_id, m.nome AS motorista_nome,
-             a.percentual_comissao_aplicado AS percentual
-      FROM acertos_viagem a JOIN viagens vg ON vg.id = a.viagem_id JOIN motoristas m ON m.id = vg.motorista_id
-      WHERE vg.conjunto_id = ? AND a.status = 'Fechado' AND ${DATA_VIAGEM_SQL} BETWEEN ? AND ?
-      ORDER BY data DESC, a.id DESC
-    `).all(conjunto.id, inicio, fim));
   }
 
   // Mesma regra de "dono" do resultado: custo de um veiculo so aparece no
@@ -265,8 +264,8 @@ router.get('/geral', requerAcessoModulo('dre', 'Visualizar'), asyncHandler(async
         receita: r.receita,
         custoTotal: r.custos.total,
         lucro: r.lucro,
-        custoPorVeiculo: r.porVeiculo.map((v) => ({ veiculo_id: v.veiculo_id, placa: v.placa, tipo: v.tipo, custoTotal: v.custos.total })),
-        // Pagamento do motorista (comissao): custo do conjunto.
+        // A comissao do motorista ja esta dentro do custo da tratora (cavalo).
+        custoPorVeiculo: r.porVeiculo.map((v) => ({ veiculo_id: v.veiculo_id, placa: v.placa, tipo: v.tipo, custoTotal: v.custos.total, comissaoMotorista: v.custos.comissaoMotorista })),
         custoComissaoMotorista: r.custos.comissaoMotorista,
       });
     }

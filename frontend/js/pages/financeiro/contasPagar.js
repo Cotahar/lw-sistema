@@ -99,23 +99,23 @@ async function abrirBaixaLote(contas, recarregar) {
     <div class="overflow-x-auto rounded-lg border border-slate-200">
       <table class="w-full min-w-max text-sm">
         <thead class="bg-slate-50 text-left text-xs uppercase text-slate-500">
-          <tr><th class="px-2 py-1.5">Conta a pagar</th><th class="px-2 py-1.5">Venc.</th><th class="px-2 py-1.5 text-right">Restante</th><th class="px-2 py-1.5">Valor a pagar</th><th class="px-2 py-1.5">Desconto</th><th class="px-2 py-1.5">Conta de saida</th><th class="px-2 py-1.5 text-center" title="Quita o restante sem valor pago e sem conta: nada sai do caixa">Sem pagamento</th></tr>
+          <tr><th class="px-2 py-1.5">Conta a pagar</th><th class="px-2 py-1.5 text-center" title="Quita o restante sem valor pago e sem conta: nada sai do caixa"><label class="flex cursor-pointer flex-col items-center gap-0.5 normal-case"><span>Sem pagamento</span><span class="flex items-center gap-1 text-[10px] text-slate-400"><input type="checkbox" class="h-3.5 w-3.5" data-sem-pagamento-todas /> todas</span></label></th><th class="px-2 py-1.5">Venc.</th><th class="px-2 py-1.5 text-right">Restante</th><th class="px-2 py-1.5">Valor a pagar</th><th class="px-2 py-1.5">Desconto</th><th class="px-2 py-1.5">Conta de saida</th></tr>
         </thead>
         <tbody data-linhas>
           ${contas.map((c) => `
             <tr class="border-t border-slate-100" data-linha data-id="${c.id}" data-restante="${restanteDe(c)}">
               <td class="px-2 py-1.5"><p class="font-medium">${c.descricao}</p><p class="text-xs text-slate-400">${c.fornecedor_nome || 'Sem fornecedor'}</p></td>
+              <td class="px-2 py-1.5 text-center"><input type="checkbox" class="h-4 w-4" data-sem-pagamento title="Baixar sem pagamento (nada sai do caixa)" /></td>
               <td class="px-2 py-1.5 whitespace-nowrap">${formatarDataBr(c.data_vencimento)}</td>
               <td class="px-2 py-1.5 text-right whitespace-nowrap">${formatarMoeda(restanteDe(c))}</td>
               <td class="px-2 py-1.5"><input type="text" class="input w-32" data-valor /></td>
               <td class="px-2 py-1.5"><input type="text" class="input w-28" data-desconto /></td>
               <td class="px-2 py-1.5"><select class="input w-44" data-conta-linha>${opcoesConta}</select></td>
-              <td class="px-2 py-1.5 text-center"><input type="checkbox" class="h-4 w-4" data-sem-pagamento /></td>
             </tr>
           `).join('')}
         </tbody>
         <tfoot class="border-t border-slate-200 bg-slate-50 font-semibold">
-          <tr><td class="px-2 py-1.5" colspan="3">Total do lote (<span data-qtd>${contas.length}</span> conta(s))</td><td class="px-2 py-1.5" data-total-pago colspan="4"></td></tr>
+          <tr><td class="px-2 py-1.5" colspan="4">Total do lote (<span data-qtd>${contas.length}</span> conta(s))</td><td class="px-2 py-1.5" data-total-pago colspan="3"></td></tr>
         </tfoot>
       </table>
     </div>
@@ -142,6 +142,13 @@ async function abrirBaixaLote(contas, recarregar) {
       atualizarTotal();
     });
   }
+
+  corpo.querySelector('[data-sem-pagamento-todas]').addEventListener('change', (ev) => {
+    for (const tr of linhas) {
+      const chk = tr.querySelector('[data-sem-pagamento]');
+      if (chk.checked !== ev.target.checked) chk.click();
+    }
+  });
 
   function lerLinha(tr) {
     return {
@@ -175,6 +182,19 @@ async function abrirBaixaLote(contas, recarregar) {
     ev.preventDefault();
     erro.classList.add('hidden');
     const lidas = linhas.map(lerLinha);
+    // Linha com valor a pagar zerado e sem desconto: o que o usuario quer e baixar
+    // SEM pagamento. Em vez de recusar, pede confirmacao e trata como tal.
+    const zeradas = lidas.filter((x) => !x.sem_pagamento && x.valor_pago + x.desconto === 0);
+    if (zeradas.length) {
+      const ok = await confirmarAcao({
+        titulo: 'Baixar sem pagamento?',
+        mensagem: `${zeradas.length === 1 ? 'Esta conta esta' : `Estas ${zeradas.length} contas estao`} com valor a pagar zerado:<br />${zeradas.map((z) => `- ${contas.find((c) => c.id === z.id).descricao}`).join('<br />')}<br /><br />Serao baixadas SEM PAGAMENTO: quitam o restante e nada sai do caixa. Continuar?`,
+        textoConfirmar: 'Baixar sem pagamento',
+        perigo: false,
+      });
+      if (!ok) return;
+      for (const z of zeradas) z.sem_pagamento = true;
+    }
     for (const l of lidas.filter((x) => !x.sem_pagamento)) {
       const conta = contas.find((c) => c.id === l.id);
       if (l.valor_pago + l.desconto <= 0) { erro.textContent = `"${conta.descricao}": informe um valor a pagar ou um desconto.`; erro.classList.remove('hidden'); return; }
@@ -288,7 +308,8 @@ async function enviarBaixa(conta, payload, recarregar, erroEl) {
   }
 }
 
-async function abrirBaixa(conta, recarregar) {
+// Exportada: a tela da viagem baixa a conta da despesa direto, sem ir ao Contas a Pagar.
+export async function abrirBaixa(conta, recarregar) {
   const restante = conta.valor - conta.valor_pago - conta.valor_descontado;
   const form = document.createElement('form');
   form.className = 'space-y-4';
@@ -324,7 +345,21 @@ async function abrirBaixa(conta, recarregar) {
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     erro.classList.add('hidden');
-    if (form.sem_pagamento.checked) {
+    // Valor zerado e sem desconto = o usuario quer baixar SEM pagamento: pede
+    // confirmacao em vez de recusar com "valor invalido".
+    let semPagamento = form.sem_pagamento.checked;
+    if (!semPagamento && getMoedaValue(form.valor_pago) === 0 && getMoedaValue(form.desconto) === 0) {
+      const ok = await confirmarAcao({
+        titulo: 'Baixar sem pagamento?',
+        mensagem: `O valor a baixar esta zerado. Quer baixar esta conta SEM PAGAMENTO (quita o restante de ${formatarMoeda(restante)} e nada sai do caixa)?`,
+        textoConfirmar: 'Baixar sem pagamento',
+        perigo: false,
+      });
+      if (!ok) return;
+      semPagamento = true;
+      setMoedaValue(form.valor_pago, restante);
+    }
+    if (semPagamento) {
       await enviarBaixa(conta, {
         sem_pagamento: true,
         valor_sem_pagamento: getMoedaValue(form.valor_pago),
@@ -658,6 +693,10 @@ export async function render(container, params, query) {
         { label: 'Detalhes', onClick: (c) => abrirDetalhes(c, tabela.recarregar, gerenciar) },
         { label: 'Ocorrencias', onClick: (c) => abrirOcorrencias(c, gerenciar) },
       ];
+      // Pagamento ao motorista (saldo do acerto): recibo para assinar no ato do pagamento.
+      if (r.origem_tipo === 'AcertoViagem' && r.acerto_viagem_id) {
+        acoes.push({ label: 'Recibo', onClick: () => window.open(`#/viagens/${r.acerto_viagem_id}/recibos?tipo=acerto`, '_blank', 'noopener') });
+      }
       if (gerenciar && (r.status === 'Pendente' || r.status === 'Parcial')) {
         acoes.push({ label: 'Baixar', onClick: (c) => abrirBaixa(c, tabela.recarregar) });
         acoes.push({ label: 'Editar vencimento', onClick: (c) => abrirEditarVencimento(c, tabela.recarregar) });

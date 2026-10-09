@@ -1,5 +1,5 @@
 import { get, put } from '../api.js';
-import { formatarMoeda, attachMoedaMask, attachMoedaMaskReais, getMoedaValue, setMoedaValue } from '../masks.js';
+import { formatarMoeda, attachMoedaMask, attachMoedaMaskReais, getMoedaValue, setMoedaValue, formatarLitros } from '../masks.js';
 
 // Calculadora de frete - replica a planilha "Calculo de frete.xlsx" ja usada
 // pela empresa. E uma ferramenta de apoio (nao persiste nada no banco, so
@@ -87,7 +87,7 @@ export async function render(container) {
     const km = Number(form.km.value) || 0;
     const media = Number(form.media.value) || 0;
     const litros = media > 0 ? km / media : 0;
-    container.querySelector('[data-litros]').value = litros ? `${litros.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} L` : '-';
+    container.querySelector('[data-litros]').value = litros ? `${formatarLitros(litros)} L` : '-';
 
     const valorDiesel = getMoedaValue(form.valor_diesel);
     const dieselGasto = Math.round(litros * valorDiesel);

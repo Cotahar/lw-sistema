@@ -45,6 +45,7 @@ const onixsatRoutes = require('./routes/onixsat.routes');
 const multasRoutes = require('./routes/multas.routes');
 const calculoFreteRoutes = require('./routes/calculoFrete.routes');
 const motoristaMobileRoutes = require('./routes/motorista.routes');
+const recibosRoutes = require('./routes/recibos.routes');
 
 const app = express();
 app.use(cors());
@@ -100,6 +101,7 @@ app.use('/api/onixsat', onixsatRoutes);
 app.use('/api/multas', multasRoutes);
 app.use('/api/calculo-frete', calculoFreteRoutes);
 app.use('/api/motorista', motoristaMobileRoutes);
+app.use('/api/recibos', recibosRoutes);
 
 app.use((req, res) => res.status(404).json({ erro: 'Rota nao encontrada.' }));
 app.use(errorHandler);

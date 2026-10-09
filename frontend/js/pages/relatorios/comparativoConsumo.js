@@ -3,6 +3,7 @@ import { criarDataTable } from '../../components/dataTable.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
+import { formatarLitros } from '../../masks.js';
 
 async function buscarVeiculos(termo) {
   return (await get(`/veiculos${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((v) => ({ value: v.id, label: v.placa }));
@@ -32,7 +33,7 @@ export async function render(container) {
       { chave: 'motorista_atual', titulo: 'Motorista atual', render: (r) => r.motorista_atual || '-' },
       { chave: 'media_consumo_km_l', titulo: 'Media (janela completa)', render: (r) => (r.media_consumo_km_l !== null ? `${r.media_consumo_km_l.toFixed(2)} km/l` : '-'), exportar: (r) => (r.media_consumo_km_l !== null ? r.media_consumo_km_l.toFixed(2) : '') },
       { chave: 'media_ultima_abastecida_km_l', titulo: 'Media (ultima abastecida)', render: (r) => (r.media_ultima_abastecida_km_l !== null ? `${r.media_ultima_abastecida_km_l.toFixed(2)} km/l` : '-'), exportar: (r) => (r.media_ultima_abastecida_km_l !== null ? r.media_ultima_abastecida_km_l.toFixed(2) : '') },
-      { chave: 'litros_no_historico', titulo: 'Litros no historico', render: (r) => `${r.litros_no_historico.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} L` },
+      { chave: 'litros_no_historico', titulo: 'Litros no historico', render: (r) => `${formatarLitros(r.litros_no_historico)} L` },
     ],
     ordenacaoInicial: { chave: 'media_consumo_km_l', direcao: 'asc' },
     corLinha: (r) => (r.media_consumo_km_l === null ? '' : r.media_consumo_km_l < 2 ? 'bg-red-950/40' : ''),
@@ -73,7 +74,7 @@ export async function render(container) {
         r.placa, r.motorista_atual || '-',
         r.media_consumo_km_l !== null ? `${r.media_consumo_km_l.toFixed(2)} km/l` : '-',
         r.media_ultima_abastecida_km_l !== null ? `${r.media_ultima_abastecida_km_l.toFixed(2)} km/l` : '-',
-        `${r.litros_no_historico.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} L`,
+        `${formatarLitros(r.litros_no_historico)} L`,
       ]),
       tituloVazio: 'Nenhum veiculo com media calculavel encontrado.',
     });

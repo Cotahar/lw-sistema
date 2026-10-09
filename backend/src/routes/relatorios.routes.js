@@ -542,7 +542,7 @@ router.get('/ranking-conjuntos', requerAcessoModulo('dre', 'Visualizar'), exigir
       placas: r.porVeiculo.map((v) => v.placa).join(' + '),
       receita: r.receita, custo: r.custos.total, lucro: r.lucro,
       custo_tratora: custoTratora, custo_reboque: custoReboque,
-      // Pagamento do motorista (comissao): custo do conjunto.
+      // Pagamento do motorista (comissao): ja esta dentro do custo da tratora (cavalo).
       custo_comissao_motorista: r.custos.comissaoMotorista,
       margem_pct: r.receita > 0 ? (r.lucro / r.receita) * 100 : null,
     };

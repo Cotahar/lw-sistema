@@ -222,6 +222,26 @@ test('DRE do conjunto inclui o pagamento do motorista (comissao do acerto) e NAO
   assert.equal(detalhe.body[0].valor, 40000);
   assert.equal(detalhe.body[0].motorista_nome, 'MOTORISTA DRE COMISSAO');
   assert.equal((await admin().get(`/api/dre/conjunto/${conjuntoId}/detalhe/pedagio?${qs}`)).status, 400);
+  assert.equal(detalhe.body[0].placa, 'DRC1A11', 'o lancamento da comissao e do CAVALO');
+
+  // O cavalo manda no conjunto: a comissao e custo do centro de custo do CAVALO (nao da carreta,
+  // nem solta no conjunto) e a soma das placas fecha com o total do conjunto.
+  const cavalo = depois.body.porVeiculo.find((v) => v.veiculo_id === cavaloId);
+  const carreta = depois.body.porVeiculo.find((v) => v.veiculo_id === carretaId);
+  assert.equal(cavalo.custos.comissaoMotorista, 40000);
+  assert.equal(carreta.custos.comissaoMotorista, 0);
+  assert.equal(cavalo.custos.total, antes.body.porVeiculo.find((v) => v.veiculo_id === cavaloId).custos.total + 40000);
+  assert.equal(depois.body.porVeiculo.reduce((t, v) => t + v.custos.total, 0), depois.body.custos.total);
+  assert.equal(linha.custoPorVeiculo.find((v) => v.veiculo_id === cavaloId).comissaoMotorista, 40000);
+  const dreCavalo = await admin().get(`/api/dre/veiculo/${cavaloId}?${qs}`);
+  assert.equal(dreCavalo.body.custos.comissaoMotorista, 40000);
+  const dreCarreta = await admin().get(`/api/dre/veiculo/${carretaId}?${qs}`);
+  assert.equal(dreCarreta.body.custos.comissaoMotorista, 0);
+
+  // A conta a pagar do acerto (saldo ao motorista) tambem fica no centro de custo do CAVALO.
+  const contaAcerto = db.prepare("SELECT centro_custo_id FROM contas_pagar WHERE origem_tipo = 'AcertoViagem' AND origem_id = ?").get(fechar.body.id);
+  assert.ok(contaAcerto, 'saldo positivo gera conta a pagar');
+  assert.equal(contaAcerto.centro_custo_id, centroDoVeiculo(cavaloId));
 
   // Fora do periodo da viagem, a comissao nao aparece.
   const setembro = await admin().get(`/api/dre/conjunto/${conjuntoId}?data_inicio=2026-09-01&data_fim=2026-09-30`);

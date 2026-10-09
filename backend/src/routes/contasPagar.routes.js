@@ -26,12 +26,14 @@ const SELECT_LISTA = `
          COALESCE(dv.categoria_id, df.categoria_id) AS categoria_id,
          cat.nome AS categoria_nome,
          dv.viagem_id AS viagem_id,
+         av.viagem_id AS acerto_viagem_id,
          vc.placa AS veiculo_placa
   FROM contas_pagar cp
   LEFT JOIN fornecedores f ON f.id = cp.fornecedor_id
   LEFT JOIN centros_custo cc ON cc.id = cp.centro_custo_id
   LEFT JOIN despesas_viagem dv ON cp.origem_tipo = 'DespesaViagem' AND dv.id = cp.origem_id
   LEFT JOIN despesas_fixas df ON cp.origem_tipo = 'DespesaFixa' AND df.id = cp.origem_id
+  LEFT JOIN acertos_viagem av ON cp.origem_tipo = 'AcertoViagem' AND av.id = cp.origem_id
   LEFT JOIN categorias_despesa cat ON cat.id = COALESCE(dv.categoria_id, df.categoria_id)
   LEFT JOIN viagens vg ON vg.id = dv.viagem_id
   LEFT JOIN (

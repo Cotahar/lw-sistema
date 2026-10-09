@@ -1,7 +1,8 @@
 import { get, getUsuario } from '../api.js';
-import { formatarMoeda, formatarDataBr, formatarPeso, hojeIsoLocal } from '../masks.js';
+import { formatarMoeda, formatarDataBr, formatarPeso, hojeIsoLocal, formatarLitros } from '../masks.js';
 import { navegar } from '../router.js';
 import { esqueletoPagina } from '../components/skeleton.js';
+import { htmlRecibosDaViagem } from './recibos.js';
 
 const STATUS_LABEL = { EmAndamento: 'Em Andamento', AguardandoAcerto: 'Aguardando Acerto', Finalizada: 'Finalizada' };
 const STATUS_CHIP = {
@@ -71,6 +72,7 @@ export async function renderRelatorio(root, params, query) {
   }
   const viagemId = params.viagemId;
   const tipo = query.tipo === 'detalhado' ? 'detalhado' : 'resumido';
+  const comRecibos = query.recibos === '1';
   root.innerHTML = `<div class="p-8">${esqueletoPagina()}</div>`;
 
   const [viagem, motoristas, categorias, fornecedores, todosAcertos] = await Promise.all([
@@ -88,6 +90,8 @@ export async function renderRelatorio(root, params, query) {
     get(`/acertos/viagem/${viagemId}/detalhamento`),
   ]);
   const acerto = todosAcertos.find((a) => a.viagem_id === Number(viagemId));
+  // Recibos de adiantamento + acerto, impressos junto do relatorio (para o motorista assinar).
+  const dadosRecibos = comRecibos ? await get(`/recibos/viagem/${viagemId}`) : null;
   const nomeCategoria = Object.fromEntries(categorias.map((c) => [c.id, c.nome]));
   const nomeFornecedor = Object.fromEntries(fornecedores.map((f) => [f.id, f.nome]));
 
@@ -176,7 +180,7 @@ export async function renderRelatorio(root, params, query) {
       { valor: formatarDataBr(d.data) },
       { valor: d.posto_fornecedor_id ? (nomeFornecedor[d.posto_fornecedor_id] || '-') : '-' },
       ...(comKm ? [{ valor: d.km_abastecimento !== null ? d.km_abastecimento.toLocaleString('pt-BR') : '-', alinhamento: 'right' }] : []),
-      { valor: d.litragem !== null ? `${Number(d.litragem).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} L` : '-', alinhamento: 'right' },
+      { valor: d.litragem !== null ? `${formatarLitros(d.litragem)} L` : '-', alinhamento: 'right' },
       { valor: d.preco_litro !== null ? formatarMoeda(d.preco_litro) : '-', alinhamento: 'right' },
       ...(comKm ? [{ valor: d.tanque_completo ? chip('Cheio', 'bg-emerald-50 text-emerald-700 border border-emerald-200') : chip('Parcial', 'bg-zinc-100 text-zinc-500 border border-zinc-200') }] : []),
       { valor: formatarMoeda(d.valor), alinhamento: 'right', classe: 'font-medium text-zinc-900' },
@@ -190,7 +194,7 @@ export async function renderRelatorio(root, params, query) {
     // quando KM/Tanque estavam presentes).
     const rodape = lista.length ? `
       <tr class="bg-zinc-100 font-bold text-zinc-800">
-        <td colspan="${colunas.length - 1}" class="px-2 py-1.5 text-right">Total${totalLitros ? ` (${totalLitros.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} L)` : ''}</td>
+        <td colspan="${colunas.length - 1}" class="px-2 py-1.5 text-right">Total${totalLitros ? ` (${formatarLitros(totalLitros)} L)` : ''}</td>
         <td class="px-2 py-1.5 text-right">${formatarMoeda(totalValor)}</td>
       </tr>
     ` : '';
@@ -296,14 +300,16 @@ export async function renderRelatorio(root, params, query) {
          acentos coloridos desta tela somem no "Imprimir/Salvar PDF". */
       @media print {
         .relatorio-acerto, .relatorio-acerto * { -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact; }
+        .recibo { break-inside: avoid; page-break-inside: avoid; }
       }
     </style>
     <div class="relatorio-acerto mx-auto max-w-4xl p-6 print:max-w-none print:p-0">
       <div class="mb-4 flex flex-wrap items-center justify-between gap-2 print:hidden">
         <button type="button" class="btn-secondary btn-sm" data-voltar>&larr; Voltar para o acerto</button>
         <div class="flex flex-wrap gap-2">
-          <a href="#/acertos/${viagemId}/relatorio?tipo=resumido" class="btn-sm ${tipo === 'resumido' ? 'btn-primary' : 'btn-secondary'}">Resumido</a>
-          <a href="#/acertos/${viagemId}/relatorio?tipo=detalhado" class="btn-sm ${tipo === 'detalhado' ? 'btn-primary' : 'btn-secondary'}">Detalhado</a>
+          <a href="#/acertos/${viagemId}/relatorio?tipo=resumido${comRecibos ? '&recibos=1' : ''}" class="btn-sm ${tipo === 'resumido' ? 'btn-primary' : 'btn-secondary'}">Resumido</a>
+          <a href="#/acertos/${viagemId}/relatorio?tipo=detalhado${comRecibos ? '&recibos=1' : ''}" class="btn-sm ${tipo === 'detalhado' ? 'btn-primary' : 'btn-secondary'}">Detalhado</a>
+          <a href="#/acertos/${viagemId}/relatorio?tipo=${tipo}${comRecibos ? '' : '&recibos=1'}" class="btn-sm ${comRecibos ? 'btn-primary' : 'btn-secondary'}" title="Imprime os recibos de adiantamento e do acerto depois do relatorio, para o motorista assinar">${comRecibos ? 'Com recibos \u2713' : 'Incluir recibos'}</a>
           <button type="button" class="btn-primary btn-sm" data-imprimir>Imprimir / Salvar PDF</button>
         </div>
       </div>
@@ -434,6 +440,12 @@ export async function renderRelatorio(root, params, query) {
           </div>
         `}
       </div>
+      ${dadosRecibos ? `
+        <div class="mt-6 print:mt-0" style="break-before: page; page-break-before: always;">
+          <h2 class="mb-3 text-base font-bold text-zinc-900">Recibos para assinatura &middot; Viagem #${viagem.id}</h2>
+          ${htmlRecibosDaViagem(dadosRecibos)}
+        </div>
+      ` : ''}
     </div>
   `;
 

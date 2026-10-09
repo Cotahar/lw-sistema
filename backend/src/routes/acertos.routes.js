@@ -312,11 +312,14 @@ router.post('/viagem/:viagemId/fechar', requerAcessoModulo('acertos', 'Gerenciar
     // especie: entra como Conta a Pagar (baixa feita normalmente no financeiro,
     // onde o operador escolhe o banco de saida). Saldo negativo nao movimenta
     // caixa agora - ja foi absorvido na conta corrente para a proxima viagem.
+    // A conta fica no centro de custo do CAVALO (a tratora manda no conjunto).
     if (calculo.saldoFinal > 0) {
+      const tratoraDoAcerto = buscarUnidadeTratora(viagemAtual.conjunto_id);
+      const centroDoCavalo = tratoraDoAcerto ? buscarCentroCustoDoVeiculo(tratoraDoAcerto.id) : null;
       db.prepare(`
-        INSERT INTO contas_pagar (empresa_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
-        VALUES (?, ?, ?, date('now', '-3 hours'), 'Pendente', 'AcertoViagem', ?)
-      `).run(req.empresaId, `Acerto viagem #${req.params.viagemId} - pagamento a ${calculo.motorista.nome}`.toUpperCase(), calculo.saldoFinal, acertoId);
+        INSERT INTO contas_pagar (empresa_id, centro_custo_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
+        VALUES (?, ?, ?, ?, date('now', '-3 hours'), 'Pendente', 'AcertoViagem', ?)
+      `).run(req.empresaId, centroDoCavalo ? centroDoCavalo.id : null, `Acerto viagem #${req.params.viagemId} - pagamento a ${calculo.motorista.nome}`.toUpperCase(), calculo.saldoFinal, acertoId);
     }
 
     // O imposto da empresa NAO gera Conta a Pagar aqui: ele so e CALCULADO (e

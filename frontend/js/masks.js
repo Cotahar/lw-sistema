@@ -83,6 +83,17 @@ export function setMoedaValue(input, centavos) {
 }
 
 // ---- Peso (kg inteiro <-> "00.000 kg") ----
+// ---- Litragem (diesel e Arla): 3 casas decimais ----
+// Muitos postos vendem com 3 casas (ex.: 100,125 L); com 2 o total do cupom
+// divergia do calculo. Sempre exibir/aceitar/arredondar em 3 casas.
+export function arredondarLitros(valor) {
+  return Math.round((Number(valor) || 0) * 1000) / 1000;
+}
+
+export function formatarLitros(valor) {
+  return arredondarLitros(valor).toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+}
+
 export function formatarPeso(kg) {
   if (kg === null || kg === undefined || kg === '') return '';
   return `${Number(kg).toLocaleString('pt-BR')} kg`;

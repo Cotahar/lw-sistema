@@ -5,6 +5,7 @@ import { aoReceberMudanca } from './components/syncAbas.js';
 import './components/copiar.js'; // registra a delegacao global de click-to-copy
 import { renderLogin } from './pages/login.js';
 import { renderRelatorio } from './pages/acertoRelatorio.js';
+import { renderRecibos } from './pages/recibos.js';
 import { renderDreRelatorio } from './pages/dreRelatorio.js';
 import { render as renderImpressaoGenerica } from './pages/relatorios/imprimir.js';
 import { GRUPOS_MENU, ROTA_PAINEL, ITEM_ADMIN, ITEM_AUDITORIA, ITEM_ATIVIDADE_USUARIOS, ITENS_CONFIGURACAO } from './modulosConfig.js';
@@ -394,6 +395,13 @@ registrar('/login', () => {
 registrar('/acertos/:viagemId/relatorio', (params, query) => {
   shellConstruido = false;
   renderRelatorio(appEl, params, query);
+});
+
+// Recibos de valores pagos ao motorista (adiantamentos e acerto): impressao
+// fora do shell, para assinatura.
+registrar('/viagens/:viagemId/recibos', (params, query) => {
+  shellConstruido = false;
+  renderRecibos(appEl, params, query);
 });
 
 // Pagina de impressao do DRE detalhado: mesmo padrao acima, fora do shell

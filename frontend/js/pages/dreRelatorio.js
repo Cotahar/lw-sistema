@@ -70,6 +70,7 @@ const CATEGORIAS_CUSTO = [
   { chave: 'pneus', titulo: 'Pneus' },
   { chave: 'despesasFixas', titulo: 'Despesas fixas' },
   { chave: 'financiamento', titulo: 'Financiamento' },
+  { chave: 'comissaoMotorista', titulo: 'Pagamento do motorista (comissao)' },
 ];
 
 async function renderizarGeral(dre) {
@@ -92,8 +93,7 @@ async function renderizarGeral(dre) {
             <td class="px-2 py-1.5 text-zinc-700">
               <p class="font-medium text-zinc-900">${c.nome || `Conjunto #${c.conjunto_id}`}</p>
               <p class="text-xs text-zinc-500">${[
-                ...c.custoPorVeiculo.map((v) => `${v.placa} (${TIPO_ROTULO[v.tipo] || v.tipo}): ${formatarMoeda(v.custoTotal)}`),
-                ...(c.custoComissaoMotorista > 0 ? [`Motorista (comissao): ${formatarMoeda(c.custoComissaoMotorista)}`] : []),
+                ...c.custoPorVeiculo.map((v) => `${v.placa} (${TIPO_ROTULO[v.tipo] || v.tipo}): ${formatarMoeda(v.custoTotal)}${v.comissaoMotorista > 0 ? ` (inclui comissao ${formatarMoeda(v.comissaoMotorista)})` : ''}`),
               ].join(' &middot; ') || '-'}</p>
             </td>
             <td class="px-2 py-1.5 text-right text-zinc-700">${formatarMoeda(c.receita)}</td>
@@ -103,7 +103,7 @@ async function renderizarGeral(dre) {
         `).join('') || '<tr><td colspan="4" class="px-2 py-3 text-center text-zinc-400">Sem dados no periodo.</td></tr>'}
       </tbody>
     </table>
-    <p class="mt-1 text-[11px] text-zinc-500">O pagamento do motorista (comissao) e custo do conjunto (nao de uma placa): a soma das placas nao fecha com o total do conjunto.</p>
+    <p class="mt-1 text-[11px] text-zinc-500">O pagamento do motorista (comissao) esta incluido no custo do cavalo (o cavalo manda no conjunto).</p>
   `;
 }
 
@@ -131,11 +131,6 @@ async function renderizarConjunto(dre) {
             <td class="px-2 py-1.5 text-right font-medium text-zinc-900">${formatarMoeda(dre.custos[c.chave])}</td>
           </tr>
         `).join('')}
-        <tr class="border-b border-zinc-100">
-          <td class="px-2 py-1.5 text-zinc-700">Pagamento do motorista (comissao)</td>
-          ${unidades.map(() => '<td class="px-2 py-1.5 text-right text-zinc-400">&mdash;</td>').join('')}
-          <td class="px-2 py-1.5 text-right font-medium text-zinc-900">${formatarMoeda(dre.custos.comissaoMotorista)}</td>
-        </tr>
         <tr class="bg-zinc-100 font-bold text-zinc-800">
           <td class="px-2 py-1.5">Custo total</td>
           ${unidades.map((v) => `<td class="px-2 py-1.5 text-right">${formatarMoeda(v.custos.total)}</td>`).join('')}

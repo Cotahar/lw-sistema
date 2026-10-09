@@ -2,7 +2,7 @@ import { get, post, authHeaders } from '../../api.js';
 import { navegar } from '../../router.js';
 import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { mostrarToast, mostrarErro } from '../../components/toast.js';
-import { attachMoedaMask, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso, hojeIsoLocal, attachUppercaseInput } from '../../masks.js';
+import { attachMoedaMask, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso, hojeIsoLocal, attachUppercaseInput, arredondarLitros } from '../../masks.js';
 import { comprimirImagem } from '../../imageCompress.js';
 import { adicionarPendente, registrarSyncBackground, iconeFilaHtml, atualizarIndicadorFila } from './offlineQueue.js';
 
@@ -33,7 +33,7 @@ function recalcularTrio(formPreco, formLitragem, formValor, campoEditado) {
   const litragem = formLitragem.value ? Number(formLitragem.value) : 0;
 
   if (campoEditado === formValor) {
-    if (preco > 0 && litragem === 0) formLitragem.value = (valor / preco).toFixed(2);
+    if (preco > 0 && litragem === 0) formLitragem.value = (valor / preco).toFixed(3);
     else if (litragem > 0 && preco === 0) setMoedaValue(formPreco, Math.round(valor / litragem));
   } else if (litragem > 0 && preco > 0) {
     setMoedaValue(formValor, Math.round(preco * litragem));
@@ -57,7 +57,7 @@ export async function render(appEl) {
           <div><label class="label">Data</label><input type="text" name="data" class="input" inputmode="numeric" placeholder="DD/MM/AAAA" /></div>
           <div class="grid grid-cols-2 gap-3">
             <div><label class="label">Preco/Litro</label><input type="text" name="preco_litro" class="input" inputmode="decimal" /></div>
-            <div><label class="label">Litragem</label><input type="number" step="0.01" name="litragem" class="input" /></div>
+            <div><label class="label">Litragem</label><input type="number" step="0.001" min="0" name="litragem" class="input" /></div>
           </div>
           <label class="flex items-center gap-2 text-sm text-slate-700">
             <input type="checkbox" name="tanque_completo" class="h-4 w-4" />
@@ -94,7 +94,7 @@ export async function render(appEl) {
               <div><label class="label">Unidade</label><select name="arla_unidade" class="input"><option value="Litro">Litro</option><option value="Galao">Galao (20L)</option></select></div>
               <div class="grid grid-cols-2 gap-3">
                 <div><label class="label" data-label-arla-preco>Preco/Litro (Arla)</label><input type="text" name="arla_preco" class="input" inputmode="decimal" /></div>
-                <div><label class="label" data-label-arla-qtd>Litragem (Arla)</label><input type="number" step="0.01" name="arla_qtd" class="input" /></div>
+                <div><label class="label" data-label-arla-qtd>Litragem (Arla)</label><input type="number" step="0.001" min="0" name="arla_qtd" class="input" /></div>
               </div>
               <div><label class="label">Valor Arla</label><input type="text" name="arla_valor" class="input" inputmode="decimal" /></div>
             </div>
@@ -211,7 +211,7 @@ export async function render(appEl) {
     if (!valor) return null;
     const emGalao = form.arla_unidade.value === 'Galao';
     const qtd = form.arla_qtd.value ? Number(form.arla_qtd.value) : 0;
-    const litragem = emGalao ? qtd * 20 : qtd;
+    const litragem = emGalao ? arredondarLitros(qtd * 20) : qtd;
     return {
       valor,
       litragem: litragem > 0 ? litragem : null,

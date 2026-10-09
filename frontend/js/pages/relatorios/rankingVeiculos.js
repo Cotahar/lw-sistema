@@ -68,7 +68,7 @@ export async function render(container) {
       { chave: 'custo', titulo: 'Custo', render: (r) => formatarMoeda(r.custo), exportar: (r) => r.custo / 100 },
       { chave: 'custo_tratora', titulo: 'Custo do cavalo', render: (r) => formatarMoeda(r.custo_tratora), exportar: (r) => r.custo_tratora / 100 },
       { chave: 'custo_reboque', titulo: 'Custo da carreta', render: (r) => formatarMoeda(r.custo_reboque), exportar: (r) => r.custo_reboque / 100 },
-      { chave: 'custo_comissao_motorista', titulo: 'Pagto. motorista', render: (r) => formatarMoeda(r.custo_comissao_motorista), exportar: (r) => r.custo_comissao_motorista / 100 },
+      { chave: 'custo_comissao_motorista', titulo: 'Pagto. motorista (ja no cavalo)', render: (r) => formatarMoeda(r.custo_comissao_motorista), exportar: (r) => r.custo_comissao_motorista / 100 },
       { chave: 'lucro', titulo: 'Lucro', render: (r) => `<span class="font-semibold ${r.lucro >= 0 ? 'text-emerald-500' : 'text-red-500'}">${formatarMoeda(r.lucro)}</span>`, exportar: (r) => r.lucro / 100 },
       { chave: 'margem_pct', titulo: 'Margem', render: (r) => (r.margem_pct !== null ? `${r.margem_pct.toFixed(1)}%` : '-'), exportar: (r) => (r.margem_pct !== null ? r.margem_pct.toFixed(1) : '') },
     ],
@@ -105,7 +105,7 @@ export async function render(container) {
     abrirRelatorioImpressao({
       titulo: 'Ranking de Conjuntos',
       filtros: [`Periodo: ${inputDataDe.value || 'inicio'} a ${inputDataAte.value || 'hoje'}`],
-      colunas: ['Conjunto', { titulo: 'Receita', alinhar: 'right' }, { titulo: 'Custo', alinhar: 'right' }, { titulo: 'Custo do cavalo', alinhar: 'right' }, { titulo: 'Custo da carreta', alinhar: 'right' }, { titulo: 'Pagto. motorista', alinhar: 'right' }, { titulo: 'Lucro', alinhar: 'right' }, { titulo: 'Margem', alinhar: 'right' }],
+      colunas: ['Conjunto', { titulo: 'Receita', alinhar: 'right' }, { titulo: 'Custo', alinhar: 'right' }, { titulo: 'Custo do cavalo', alinhar: 'right' }, { titulo: 'Custo da carreta', alinhar: 'right' }, { titulo: 'Pagto. motorista (ja no cavalo)', alinhar: 'right' }, { titulo: 'Lucro', alinhar: 'right' }, { titulo: 'Margem', alinhar: 'right' }],
       linhas: [...dados].sort((a, b) => b.lucro - a.lucro).map((r) => [
         r.conjunto, formatarMoeda(r.receita), formatarMoeda(r.custo), formatarMoeda(r.custo_tratora), formatarMoeda(r.custo_reboque), formatarMoeda(r.custo_comissao_motorista), formatarMoeda(r.lucro),
         r.margem_pct !== null ? `${r.margem_pct.toFixed(1)}%` : '-',

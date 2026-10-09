@@ -8,13 +8,29 @@ import { criarOcorrencias } from '../components/ocorrencias.js';
 import { criarAnexos } from '../components/anexos.js';
 import { criarCidadeUfInput } from '../components/cidadeUfSelect.js';
 import { abrirBaixasFrete, buscarContasBancarias } from '../components/baixasFrete.js';
-import { formatarMoeda, attachMoedaMask, attachMoedaMaskReais, getMoedaValue, setMoedaValue, attachPesoMask, getPesoValue, attachDataMask, parseDataBrParaIso, formatarDataBr, formatarDataHoraBr, hojeIsoLocal, attachUppercaseInput, somarDiasIso } from '../masks.js';
+import { abrirBaixa as abrirBaixaContaPagar } from './financeiro/contasPagar.js';
+import { formatarMoeda, attachMoedaMask, attachMoedaMaskReais, getMoedaValue, setMoedaValue, attachPesoMask, getPesoValue, attachDataMask, parseDataBrParaIso, formatarDataBr, formatarDataHoraBr, hojeIsoLocal, attachUppercaseInput, somarDiasIso, arredondarLitros, formatarLitros } from '../masks.js';
 import { navegar } from '../router.js';
 import { criarBotaoSincronizarOnixsat } from '../components/onixsatSync.js';
 import { esqueletoPagina } from '../components/skeleton.js';
 import { criarTimelineAuditoria } from '../components/auditoriaTimeline.js';
 
 const TIPOS_TRATORA = ['Cavalo', 'Truck', 'Toco'];
+
+// Situacao de pagamento de uma despesa na tela da viagem: vem da conta a pagar
+// (diesel + Arla = uma conta so, presa na despesa principal).
+function badgePagamentoDespesa(d) {
+  if (d.pago_por === 'Motorista') return '<span class="text-xs text-slate-400">Desconta do acerto</span>';
+  if (!d.contas_pagar_id || !d.conta_status) return '<span class="text-xs text-slate-400">-</span>';
+  if (d.conta_status === 'Pago') return '<span class="badge-sucesso">Paga</span>';
+  if (d.conta_status === 'Parcial') return '<span class="badge-atencao">Parcial</span>';
+  return '<span class="badge-atencao">A pagar</span>';
+}
+function textoPagamentoDespesa(d) {
+  if (d.pago_por === 'Motorista') return 'Desconta do acerto';
+  if (!d.contas_pagar_id || !d.conta_status) return '-';
+  return d.conta_status === 'Pago' ? 'Paga' : d.conta_status === 'Parcial' ? 'Parcial' : 'A pagar';
+}
 
 const STATUS_LABEL = { EmAndamento: 'Em Andamento', AguardandoAcerto: 'Aguardando Acerto', Finalizada: 'Finalizada' };
 
@@ -193,7 +209,7 @@ function recalcularTrio(formPreco, formLitragem, formValor, campoEditado) {
   const litragem = formLitragem.value ? Number(formLitragem.value) : 0;
 
   if (campoEditado === formValor) {
-    if (preco > 0 && litragem === 0) formLitragem.value = (valor / preco).toFixed(2);
+    if (preco > 0 && litragem === 0) formLitragem.value = (valor / preco).toFixed(3);
     else if (litragem > 0 && preco === 0) setMoedaValue(formPreco, Math.round(valor / litragem));
   } else if (litragem > 0 && preco > 0) {
     setMoedaValue(formValor, Math.round(preco * litragem));
@@ -217,6 +233,11 @@ export async function abrirNovaDespesa(viagemId, recarregar, centroCustoPadrao) 
     </div>
     <div data-bloco-usuario class="hidden"><label class="label">Quem desembolsou *</label><div data-usuario-select></div></div>
     <div data-bloco-vencimento class="hidden"><label class="label">Data de vencimento (se faturada)</label><input type="text" name="data_vencimento" class="input" placeholder="Deixe em branco se ja foi paga" /></div>
+    <div data-bloco-pago-no-ato class="hidden rounded-lg border border-slate-200 p-3">
+      <label class="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" name="pago_no_ato" class="h-4 w-4" /> Ja foi pago (baixar agora)</label>
+      <div class="mt-2 hidden" data-bloco-conta-pago><label class="label">Conta bancaria de onde saiu o pagamento *</label><div data-conta-pago-select></div></div>
+      <p class="mt-1 text-xs text-slate-400">Ex.: abastecimento pago via Pix no ato. Ja registra a baixa na conta a pagar (na data da despesa), sem precisar ir ao Financeiro.</p>
+    </div>
     <div data-bloco-dinheiro class="hidden">
       <label class="label">Valor pago em dinheiro (pelo motorista)</label>
       <input type="text" name="valor_pago_dinheiro" class="input max-w-[12rem]" />
@@ -237,7 +258,7 @@ export async function abrirNovaDespesa(viagemId, recarregar, centroCustoPadrao) 
         <p class="mb-2 text-xs font-medium uppercase text-slate-500">Diesel</p>
         <div class="grid grid-cols-2 gap-3">
           <div><label class="label">Preco/Litro (diesel)</label><input type="text" name="preco_litro" class="input" /></div>
-          <div><label class="label">Litragem (diesel)</label><input type="number" step="0.01" name="litragem" class="input" /></div>
+          <div><label class="label">Litragem (diesel)</label><input type="number" step="0.001" min="0" name="litragem" class="input" /></div>
         </div>
         <label class="mt-2 flex items-center gap-2 text-sm text-slate-700">
           <input type="checkbox" name="tanque_completo" class="h-4 w-4" />
@@ -252,7 +273,7 @@ export async function abrirNovaDespesa(viagemId, recarregar, centroCustoPadrao) 
           <div class="max-w-[10rem]"><label class="label">Unidade</label><select name="arla_unidade" class="input"><option value="Litro">Litro</option><option value="Galao">Galao (20L)</option></select></div>
           <div class="grid grid-cols-2 gap-3">
             <div><label class="label" data-label-arla-preco>Preco/Litro (Arla)</label><input type="text" name="arla_preco" class="input" /></div>
-            <div><label class="label" data-label-arla-qtd>Litragem (Arla)</label><input type="number" step="0.01" name="arla_qtd" class="input" /></div>
+            <div><label class="label" data-label-arla-qtd>Litragem (Arla)</label><input type="number" step="0.001" min="0" name="arla_qtd" class="input" /></div>
           </div>
           <div><label class="label">Valor Arla</label><input type="text" name="arla_valor" class="input" /></div>
         </div>
@@ -320,7 +341,17 @@ export async function abrirNovaDespesa(viagemId, recarregar, centroCustoPadrao) 
   });
   atualizarDisponibilidadeAbastecimento();
 
+  const contaPagoSelect = criarSearchableSelect({ buscar: buscarContasBancarias, placeholder: 'Pesquisar conta bancaria...' });
+  form.querySelector('[data-conta-pago-select]').appendChild(contaPagoSelect.el);
+  form.pago_no_ato.addEventListener('change', () => {
+    form.querySelector('[data-bloco-conta-pago]').classList.toggle('hidden', !form.pago_no_ato.checked);
+  });
+
   function atualizarBlocosPagoPor() {
+    // Baixar na hora so faz sentido quando a empresa paga (gera conta a pagar) e o usuario pode baixar contas.
+    const podeBaixarAgora = form.pago_por.value === 'Empresa' && podeGerenciar('contas_pagar');
+    form.querySelector('[data-bloco-pago-no-ato]').classList.toggle('hidden', !podeBaixarAgora);
+    if (!podeBaixarAgora) { form.pago_no_ato.checked = false; form.querySelector('[data-bloco-conta-pago]').classList.add('hidden'); }
     form.querySelector('[data-bloco-usuario]').classList.toggle('hidden', form.pago_por.value !== 'AdminOutros');
     form.querySelector('[data-bloco-vencimento]').classList.toggle('hidden', form.pago_por.value !== 'Empresa');
     form.querySelector('[data-bloco-dinheiro]').classList.toggle('hidden', form.pago_por.value !== 'Empresa');
@@ -380,7 +411,7 @@ export async function abrirNovaDespesa(viagemId, recarregar, centroCustoPadrao) 
     if (!categoriaEhAbastecimento() || valor <= 0) return null;
     const emGalao = form.arla_unidade.value === 'Galao';
     const qtd = form.arla_qtd.value ? Number(form.arla_qtd.value) : 0;
-    const litragem = emGalao ? qtd * 20 : qtd;
+    const litragem = emGalao ? arredondarLitros(qtd * 20) : qtd;
     return {
       valor,
       litragem: litragem > 0 ? litragem : null,
@@ -409,8 +440,21 @@ export async function abrirNovaDespesa(viagemId, recarregar, centroCustoPadrao) 
       if (form.observacao.value.trim()) {
         await post('/ocorrencias', { entidade_tipo: 'DespesaViagem', entidade_id: despesa.id, texto: form.observacao.value.trim() });
       }
+      let aviso = null;
+      if (form.pago_no_ato.checked && form.pago_por.value === 'Empresa') {
+        if (!despesa.contas_pagar_id) {
+          aviso = 'Despesa cadastrada. Nao ha conta a pagar para baixar (o valor foi todo pago em dinheiro).';
+        } else {
+          try {
+            await post(`/contas-pagar/${despesa.contas_pagar_id}/baixar`, { conta_bancaria_id: contaPagoSelect.getValue(), data_pagamento: despesa.data });
+          } catch (errBaixa) {
+            aviso = `Despesa cadastrada, mas a baixa falhou: ${errBaixa.message} Use o botao "Baixar" da despesa.`;
+          }
+        }
+      }
       fecharModal();
-      mostrarToast('Despesa cadastrada.');
+      if (aviso) mostrarToast(aviso, 'erro');
+      else mostrarToast(form.pago_no_ato.checked ? 'Despesa cadastrada e baixada.' : 'Despesa cadastrada.');
       recarregar();
     } catch (err) {
       erro.textContent = err.message;
@@ -423,6 +467,11 @@ export async function abrirNovaDespesa(viagemId, recarregar, centroCustoPadrao) 
     erro.classList.add('hidden');
     if (form.pago_por.value === 'AdminOutros' && !usuarioSelect.getValue()) {
       erro.textContent = 'Selecione quem desembolsou.';
+      erro.classList.remove('hidden');
+      return;
+    }
+    if (form.pago_no_ato.checked && form.pago_por.value === 'Empresa' && !contaPagoSelect.getValue()) {
+      erro.textContent = 'Selecione a conta bancaria de onde saiu o pagamento.';
       erro.classList.remove('hidden');
       return;
     }
@@ -472,7 +521,7 @@ function montarFormularioDespesaExistente({ despesa, arlaDespesa, categoriaNome,
     </div>
     <div class="grid grid-cols-2 gap-3">
       <div><label class="label">${ehArlaIsolada ? 'Preco/Litro (Arla)' : 'Preco/Litro (diesel)'}</label><input type="text" name="preco_litro" class="input" /></div>
-      <div><label class="label">${ehArlaIsolada ? 'Litragem (Arla)' : 'Litragem (diesel)'}</label><input type="number" step="0.01" name="litragem" class="input" /></div>
+      <div><label class="label">${ehArlaIsolada ? 'Litragem (Arla)' : 'Litragem (diesel)'}</label><input type="number" step="0.001" min="0" name="litragem" class="input" /></div>
     </div>
     ${ehDiesel ? `
       <label class="flex items-center gap-2 text-sm text-slate-700">
@@ -504,7 +553,7 @@ function montarFormularioDespesaExistente({ despesa, arlaDespesa, categoriaNome,
         <p class="mb-2 text-xs font-medium uppercase text-slate-500">Arla</p>
         <div class="grid grid-cols-2 gap-3">
           <div><label class="label">Preco/Litro (Arla)</label><input type="text" name="arla_preco" class="input" /></div>
-          <div><label class="label">Litragem (Arla)</label><input type="number" step="0.01" name="arla_qtd" class="input" /></div>
+          <div><label class="label">Litragem (Arla)</label><input type="number" step="0.001" min="0" name="arla_qtd" class="input" /></div>
         </div>
         <div class="mt-3"><label class="label">Valor Arla</label><input type="text" name="arla_valor" class="input" /></div>
       </div>
@@ -1041,7 +1090,7 @@ export async function render(container, params) {
           </div>
           <div>
             <p class="text-xs font-medium uppercase text-slate-500">Diesel abastecido</p>
-            <p class="text-sm font-semibold text-slate-900">${totalLitragemDiesel > 0 ? `${totalLitragemDiesel.toLocaleString('pt-BR')} L` : '-'}</p>
+            <p class="text-sm font-semibold text-slate-900">${totalLitragemDiesel > 0 ? `${formatarLitros(totalLitragemDiesel)} L` : '-'}</p>
           </div>
           <div>
             <p class="text-xs font-medium uppercase text-slate-500">Despesas</p>
@@ -1103,14 +1152,17 @@ export async function render(container, params) {
             <div><p class="text-xs uppercase text-slate-500">Saldo em dinheiro</p><p class="font-medium ${saldoDinheiro >= 0 ? 'text-emerald-600' : 'text-red-600'}">${formatarMoeda(saldoDinheiro)}</p></div>
           </div>
         ` : ''}
-        ${gerenciar && viagem.status !== 'Finalizada' ? '<div class="mb-3 flex justify-end"><button type="button" class="btn-primary btn-sm" data-novo-adiantamento>+ Adiantamento</button></div>' : ''}
+        <div class="mb-3 flex flex-wrap justify-end gap-2">
+          ${adiantamentos.length ? `<a href="#/viagens/${viagemId}/recibos?tipo=adiantamentos" target="_blank" rel="noopener" class="btn-secondary btn-sm">Imprimir recibos (${adiantamentos.length})</a>` : ''}
+          ${gerenciar && viagem.status !== 'Finalizada' ? '<button type="button" class="btn-primary btn-sm" data-novo-adiantamento>+ Adiantamento</button>' : ''}
+        </div>
         <div class="card overflow-x-auto border-gray-300 p-0">
           <table class="w-full min-w-max border-collapse">
             <thead class="bg-brand-black"><tr>
               <th class="table-th">Data</th><th class="table-th">Valor</th><th class="table-th">Descricao</th><th class="table-th"></th>
             </tr></thead>
             <tbody>
-              ${adiantamentos.map((a) => `<tr class="border-b border-slate-100"><td class="table-td">${formatarDataBr(a.data)}</td><td class="table-td">${formatarMoeda(a.valor)}${a.conta_bancaria_id ? '' : ' (sem caixa)'}</td><td class="table-td">${a.descricao || '-'}</td><td class="table-td text-right">${gerenciar && viagem.status !== 'Finalizada' ? `<button type="button" class="mr-3 text-xs text-gray-900 hover:underline" data-editar-adiantamento="${a.id}">Editar</button><button type="button" class="text-xs text-red-600 hover:underline" data-remover-adiantamento="${a.id}">Remover</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="4" class="table-td py-6 text-center text-slate-400">Nenhum adiantamento lancado.</td></tr>'}
+              ${adiantamentos.map((a) => `<tr class="border-b border-slate-100"><td class="table-td">${formatarDataBr(a.data)}</td><td class="table-td">${formatarMoeda(a.valor)}${a.conta_bancaria_id ? '' : ' (sem caixa)'}</td><td class="table-td">${a.descricao || '-'}</td><td class="table-td text-right whitespace-nowrap"><a href="#/viagens/${viagemId}/recibos?adiantamento=${a.id}" target="_blank" rel="noopener" class="mr-3 text-xs text-gray-900 hover:underline">Recibo</a>${gerenciar && viagem.status !== 'Finalizada' ? `<button type="button" class="mr-3 text-xs text-gray-900 hover:underline" data-editar-adiantamento="${a.id}">Editar</button><button type="button" class="text-xs text-red-600 hover:underline" data-remover-adiantamento="${a.id}">Remover</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="4" class="table-td py-6 text-center text-slate-400">Nenhum adiantamento lancado.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -1209,13 +1261,13 @@ export async function render(container, params) {
         { chave: 'categoria', titulo: 'Categoria', render: (d) => nomeCategoriasPorId[d.categoria_id] || d.categoria_id },
         { chave: 'fornecedor', titulo: 'Fornecedor', render: (d) => (d.posto_fornecedor_id ? nomeFornecedoresPorId[d.posto_fornecedor_id] || `#${d.posto_fornecedor_id}` : '-') },
         { chave: 'valor', titulo: 'Valor (diesel)', render: (d) => formatarMoeda(d.valor) },
-        { chave: 'litragem', titulo: 'Litragem (diesel)', render: (d) => (d.litragem ? `${d.litragem.toLocaleString('pt-BR')} L` : '-') },
+        { chave: 'litragem', titulo: 'Litragem (diesel)', render: (d) => (d.litragem ? `${formatarLitros(d.litragem)} L` : '-') },
         {
           chave: 'arla',
           titulo: 'Arla',
           render: (d) => {
             const arla = despesasArlaPorPaiId.get(d.id);
-            return arla ? `${formatarMoeda(arla.valor)}${arla.litragem ? ` (${arla.litragem.toLocaleString('pt-BR')} L)` : ''}` : '-';
+            return arla ? `${formatarMoeda(arla.valor)}${arla.litragem ? ` (${formatarLitros(arla.litragem)} L)` : ''}` : '-';
           },
         },
         {
@@ -1234,6 +1286,7 @@ export async function render(container, params) {
           },
         },
         { chave: 'pago_por', titulo: 'Pago por' },
+        { chave: 'pagamento', titulo: 'Pagamento', render: (d) => badgePagamentoDespesa(d), exportar: (d) => textoPagamentoDespesa(d) },
         {
           chave: 'status_validacao',
           titulo: 'Status',
@@ -1297,6 +1350,18 @@ export async function render(container, params) {
                 d.posto_fornecedor_id ? nomeFornecedoresPorId[d.posto_fornecedor_id] : '',
                 d.centro_custo_id ? nomeCentrosCustoPorId[d.centro_custo_id] : '',
               ),
+            }]
+          : []),
+        ...(podeGerenciar('contas_pagar') && d.contas_pagar_id && d.conta_status && d.conta_status !== 'Pago'
+          ? [{
+              label: 'Baixar',
+              onClick: () => abrirBaixaContaPagar({
+                id: d.contas_pagar_id,
+                descricao: d.conta_descricao || `Despesa #${d.id}`,
+                valor: d.conta_valor,
+                valor_pago: d.conta_valor_pago,
+                valor_descontado: d.conta_valor_descontado,
+              }, recarregarPagina),
             }]
           : []),
         { label: 'Anexos', onClick: () => abrirAnexosDespesa(d, gerenciar) },

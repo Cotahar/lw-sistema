@@ -610,7 +610,14 @@ const PAGO_POR = ['Empresa', 'Motorista', 'AdminOutros'];
 router.get('/:id/despesas', requerAcessoModulo('viagens', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const viagem = db.prepare('SELECT id FROM viagens WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
   if (!viagem) throw new ApiError(404, 'Viagem nao encontrada.');
-  res.json(db.prepare('SELECT * FROM despesas_viagem WHERE viagem_id = ? ORDER BY data DESC, id DESC').all(req.params.id));
+  // Junto com a situacao da conta a pagar da despesa (quando existe): a tela da viagem
+  // mostra "A pagar/Parcial/Paga" e deixa baixar ali mesmo, sem ir ao Contas a Pagar.
+  res.json(db.prepare(`
+    SELECT dv.*, cp.status AS conta_status, cp.valor AS conta_valor, cp.valor_pago AS conta_valor_pago,
+           cp.valor_descontado AS conta_valor_descontado, cp.descricao AS conta_descricao
+    FROM despesas_viagem dv LEFT JOIN contas_pagar cp ON cp.id = dv.contas_pagar_id
+    WHERE dv.viagem_id = ? ORDER BY dv.data DESC, dv.id DESC
+  `).all(req.params.id));
 }));
 
 router.post('/:id/despesas', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
