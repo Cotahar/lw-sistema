@@ -104,7 +104,7 @@ async function abrirBaixaLote(contas, recarregar) {
         <tbody data-linhas>
           ${contas.map((c) => `
             <tr class="border-t border-slate-100" data-linha data-id="${c.id}" data-restante="${restanteDe(c)}">
-              <td class="px-2 py-1.5"><p class="font-medium">${c.descricao}</p><p class="text-xs text-slate-400">${c.fornecedor_nome || 'Sem fornecedor'}</p></td>
+              <td class="px-2 py-1.5"><p class="font-medium">${c.descricao}</p><p class="text-xs text-slate-400">${c.fornecedor_nome || 'Sem fornecedor'}${restanteDe(c) === 0 ? ' &middot; conta zerada: so marcar como paga' : ''}</p></td>
               <td class="px-2 py-1.5 text-center"><input type="checkbox" class="h-4 w-4" data-sem-pagamento title="Baixar sem pagamento (nada sai do caixa)" /></td>
               <td class="px-2 py-1.5 whitespace-nowrap">${formatarDataBr(c.data_vencimento)}</td>
               <td class="px-2 py-1.5 text-right whitespace-nowrap">${formatarMoeda(restanteDe(c))}</td>
@@ -134,6 +134,15 @@ async function abrirBaixaLote(contas, recarregar) {
     attachMoedaMaskReais(tr.querySelector('[data-desconto]'), 0);
     tr.querySelector('[data-conta-linha]').value = String(contaPadrao);
     tr.querySelector('[data-conta-linha]').addEventListener('change', () => contaEditadaNaLinha.add(tr.dataset.id));
+    // Conta ZERADA (R$ 0,00): nao ha o que pagar - entra no lote ja como "sem pagamento" (so e marcada
+    // como paga), sem pedir valor nem confirmacao.
+    if (restante === 0) {
+      const chkZerada = tr.querySelector('[data-sem-pagamento]');
+      chkZerada.checked = true;
+      chkZerada.disabled = true;
+      for (const sel of ['[data-valor]', '[data-desconto]', '[data-conta-linha]']) tr.querySelector(sel).disabled = true;
+      tr.classList.add('opacity-70');
+    }
     // Sem pagamento: quita o restante todo sem valor pago e sem conta (nada sai do caixa).
     tr.querySelector('[data-sem-pagamento]').addEventListener('change', (ev) => {
       const marcado = ev.target.checked;
@@ -167,7 +176,8 @@ async function abrirBaixaLote(contas, recarregar) {
     const total = pagaveis.reduce((t, l) => t + l.valor_pago, 0);
     const desconto = pagaveis.reduce((t, l) => t + l.desconto, 0);
     const semPagamento = lidas.filter((l) => l.sem_pagamento).reduce((t, l) => t + l.restante, 0);
-    corpo.querySelector('[data-total-pago]').textContent = `${formatarMoeda(total)} a pagar${desconto ? ` + ${formatarMoeda(desconto)} de desconto` : ''}${semPagamento ? ` + ${formatarMoeda(semPagamento)} baixados sem pagamento` : ''}`;
+    const qtdZeradas = lidas.filter((l) => l.restante === 0).length;
+    corpo.querySelector('[data-total-pago]').textContent = `${formatarMoeda(total)} a pagar${desconto ? ` + ${formatarMoeda(desconto)} de desconto` : ''}${semPagamento ? ` + ${formatarMoeda(semPagamento)} baixados sem pagamento` : ''}${qtdZeradas ? ` + ${qtdZeradas} conta(s) zerada(s) marcadas como pagas` : ''}`;
   }
   corpo.conta_lote.addEventListener('change', () => {
     for (const tr of linhas) {
@@ -308,9 +318,33 @@ async function enviarBaixa(conta, payload, recarregar, erroEl) {
   }
 }
 
+// Conta de valor R$ 0,00 (ex.: pneu que ja estava no estoque, sem custo direto): nao ha o que
+// pagar, entao nao pede valor nem conta bancaria - baixar so a marca como paga.
+function abrirBaixaContaZerada(conta, recarregar) {
+  const form = document.createElement('form');
+  form.className = 'space-y-4';
+  form.innerHTML = `
+    <p class="text-sm text-slate-600">Esta conta tem valor <span class="font-medium">R$ 0,00</span> (por exemplo, um item que ja estava no estoque, sem custo direto): nao ha nada a pagar. Baixar so a marca como paga - nada sai do caixa.</p>
+    <div class="max-w-[12rem]"><label class="label">Data</label><input type="text" name="data_pagamento" class="input" /></div>
+    <p class="hidden text-sm text-red-600" data-erro></p>
+    <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Marcar como paga</button></div>
+  `;
+  attachDataMask(form.data_pagamento, hojeIsoLocal());
+  const erro = form.querySelector('[data-erro]');
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    erro.classList.add('hidden');
+    const iso = form.data_pagamento.value ? parseDataBrParaIso(form.data_pagamento.value) : null;
+    if (form.data_pagamento.value && !iso) { erro.textContent = 'Informe uma data valida (dd/mm/aaaa).'; erro.classList.remove('hidden'); return; }
+    await enviarBaixa(conta, { sem_pagamento: true, data_pagamento: iso }, recarregar, erro);
+  });
+  abrirModal({ titulo: `Baixar - ${conta.descricao}`, conteudo: form, largura: 'max-w-sm' });
+}
+
 // Exportada: a tela da viagem baixa a conta da despesa direto, sem ir ao Contas a Pagar.
 export async function abrirBaixa(conta, recarregar) {
   const restante = conta.valor - conta.valor_pago - conta.valor_descontado;
+  if (restante === 0) { abrirBaixaContaZerada(conta, recarregar); return; }
   const form = document.createElement('form');
   form.className = 'space-y-4';
   form.innerHTML = `
@@ -585,7 +619,7 @@ export async function render(container, params, query) {
   container.innerHTML = `
     <div class="mb-4 flex items-center justify-between">
       <h1 class="text-xl font-bold text-slate-900">Contas a Pagar</h1>
-      ${podeGerenciar('contas_pagar') ? '<button type="button" class="btn-secondary btn-sm" data-consolidar-fatura>Consolidar em fatura</button>' : ''}
+      ${podeGerenciar('contas_pagar') ? '<div class="flex gap-2"><button type="button" class="btn-secondary btn-sm hidden" data-baixar-zeradas title="Marca como pagas todas as contas de valor R$ 0,00 da lista (nada sai do caixa)">Baixar contas zeradas</button><button type="button" class="btn-secondary btn-sm" data-consolidar-fatura>Consolidar em fatura</button></div>' : ''}
     </div>
     ${origemFiltrada ? `
       <div class="card mb-4 flex items-center justify-between border-yellow-800 bg-yellow-950/40 p-3 text-sm">
@@ -612,6 +646,39 @@ export async function render(container, params, query) {
   const gerenciar = podeGerenciar('contas_pagar');
   const btnConsolidar = container.querySelector('[data-consolidar-fatura]');
   if (btnConsolidar) btnConsolidar.addEventListener('click', () => abrirConsolidarFatura(() => tabela.recarregar()));
+
+  // Contas de valor R$ 0,00 em aberto (ex.: pneus que ja estavam no estoque): uma acao so baixa todas
+  // as que estao na lista (a baixa de conta zerada nao move caixa).
+  const btnZeradas = container.querySelector('[data-baixar-zeradas]');
+  const ehZeradaEmAberto = (r) => (r.status === 'Pendente' || r.status === 'Parcial') && r.valor - r.valor_pago - r.valor_descontado === 0;
+  function atualizarBotaoZeradas(dados) {
+    if (!btnZeradas) return;
+    const qtd = dados.filter(ehZeradaEmAberto).length;
+    btnZeradas.classList.toggle('hidden', qtd === 0);
+    btnZeradas.textContent = `Baixar contas zeradas (${qtd})`;
+  }
+  if (btnZeradas) {
+    btnZeradas.addEventListener('click', async () => {
+      const zeradas = tabela.dados().filter(ehZeradaEmAberto);
+      if (!zeradas.length) return;
+      const ok = await confirmarAcao({
+        titulo: 'Baixar contas zeradas',
+        mensagem: `Marcar ${zeradas.length} conta(s) de valor R$ 0,00 como pagas? Nada sai do caixa.`,
+        textoConfirmar: 'Marcar como pagas',
+        perigo: false,
+      });
+      if (!ok) return;
+      try {
+        for (let i = 0; i < zeradas.length; i += 200) {
+          await post('/contas-pagar/baixar-lote', { itens: zeradas.slice(i, i + 200).map((r) => ({ id: r.id, sem_pagamento: true })) });
+        }
+        mostrarToast(`${zeradas.length} conta(s) zerada(s) baixada(s).`);
+        tabela.recarregar();
+      } catch (err) {
+        mostrarErro(err);
+      }
+    });
+  }
 
   const selectStatus = container.querySelector('[data-filtro-status]');
   const selectCategoria = container.querySelector('[data-filtro-categoria]');
@@ -682,7 +749,9 @@ export async function render(container, params, query) {
       if (inputCadDe.value) params.set('data_cadastro_de', parseDataBrParaIso(inputCadDe.value));
       if (inputCadAte.value) params.set('data_cadastro_ate', parseDataBrParaIso(inputCadAte.value));
       const query = params.toString();
-      return get(`/contas-pagar${query ? `?${query}` : ''}`);
+      const dados = await get(`/contas-pagar${query ? `?${query}` : ''}`);
+      atualizarBotaoZeradas(dados);
+      return dados;
     },
     onNovo: gerenciar ? () => abrirNovaConta(tabela.recarregar) : undefined,
     // Marque varias contas e pague todas numa tabela so (so contas ainda com saldo a pagar).

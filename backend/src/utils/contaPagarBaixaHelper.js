@@ -31,11 +31,27 @@ function formatarMoeda(centavos) {
 // valor_descontado, para nao mexer em nenhuma conta de restante); a diferenca e
 // que fica registrada como Ocorrencia da conta. `valorSemPagamento` e o quanto
 // baixar (padrao: o restante todo); nunca acima do restante.
+//
+// CONTA ZERADA (valor R$ 0,00 - ex.: pneu que ja estava no estoque, sem custo direto): nao ha o
+// que pagar, entao nao pede conta bancaria nem valor; baixar so a marca como Paga (fica a
+// Ocorrencia). Antes ela era recusada com "valor de baixa invalido" e nunca saia da lista.
 function baixarContaPagar({ empresaId, usuarioId, contaId, contaBancariaId, valorPago, desconto, dataPagamento, ajustarValorConta, semPagamento = false, valorSemPagamento }) {
-  if (!semPagamento && !contaBancariaId) throw new ApiError(400, 'Informe a conta bancaria de origem do pagamento.');
   const contaPagar = db.prepare('SELECT * FROM contas_pagar WHERE id = ? AND empresa_id = ?').get(contaId, empresaId);
   if (!contaPagar) throw new ApiError(404, 'Conta a pagar nao encontrada.');
   if (contaPagar.status === 'Pago') throw new ApiError(400, 'Esta conta ja esta paga.');
+
+  if (contaPagar.valor === 0 && contaPagar.valor_pago === 0 && contaPagar.valor_descontado === 0) {
+    db.prepare("UPDATE contas_pagar SET status = 'Pago', data_pagamento = COALESCE(?, date('now', '-3 hours')) WHERE id = ?").run(dataPagamento || null, contaPagar.id);
+    const tabelaParcelaZerada = TABELA_PARCELA_POR_ORIGEM[contaPagar.origem_tipo];
+    if (tabelaParcelaZerada) {
+      db.prepare(`UPDATE ${tabelaParcelaZerada} SET status = 'Paga', data_pagamento = COALESCE(?, date('now', '-3 hours')) WHERE id = ?`).run(dataPagamento || null, contaPagar.origem_id);
+    }
+    db.prepare("INSERT INTO ocorrencias (empresa_id, entidade_tipo, entidade_id, texto, criado_por) VALUES (?, 'ContaPagar', ?, ?, ?)")
+      .run(empresaId, contaPagar.id, 'Baixa de conta com valor zerado (nada a pagar, nada saiu do caixa).', usuarioId);
+    return { antes: contaPagar, contaPagar: db.prepare('SELECT * FROM contas_pagar WHERE id = ?').get(contaPagar.id), movimentacao: null };
+  }
+
+  if (!semPagamento && !contaBancariaId) throw new ApiError(400, 'Informe a conta bancaria de origem do pagamento.');
   if (!semPagamento) {
     const contaBancaria = db.prepare('SELECT * FROM contas_bancarias WHERE id = ? AND empresa_id = ?').get(contaBancariaId, empresaId);
     if (!contaBancaria) throw new ApiError(400, 'Conta bancaria nao encontrada.');

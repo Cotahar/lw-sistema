@@ -276,7 +276,6 @@ router.put('/:id', requerAcessoModulo('contas_pagar', 'Gerenciar'), exigirEmpres
 // original do lancamento pra refletir o que foi realmente pago/descontado.
 router.post('/:id/baixar', requerAcessoModulo('contas_pagar', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const { conta_bancaria_id, valor_pago, desconto, data_pagamento, ajustarValorConta, sem_pagamento, valor_sem_pagamento } = req.body;
-  if (!sem_pagamento && !conta_bancaria_id) throw new ApiError(400, 'Informe a conta bancaria de origem do pagamento.');
 
   const resultado = withTransaction(db, () => baixarContaPagar({
     empresaId: req.empresaId, usuarioId: req.usuario.id, contaId: req.params.id, contaBancariaId: conta_bancaria_id,
@@ -310,7 +309,6 @@ router.post('/baixar-lote', requerAcessoModulo('contas_pagar', 'Gerenciar'), exi
 
   const resultados = withTransaction(db, () => itens.map((item) => {
     const contaBancariaId = item.conta_bancaria_id || conta_bancaria_id;
-    if (!item.sem_pagamento && !contaBancariaId) throw new ApiError(400, 'Informe a conta bancaria de origem do pagamento.');
     try {
       return baixarContaPagar({
         empresaId: req.empresaId, usuarioId: req.usuario.id, contaId: item.id, contaBancariaId,

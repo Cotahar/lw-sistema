@@ -76,10 +76,14 @@ router.post('/', requerAcessoModulo('pneus', 'Gerenciar'), exigirEmpresaEspecifi
       empresaId: req.empresaId, pneuId: novoPneu.id, tipoEvento: 'Aquisicao', fornecedorId: fornecedor_id, custo: custo_unitario, usuarioId: req.usuario.id,
     });
 
-    db.prepare(`
-      INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
-      VALUES (?, ?, ?, ?, date('now', '-3 hours'), 'Pendente', 'PneuEvento', ?)
-    `).run(req.empresaId, fornecedor_id || null, `Compra de pneu: ${novoPneu.numero_fogo}`.toUpperCase(), custo_unitario, evento.id);
+    // Pneu sem custo (ja estava no estoque, sem custo direto): nao ha o que pagar, entao nao gera
+    // conta a pagar - uma conta de R$ 0,00 so poluia o Contas a Pagar.
+    if (custo_unitario > 0) {
+      db.prepare(`
+        INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
+        VALUES (?, ?, ?, ?, date('now', '-3 hours'), 'Pendente', 'PneuEvento', ?)
+      `).run(req.empresaId, fornecedor_id || null, `Compra de pneu: ${novoPneu.numero_fogo}`.toUpperCase(), custo_unitario, evento.id);
+    }
 
     return novoPneu;
   });
@@ -212,10 +216,12 @@ router.post('/:id/retornar-recapagem', requerAcessoModulo('pneus', 'Gerenciar'),
       WHERE id = ?
     `).run(custo, atual.id);
 
-    db.prepare(`
-      INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
-      VALUES (?, ?, ?, ?, date('now', '-3 hours'), 'Pendente', 'PneuEvento', ?)
-    `).run(req.empresaId, fornecedor_id || null, `Recapagem do pneu: ${atual.numero_fogo}`.toUpperCase(), custo, evento.id);
+    if (custo > 0) {
+      db.prepare(`
+        INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
+        VALUES (?, ?, ?, ?, date('now', '-3 hours'), 'Pendente', 'PneuEvento', ?)
+      `).run(req.empresaId, fornecedor_id || null, `Recapagem do pneu: ${atual.numero_fogo}`.toUpperCase(), custo, evento.id);
+    }
 
     return db.prepare('SELECT * FROM pneus WHERE id = ?').get(atual.id);
   });

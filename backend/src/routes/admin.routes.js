@@ -5,6 +5,8 @@ const ApiError = require('../utils/ApiError');
 const { requerAdmin } = require('../middleware/auth');
 const { withTransaction } = require('../utils/transaction');
 const { desfazerTransferencia } = require('../utils/transferenciaHelper');
+const { dataPrevistaRecebimentoPadrao } = require('../utils/dataHora');
+const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 
 const router = express.Router();
 router.use(requerAdmin);
@@ -48,6 +50,8 @@ const HANDLERS_ESPECIFICOS = {
   estoque_movimentacoes: reverterEstoqueMovimentacoes,
   viagem_adiantamentos: reverterAdiantamentos,
   contas_receber_baixas: reverterBaixasFrete,
+  fretes: reverterFretes,
+  pneus: reverterPneus,
 };
 
 const TABELA_REGEX = /^[a-z_]+$/;
@@ -435,6 +439,130 @@ function reverterBaixasFrete(log) {
     return;
   }
   return reverterGenerico(log);
+}
+
+// ---- Fretes ----
+// Criar um frete gera o recebivel (contas_receber) e, no 1o frete da viagem, vincula as despesas
+// que ainda estavam sem frete. O snapshot generico so tentava apagar o frete (e esbarrava na FK do
+// recebivel). Mesmas regras da exclusao normal: nao reverte com baixa lancada.
+function recebivelDoFrete(freteId) {
+  return db.prepare('SELECT * FROM contas_receber WHERE frete_id = ?').get(freteId) || null;
+}
+
+function exigirRecebivelSemBaixa(receber) {
+  if (!receber) return;
+  const baixas = db.prepare('SELECT COUNT(*) AS n FROM contas_receber_baixas WHERE contas_receber_id = ?').get(receber.id).n;
+  if (baixas > 0 || receber.valor_recebido > 0 || receber.valor_descontado > 0) {
+    throw new ApiError(400, 'Este frete ja possui baixas lancadas no recebivel. Reverta/exclua as baixas antes.');
+  }
+}
+
+function reverterFretes(log) {
+  if (log.acao === 'INSERT') {
+    const frete = db.prepare('SELECT * FROM fretes WHERE id = ?').get(log.registro_id);
+    if (!frete) throw new ApiError(400, 'Este frete ja foi revertido ou nao existe mais.');
+    const receber = recebivelDoFrete(frete.id);
+    exigirRecebivelSemBaixa(receber);
+    if (receber) db.prepare('DELETE FROM contas_receber WHERE id = ?').run(receber.id);
+    // Despesas vinculadas voltam a ficar sem frete (mesmo que a exclusao normal do frete).
+    db.prepare('UPDATE despesas_viagem SET frete_id = NULL WHERE frete_id = ?').run(frete.id);
+    db.prepare('DELETE FROM fretes WHERE id = ?').run(frete.id);
+    return;
+  }
+
+  if (log.acao === 'UPDATE') {
+    const antes = parseJson(log.dados_antes);
+    const atual = db.prepare('SELECT * FROM fretes WHERE id = ?').get(log.registro_id);
+    if (!atual) throw new ApiError(400, 'Este frete nao existe mais.');
+    const receber = recebivelDoFrete(atual.id);
+    const valorMudou = antes && antes.frete_bruto !== atual.frete_bruto;
+    if (valorMudou) exigirRecebivelSemBaixa(receber);
+    reverterGenerico(log);
+    if (valorMudou && receber) db.prepare('UPDATE contas_receber SET valor = ? WHERE id = ?').run(antes.frete_bruto, receber.id);
+    return;
+  }
+
+  // DELETE: devolve o frete e recria o recebivel (a previsao de recebimento volta ao padrao,
+  // descarga + 3 dias - a que estava na conta apagada nao e guardada).
+  const antes = parseJson(log.dados_antes);
+  if (!antes) throw new ApiError(400, 'Sem dados suficientes para restaurar este frete.');
+  const viagem = db.prepare('SELECT * FROM viagens WHERE id = ?').get(antes.viagem_id);
+  if (!viagem) throw new ApiError(400, 'A viagem deste frete nao existe mais.');
+  if (viagem.status === 'Finalizada') throw new ApiError(400, 'A viagem ja foi finalizada (acerto fechado). Reverta o acerto antes de restaurar o frete.');
+  reverterGenerico(log);
+  const tratora = buscarUnidadeTratora(viagem.conjunto_id);
+  const centroCusto = tratora ? buscarCentroCustoDoVeiculo(tratora.id) : null;
+  if (centroCusto) {
+    db.prepare(`
+      INSERT INTO contas_receber (empresa_id, frete_id, centro_custo_id, valor, data_prevista, status)
+      VALUES (?, ?, ?, ?, ?, 'Pendente')
+    `).run(antes.empresa_id, antes.id, centroCusto.id, antes.frete_bruto, dataPrevistaRecebimentoPadrao(antes.data_descarga));
+  }
+}
+
+// ---- Pneus ----
+// Cada acao do pneu grava um evento (pneu_eventos) e, na compra e no retorno da recapagem, uma
+// Conta a Pagar (quando ha custo). O snapshot generico so mexia na linha do pneu: os eventos
+// ficavam (e na criacao barravam na FK) e a conta a pagar ficava orfa.
+const EVENTO_POR_TRANSICAO = [
+  { de: 'Estoque', para: 'Instalado', evento: 'Instalacao' },
+  { de: 'Instalado', para: 'Estoque', evento: 'Remocao' },
+  { de: 'Estoque', para: 'EmRecapagem', evento: 'EnvioRecapagem' },
+  { de: 'EmRecapagem', para: 'Estoque', evento: 'RetornoRecapagem' },
+  { de: 'Estoque', para: 'Sucata', evento: 'Sucateamento' },
+  { de: 'Instalado', para: 'Sucata', evento: 'Sucateamento' },
+];
+
+function contasDoEventoDePneu(eventoId) {
+  return db.prepare("SELECT * FROM contas_pagar WHERE origem_tipo = 'PneuEvento' AND origem_id = ?").all(eventoId);
+}
+
+function exigirContasDePneuSemPagamento(contas) {
+  for (const c of contas) {
+    if (c.status !== 'Pendente' || c.valor_pago > 0 || c.valor_descontado > 0) {
+      throw new ApiError(400, `Este pneu tem conta a pagar (#${c.id}) com pagamento lancado. Estorne o pagamento antes de reverter.`);
+    }
+  }
+}
+
+function reverterPneus(log) {
+  if (log.acao === 'INSERT') {
+    const pneu = db.prepare('SELECT * FROM pneus WHERE id = ?').get(log.registro_id);
+    if (!pneu) throw new ApiError(400, 'Este pneu ja foi revertido ou nao existe mais.');
+    const eventos = db.prepare('SELECT * FROM pneu_eventos WHERE pneu_id = ?').all(pneu.id);
+    if (eventos.some((e) => e.tipo_evento !== 'Aquisicao')) {
+      throw new ApiError(400, 'Este pneu ja teve movimentacoes (instalacao, recapagem...). Reverta as movimentacoes mais novas primeiro.');
+    }
+    const contas = eventos.flatMap((e) => contasDoEventoDePneu(e.id));
+    exigirContasDePneuSemPagamento(contas);
+    // Os eventos seguram a FK do pneu; a conta e quem referencia o evento (so por origem_id).
+    for (const c of contas) db.prepare('DELETE FROM contas_pagar WHERE id = ?').run(c.id);
+    db.prepare('DELETE FROM pneu_eventos WHERE pneu_id = ?').run(pneu.id);
+    db.prepare('DELETE FROM pneus WHERE id = ?').run(pneu.id);
+    return;
+  }
+  if (log.acao !== 'UPDATE') return reverterGenerico(log);
+
+  const antes = parseJson(log.dados_antes);
+  const depois = parseJson(log.dados_depois);
+  if (!antes || !depois) return reverterGenerico(log);
+  const atual = db.prepare('SELECT * FROM pneus WHERE id = ?').get(log.registro_id);
+  if (!atual) throw new ApiError(400, 'Este pneu nao existe mais.');
+
+  // Edicao cadastral (numero, marca...) nao muda o status: sem evento para desfazer.
+  const transicao = EVENTO_POR_TRANSICAO.find((t) => t.de === antes.status && t.para === depois.status);
+  if (antes.status === depois.status || !transicao) return reverterGenerico(log);
+
+  // O evento desta acao e o ultimo do pneu (a auditoria so deixa reverter a acao mais recente).
+  const ultimo = db.prepare('SELECT * FROM pneu_eventos WHERE pneu_id = ? ORDER BY id DESC LIMIT 1').get(atual.id);
+  if (!ultimo || ultimo.tipo_evento !== transicao.evento) {
+    throw new ApiError(400, 'Nao foi possivel identificar com seguranca o evento desta acao do pneu. Reverta pelo cadastro de pneus.');
+  }
+  const contas = contasDoEventoDePneu(ultimo.id);
+  exigirContasDePneuSemPagamento(contas);
+  for (const c of contas) db.prepare('DELETE FROM contas_pagar WHERE id = ?').run(c.id);
+  db.prepare('DELETE FROM pneu_eventos WHERE id = ?').run(ultimo.id);
+  reverterGenerico(log);
 }
 
 router.post('/logs/:id/reverter', asyncHandler(async (req, res) => {

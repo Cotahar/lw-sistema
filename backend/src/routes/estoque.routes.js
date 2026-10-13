@@ -126,10 +126,14 @@ router.post('/movimentacoes', requerAcessoModulo('estoque', 'Gerenciar'), exigir
       db.prepare("UPDATE estoque_itens SET quantidade_atual = ?, custo_medio = ?, atualizado_em = datetime('now', '-3 hours') WHERE id = ?")
         .run(novoTotal, novoCustoMedio, item_id);
 
-      db.prepare(`
-        INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
-        VALUES (?, ?, ?, ?, date('now', '-3 hours'), 'Pendente', 'EstoqueMovimentacao', ?)
-      `).run(req.empresaId, fornecedor_id || null, `Compra de estoque: ${item.nome} x${quantidade}`.toUpperCase(), Math.round(quantidade * custo_unitario), info.lastInsertRowid);
+      // Entrada sem custo (item que ja tinhamos, sem custo direto) nao gera conta a pagar de R$ 0,00.
+      const valorCompra = Math.round(quantidade * custo_unitario);
+      if (valorCompra > 0) {
+        db.prepare(`
+          INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
+          VALUES (?, ?, ?, ?, date('now', '-3 hours'), 'Pendente', 'EstoqueMovimentacao', ?)
+        `).run(req.empresaId, fornecedor_id || null, `Compra de estoque: ${item.nome} x${quantidade}`.toUpperCase(), valorCompra, info.lastInsertRowid);
+      }
     } else {
       db.prepare("UPDATE estoque_itens SET quantidade_atual = quantidade_atual - ?, atualizado_em = datetime('now', '-3 hours') WHERE id = ?")
         .run(quantidade, item_id);
