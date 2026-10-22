@@ -8,7 +8,7 @@ import { renderRelatorio } from './pages/acertoRelatorio.js';
 import { renderRecibos } from './pages/recibos.js';
 import { renderDreRelatorio } from './pages/dreRelatorio.js';
 import { render as renderImpressaoGenerica } from './pages/relatorios/imprimir.js';
-import { GRUPOS_MENU, ROTA_PAINEL, ITEM_ADMIN, ITEM_AUDITORIA, ITEM_ATIVIDADE_USUARIOS, ITENS_CONFIGURACAO } from './modulosConfig.js';
+import { GRUPOS_MENU, ROTA_PAINEL, ITEM_ADMIN, ITEM_AUDITORIA, ITEM_ATIVIDADE_USUARIOS, ITEM_IMPORTAR_SEM_PARAR, ITENS_CONFIGURACAO } from './modulosConfig.js';
 
 const appEl = document.getElementById('app');
 let shellConstruido = false;
@@ -76,14 +76,14 @@ function renderGrupoAccordion(chave, titulo, itens, forcarAberto) {
   }).join('');
   return `
     <div data-grupo="${chave}">
-      <button type="button" data-grupo-toggle="${chave}" class="flex w-full items-center justify-between rounded-lg px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide ${aberto ? 'text-brand-yellow' : 'text-white/50 hover:text-white/80'}">
+      <button type="button" data-grupo-toggle="${chave}" class="menu-grupo-toggle mt-3 flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wide">
         <span class="flex items-center gap-1.5">${iconeGrupo(titulo)}${titulo}</span>
         <svg data-grupo-chevron class="h-3 w-3 shrink-0 transition-transform duration-150 ${aberto ? 'rotate-90' : ''}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
         </svg>
       </button>
       <div data-grupo-body class="grupo-corpo ${aberto ? '' : 'recolhido'}">
-        <div class="space-y-0.5">
+        <div class="menu-grupo-itens space-y-0.5">
           ${itensHtml}
         </div>
       </div>
@@ -107,7 +107,7 @@ function montarSidebarHtml() {
   )).join('');
 
   const admin = usuario && usuario.perfil === 'Admin'
-    ? renderGrupoAccordion('administracao', 'Administracao', [ITEM_ADMIN, ITEM_AUDITORIA, ITEM_ATIVIDADE_USUARIOS, ...ITENS_CONFIGURACAO])
+    ? renderGrupoAccordion('administracao', 'Administracao', [ITEM_ADMIN, ITEM_AUDITORIA, ITEM_ATIVIDADE_USUARIOS, ITEM_IMPORTAR_SEM_PARAR, ...ITENS_CONFIGURACAO])
     : '';
 
   return `
@@ -369,9 +369,7 @@ function atualizarLinkAtivo() {
     const btn = grupo.querySelector('[data-grupo-toggle]');
     if (!btn) return;
     const algumAtivo = grupo.querySelector('.menu-link.text-brand-yellow') !== null;
-    btn.classList.toggle('text-brand-yellow', algumAtivo);
-    btn.classList.toggle('text-gray-400', !algumAtivo);
-    btn.classList.toggle('hover:text-gray-300', !algumAtivo);
+    btn.classList.toggle('menu-grupo-ativo', algumAtivo);
   });
 }
 
@@ -522,6 +520,7 @@ registrarPagina('/relatorios/fluxo-caixa', () => import('./pages/relatorios/flux
 registrarPagina('/relatorios/atividade-usuarios', () => import('./pages/relatorios/atividadeUsuarios.js'));
 registrarPagina('/usuarios', () => import('./pages/usuarios.js'));
 registrarPagina('/auditoria', () => import('./pages/auditoria.js'));
+registrarPagina('/importar/sem-parar', () => import('./pages/importarSemParar.js'));
 registrarPagina('/config/empresas', () => import('./pages/config/empresas.js'));
 registrarPagina('/config/fornecedor-tipos', () => import('./pages/config/fornecedorTipos.js'));
 registrarPagina('/config/categorias-despesa', () => import('./pages/config/categoriasDespesa.js'));

@@ -8,6 +8,7 @@ const { condicaoEmpresa } = require('../utils/empresaScope');
 const { registrarAuditoria } = require('../utils/audit');
 const { withTransaction } = require('../utils/transaction');
 const { hojeIsoBrasilia } = require('../utils/dataHora');
+const { criarDespesaRateada } = require('../utils/despesaRateioHelper');
 
 const router = express.Router();
 
@@ -45,54 +46,6 @@ router.get('/', requerAcessoModulo('despesas_fixas', 'Visualizar'), exigirEmpres
   res.json(rows);
 }));
 
-// Lancamento RATEADO: um valor total (ex.: Sem Parar R$ 10.000) dividido entre
-// varios centros de custo (placas / Base). Gera UMA conta a pagar com o total e
-// uma linha de despesa fixa por centro (a parte de cada um - e o que o DRE soma
-// por placa/conjunto). Sem parcelamento.
-function criarDespesaRateada(req) {
-  const { rateios, categoria_id, valor, data, recorrente, descricao, qtd_parcelas, fornecedor_id, data_vencimento } = req.body;
-  if (qtd_parcelas) throw new ApiError(400, 'Despesa rateada entre centros de custo nao pode ser parcelada.');
-  if (!categoria_id) throw new ApiError(400, 'Informe a categoria da despesa.');
-  if (!Array.isArray(rateios) || rateios.length < 2) throw new ApiError(400, 'Informe ao menos 2 centros de custo para ratear a despesa.');
-  const ids = rateios.map((r) => Number(r.centro_custo_id));
-  if (ids.some((id) => !Number.isInteger(id) || id <= 0)) throw new ApiError(400, 'Cada linha do rateio precisa de um centro de custo.');
-  if (new Set(ids).size !== ids.length) throw new ApiError(400, 'O mesmo centro de custo aparece mais de uma vez no rateio.');
-  if (rateios.some((r) => !Number.isInteger(r.valor) || r.valor <= 0)) throw new ApiError(400, 'Cada centro de custo precisa de um valor maior que zero.');
-  const soma = rateios.reduce((t, r) => t + r.valor, 0);
-  if (valor !== undefined && valor !== null && valor !== soma) {
-    throw new ApiError(400, `A soma do rateio (${(soma / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}) nao bate com o valor total informado (${(valor / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}).`);
-  }
-  const categoria = db.prepare('SELECT nome FROM categorias_despesa WHERE id = ?').get(categoria_id);
-  if (!categoria) throw new ApiError(400, 'Categoria nao encontrada.');
-  const centros = ids.map((id) => {
-    const c = db.prepare('SELECT * FROM centros_custo WHERE id = ? AND empresa_id = ?').get(id, req.empresaId);
-    if (!c) throw new ApiError(400, `Centro de custo #${id} nao encontrado.`);
-    return c;
-  });
-  if (fornecedor_id) {
-    const f = db.prepare('SELECT id FROM fornecedores WHERE id = ? AND empresa_id = ?').get(fornecedor_id, req.empresaId);
-    if (!f) throw new ApiError(400, 'Fornecedor nao encontrado.');
-  }
-  const nomeDescricao = descricao ? String(descricao).toUpperCase() : null;
-
-  return withTransaction(db, () => {
-    const inserir = db.prepare(`
-      INSERT INTO despesas_fixas (empresa_id, centro_custo_id, categoria_id, valor, data, recorrente, descricao, criado_por)
-      VALUES (?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), ?, ?, ?)
-    `);
-    const linhasIds = rateios.map((r) => inserir.run(req.empresaId, r.centro_custo_id, categoria_id, r.valor, data || null, recorrente ? 1 : 0, nomeDescricao, req.usuario.id).lastInsertRowid);
-    const principalId = linhasIds[0];
-    db.prepare(`UPDATE despesas_fixas SET rateio_id = ? WHERE id IN (${linhasIds.map(() => '?').join(',')})`).run(principalId, ...linhasIds);
-    const nomeConta = `${categoria.nome} - RATEIO ENTRE ${centros.length} CENTROS DE CUSTO${nomeDescricao ? ` - ${nomeDescricao}` : ''}`.toUpperCase();
-    const conta = db.prepare(`
-      INSERT INTO contas_pagar (empresa_id, fornecedor_id, centro_custo_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
-      VALUES (?, ?, NULL, ?, ?, COALESCE(?, ?, date('now', '-3 hours')), 'Pendente', 'DespesaFixa', ?)
-    `).run(req.empresaId, fornecedor_id || null, nomeConta, soma, data_vencimento || null, data || null, principalId);
-    const despesas = db.prepare(`SELECT * FROM despesas_fixas WHERE rateio_id = ? ORDER BY id`).all(principalId);
-    return { rateio_id: principalId, valor_total: soma, conta_pagar_id: conta.lastInsertRowid, despesas };
-  });
-}
-
 // Exclui o lancamento rateado INTEIRO (todas as linhas + a conta unica) - so se
 // a conta ainda nao teve pagamento.
 function excluirGrupoRateio(rateioId) {
@@ -106,7 +59,8 @@ function excluirGrupoRateio(rateioId) {
 
 router.post('/', requerAcessoModulo('despesas_fixas', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   if (req.body.rateios !== undefined) {
-    const resultado = criarDespesaRateada(req);
+    const { rateios, categoria_id, valor, data, recorrente, descricao, qtd_parcelas, fornecedor_id, data_vencimento } = req.body;
+    const resultado = criarDespesaRateada({ empresaId: req.empresaId, usuarioId: req.usuario.id, rateios, categoria_id, valor, data, recorrente, descricao, qtd_parcelas, fornecedor_id, data_vencimento });
     for (const d of resultado.despesas) {
       registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'despesas_fixas', registroId: d.id, acao: 'INSERT', depois: d });
     }

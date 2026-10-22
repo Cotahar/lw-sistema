@@ -40,6 +40,7 @@ const dashboardRoutes = require('./routes/dashboard.routes');
 const ocorrenciasRoutes = require('./routes/ocorrencias.routes');
 const anexosRoutes = require('./routes/anexos.routes');
 const adminRoutes = require('./routes/admin.routes');
+const importacaoFaturaRoutes = require('./routes/importacaoFatura.routes');
 const empresasRoutes = require('./routes/empresas.routes');
 const cnpjRoutes = require('./routes/cnpj.routes');
 const onixsatRoutes = require('./routes/onixsat.routes');
@@ -50,7 +51,9 @@ const recibosRoutes = require('./routes/recibos.routes');
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+// Limite maior que o padrao (100kb): a importacao de fatura do Sem Parar (administracao)
+// manda as abas da planilha (centenas de passagens) num unico JSON.
+app.use(express.json({ limit: '5mb' }));
 // Parametro de query "null"/"undefined" (texto) = parametro nao enviado.
 app.use('/api', limparQuery);
 
@@ -97,6 +100,7 @@ app.use('/api/relatorios-salvos', relatoriosSalvosRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/ocorrencias', ocorrenciasRoutes);
 app.use('/api/anexos', anexosRoutes);
+app.use('/api/admin/importacoes', importacaoFaturaRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/empresas', empresasRoutes);
 app.use('/api/cnpj', cnpjRoutes);

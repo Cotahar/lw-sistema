@@ -82,6 +82,32 @@ h1, h2, h3 {
   .grupo-corpo.recolhido { display: none; }
 }
 
+/* Menu lateral: cada grupo (OPERACAO, FINANCEIRO, FROTA...) tem a sua cor - o cabecalho
+   vira uma faixa colorida e uma linha da mesma cor acompanha os itens do grupo, pra achar
+   a categoria de relance mesmo com o menu comprido (RGB em "R G B" pra poder aplicar
+   transparencia: rgb(var(--cor-grupo) / 0.1)). O item ativo usa a cor do proprio grupo. */
+[data-grupo] { --cor-grupo: 148 163 184; }
+[data-grupo="operacao"] { --cor-grupo: 96 165 250; }
+[data-grupo="financeiro"] { --cor-grupo: 74 222 128; }
+[data-grupo="frota"] { --cor-grupo: 251 146 60; }
+[data-grupo="cadastros"] { --cor-grupo: 192 132 252; }
+[data-grupo="relatorios"] { --cor-grupo: 244 114 182; }
+[data-grupo="administracao"] { --cor-grupo: 45 212 191; }
+.menu-grupo-toggle {
+  color: rgb(var(--cor-grupo));
+  background-color: rgb(var(--cor-grupo) / 0.1);
+  border-left: 3px solid rgb(var(--cor-grupo));
+  transition: background-color 0.12s ease-out;
+}
+.menu-grupo-toggle:hover, .menu-grupo-toggle.menu-grupo-ativo { background-color: rgb(var(--cor-grupo) / 0.22); }
+.menu-grupo-itens {
+  margin: 0.25rem 0 0 0.5rem;
+  padding-left: 0.25rem;
+  border-left: 2px solid rgb(var(--cor-grupo) / 0.4);
+}
+[data-grupo] .menu-link.text-brand-yellow { color: rgb(var(--cor-grupo)); }
+[data-grupo] .menu-link.border-brand-yellow { border-color: rgb(var(--cor-grupo)); }
+
 @layer components {
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-yellow focus-visible:ring-offset-2 focus-visible:ring-offset-brand-light;
