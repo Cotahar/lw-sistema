@@ -5,7 +5,7 @@ import { buscarConjuntos } from '../components/conjuntoOpcoes.js';
 import { criarNovoFornecedor } from '../components/fornecedorQuickCreate.js';
 import { abrirModal, fecharModal, confirmarAcao } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
-import { formatarMoeda, attachMoedaMask, getMoedaValue, formatarDataBr, attachUppercaseInput } from '../masks.js';
+import { formatarMoeda, attachMoedaMask, getMoedaValue, formatarDataBr, attachUppercaseInput, attachDataMask, parseDataBrParaIso } from '../masks.js';
 import { ICONE_SUCESSO, ICONE_ATENCAO, ICONE_CRITICO, ICONE_NEUTRO } from '../components/statusIcons.js';
 
 const STATUS_BADGE = {
@@ -30,6 +30,93 @@ async function buscarVeiculos(termo) {
 
 function campoTexto(label, name, tipo = 'text') {
   return `<div><label class="label">${label}</label><input type="${tipo}" name="${name}" class="input" /></div>`;
+}
+
+// Compra de VARIOS pneus de uma vez (ex.: 8 pneus na mesma nota): os dados da compra valem para todos e
+// cada pneu entra com o seu numero de fogo (um por linha). Cada pneu gera a sua conta a pagar, todas com o
+// mesmo fornecedor, vencimento e nota - a baixa em lote do Contas a Pagar paga a nota inteira de uma vez.
+async function abrirFormularioCompraEmLote(recarregar) {
+  const form = document.createElement('form');
+  form.className = 'space-y-4';
+  form.innerHTML = `
+    <p class="text-sm text-slate-500">Cadastra de uma vez todos os pneus de uma compra. Informe os dados comuns e, em seguida, o numero de fogo de cada pneu.</p>
+    <div class="grid grid-cols-3 gap-3">
+      <div>${campoTexto('Medida *', 'medida').replace('/>', 'required value="295/80R22.5" />')}</div>
+      <div>${campoTexto('Marca', 'marca')}</div>
+      <div>${campoTexto('Modelo', 'modelo')}</div>
+    </div>
+    <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div><label class="label">Custo de cada pneu *</label><input type="text" name="custo_unitario" class="input" required /></div>
+      <div><label class="label">Data da compra</label><input type="text" name="data_aquisicao" class="input" /></div>
+      <div><label class="label">Vencimento *</label><input type="text" name="data_vencimento" class="input" required /></div>
+      <div>${campoTexto('Nº da nota (NF)', 'documento')}</div>
+    </div>
+    <div><label class="label">Fornecedor</label><div data-fornecedor></div></div>
+    <div>
+      <label class="label">Numeros de fogo * <span class="text-xs font-normal text-slate-500">(um por linha - pode colar a lista)</span></label>
+      <textarea name="fogos" rows="6" class="input font-mono" required placeholder="A001&#10;A002&#10;A003"></textarea>
+      <p class="mt-1 text-sm text-slate-500" data-resumo></p>
+    </div>
+    <div><label class="label">Observacoes</label><input type="text" name="observacao" class="input" /></div>
+    <p class="hidden text-sm text-red-600" data-erro></p>
+    <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Cadastrar pneus</button></div>
+  `;
+  attachMoedaMask(form.custo_unitario, 0);
+  attachDataMask(form.data_aquisicao);
+  attachDataMask(form.data_vencimento);
+  for (const campo of [form.marca, form.modelo, form.medida, form.documento, form.fogos, form.observacao]) attachUppercaseInput(campo);
+  const fornecedorSelect = criarSearchableSelect({ buscar: buscarFornecedores, placeholder: 'Pesquisar fornecedor...', criarNovo: { label: 'Cadastrar novo fornecedor', abrir: criarNovoFornecedor } });
+  form.querySelector('[data-fornecedor]').appendChild(fornecedorSelect.el);
+
+  const lerFogos = () => form.fogos.value.split(/[\n,;]+/).map((f) => f.trim()).filter(Boolean);
+  const resumo = form.querySelector('[data-resumo]');
+  function atualizarResumo() {
+    const qtd = lerFogos().length;
+    const custo = getMoedaValue(form.custo_unitario);
+    resumo.textContent = qtd ? `${qtd} pneu(s)${custo ? ` x ${formatarMoeda(custo)} = ${formatarMoeda(qtd * custo)}` : ''}` : '';
+  }
+  form.fogos.addEventListener('input', atualizarResumo);
+  form.custo_unitario.addEventListener('input', atualizarResumo);
+
+  const erro = form.querySelector('[data-erro]');
+  const falha = (msg) => { erro.textContent = msg; erro.classList.remove('hidden'); };
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    erro.classList.add('hidden');
+    const fogos = lerFogos();
+    if (!fogos.length) return falha('Informe o numero de fogo de cada pneu.');
+    const vencimento = parseDataBrParaIso(form.data_vencimento.value);
+    if (!vencimento) return falha('Informe o vencimento (dd/mm/aaaa).');
+    if (form.data_aquisicao.value && !parseDataBrParaIso(form.data_aquisicao.value)) return falha('Data da compra invalida.');
+    const custo = getMoedaValue(form.custo_unitario);
+    const ok = await confirmarAcao({
+      titulo: 'Cadastrar pneus',
+      mensagem: `Cadastrar <strong>${fogos.length} pneu(s)</strong> de ${formatarMoeda(custo)} cada (total ${formatarMoeda(fogos.length * custo)}), vencimento ${formatarDataBr(vencimento)}? Sera criada uma conta a pagar para cada pneu.`,
+      textoConfirmar: 'Cadastrar',
+      perigo: false,
+    });
+    if (!ok) return;
+    try {
+      const r = await post('/pneus/lote', {
+        numeros_fogo: fogos,
+        marca: form.marca.value || null,
+        modelo: form.modelo.value || null,
+        medida: form.medida.value,
+        custo_unitario: custo,
+        fornecedor_id: fornecedorSelect.getValue(),
+        data_aquisicao: form.data_aquisicao.value ? parseDataBrParaIso(form.data_aquisicao.value) : null,
+        data_vencimento: vencimento,
+        documento: form.documento.value || null,
+        observacao: form.observacao.value || null,
+      });
+      fecharModal();
+      mostrarToast(`${r.quantidade} pneus cadastrados (${formatarMoeda(r.valor_total)} em contas a pagar).`);
+      recarregar();
+    } catch (err) {
+      falha(err.message);
+    }
+  });
+  abrirModal({ titulo: 'Compra de varios pneus', conteudo: form, largura: 'max-w-2xl' });
 }
 
 async function abrirFormularioAquisicao(recarregar) {
@@ -326,7 +413,10 @@ export async function render(container) {
   container.innerHTML = `
     <div class="mb-4 flex items-center justify-between">
       <h1 class="text-xl font-bold text-slate-900">Pneus</h1>
-      <button type="button" class="btn-secondary btn-sm" data-diagrama>Ver diagrama de eixos do conjunto</button>
+      <div class="flex flex-wrap gap-2">
+        ${podeGerenciar('pneus') ? '<button type="button" class="btn-primary btn-sm" data-compra-lote>Compra de varios pneus</button>' : ''}
+        <button type="button" class="btn-secondary btn-sm" data-diagrama>Ver diagrama de eixos do conjunto</button>
+      </div>
     </div>
     <div class="card mb-4 grid grid-cols-1 gap-3 p-4 sm:grid-cols-3">
       <div class="sm:col-span-2"><label class="label">Conjunto</label><div data-filtro-conjunto></div></div>
@@ -334,6 +424,7 @@ export async function render(container) {
     <div data-tabela></div>
   `;
   container.querySelector('[data-diagrama]').addEventListener('click', abrirDiagramaEixos);
+  container.querySelector('[data-compra-lote]')?.addEventListener('click', () => abrirFormularioCompraEmLote(() => tabela.recarregar()));
   const gerenciar = podeGerenciar('pneus');
 
   // Filtro por conjunto: mostra os pneus instalados em qualquer unidade (cavalo ou carreta) da composicao.

@@ -210,13 +210,73 @@ function comissaoDaTratora(veiculoId, inicio, fim) {
   `).get(inicio, fim, veiculoId).total;
 }
 
+// ---- Historico de composicao (a que conjunto uma placa pertence EM CADA DATA) ----
+//
+// O cavalo, a carreta e o motorista mudam com o tempo: a mesma placa aparece em mais de um
+// conjunto (ex.: o TPN8E74 rodou no conjunto do Waldoir e depois no do Maicon Barba). Antes o custo
+// dela ia INTEIRO para o conjunto mais recente, e o anterior ficava com a receita sem nenhum custo.
+//
+// Regra: o custo de uma placa, numa data, vai para o conjunto da ULTIMA VIAGEM dessa placa iniciada
+// ate aquela data (antes da 1a viagem, vale a 1a). As viagens ja carregam o conjunto de cada epoca,
+// entao nao e preciso cadastrar "validade" de composicao. Placa sem nenhuma viagem usa o conjunto
+// ativo mais recente (conjuntoDonoPorVeiculo). A soma dos conjuntos continua igual ao total.
+
+function diaAnterior(dataIso) {
+  const d = new Date(`${dataIso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+// [{ conjunto_id, de, ate }] cobrindo todas as datas, ou null se a placa nunca fez viagem.
+function linhaDoTempoDoVeiculo(veiculoId) {
+  const viagens = db.prepare(`
+    SELECT vg.conjunto_id, vg.data_inicio
+    FROM viagens vg JOIN conjunto_itens ci ON ci.conjunto_id = vg.conjunto_id AND ci.veiculo_id = ?
+    ORDER BY vg.data_inicio, vg.id
+  `).all(veiculoId);
+  if (!viagens.length) return null;
+  const segmentos = [];
+  viagens.forEach((v, i) => {
+    const de = i === 0 ? '0000-01-01' : v.data_inicio;
+    const proxima = viagens[i + 1];
+    const ate = proxima ? diaAnterior(proxima.data_inicio) : '9999-12-31';
+    if (de > ate) return; // duas viagens na mesma data: vale a seguinte
+    const ultimo = segmentos[segmentos.length - 1];
+    if (ultimo && ultimo.conjunto_id === v.conjunto_id) ultimo.ate = ate;
+    else segmentos.push({ conjunto_id: v.conjunto_id, de, ate });
+  });
+  return segmentos;
+}
+
+// Sub-periodos de [inicio, fim] em que a placa conta como parte deste conjunto.
+function periodosDoVeiculoNoConjunto(veiculoId, conjuntoId, inicio, fim, donoPorVeiculo) {
+  const linha = linhaDoTempoDoVeiculo(veiculoId);
+  if (!linha) return donoPorVeiculo.get(veiculoId) === conjuntoId ? [[inicio, fim]] : [];
+  return linha
+    .filter((s) => s.conjunto_id === conjuntoId)
+    .map((s) => [s.de > inicio ? s.de : inicio, s.ate < fim ? s.ate : fim])
+    .filter(([a, b]) => a <= b);
+}
+
+// Soma os custos da placa em cada sub-periodo (mesma conta de custosDoVeiculo).
+function custosDoVeiculoNosPeriodos(veiculoId, periodos) {
+  const total = custosVazios();
+  for (const [a, b] of periodos) {
+    const c = custosDoVeiculo(veiculoId, a, b);
+    if (!c) continue;
+    for (const chave of Object.keys(total)) total[chave] += c[chave];
+  }
+  return total;
+}
+
 // Resultado de UM conjunto no periodo, com o custo de cada unidade.
 function resultadoDoConjunto(conjunto, inicio, fim, donoPorVeiculo) {
   const dono = donoPorVeiculo || conjuntoDonoPorVeiculo(conjunto.empresa_id);
   const custos = custosVazios();
   const porVeiculo = veiculosDoConjunto(conjunto.id).map((v) => {
-    const proprio = dono.get(v.id) === conjunto.id;
-    const c = proprio ? (custosDoVeiculo(v.id, inicio, fim) || custosVazios()) : custosVazios();
+    const periodos = periodosDoVeiculoNoConjunto(v.id, conjunto.id, inicio, fim, dono);
+    const proprio = periodos.length > 0;
+    const c = custosDoVeiculoNosPeriodos(v.id, periodos);
     for (const chave of Object.keys(custos)) custos[chave] += c[chave];
     return { veiculo_id: v.id, placa: v.placa, tipo: v.tipo, custos: c, contabilizadoEmOutroConjunto: !proprio };
   });
@@ -272,5 +332,5 @@ function totaisGeraisDoPeriodo(empresaId, inicio, fim) {
 module.exports = {
   somar, periodoOuTudo, periodoRealizado, custosDoCentroCusto, receitaECustosDaViagemPorCentro, custosDiretosDoVeiculo, resultadoDoVeiculo, totaisGeraisDoPeriodo,
   DATA_RECEITA_SQL, CATEGORIAS_CUSTO, receitaTotalDoPeriodo, receitaDoConjunto, custosDoVeiculo, conjuntoDonoPorVeiculo, veiculosDoConjunto,
-  resultadoDoConjunto, custosDeVeiculosSemComposicao, DATA_VIAGEM_SQL, TRATORA_DA_VIAGEM_SQL, comissaoDaTratora,
+  resultadoDoConjunto, custosDeVeiculosSemComposicao, DATA_VIAGEM_SQL, TRATORA_DA_VIAGEM_SQL, comissaoDaTratora, periodosDoVeiculoNoConjunto,
 };

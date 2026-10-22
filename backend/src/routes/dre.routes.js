@@ -9,7 +9,7 @@ const { hojeIsoBrasilia } = require('../utils/dataHora');
 const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
 const {
   somar, periodoRealizado, custosDoCentroCusto, receitaECustosDaViagemPorCentro, custosDiretosDoVeiculo, totaisGeraisDoPeriodo,
-  DATA_RECEITA_SQL, CATEGORIAS_CUSTO, DATA_VIAGEM_SQL, TRATORA_DA_VIAGEM_SQL, comissaoDaTratora, conjuntoDonoPorVeiculo, resultadoDoConjunto, custosDeVeiculosSemComposicao,
+  DATA_RECEITA_SQL, CATEGORIAS_CUSTO, DATA_VIAGEM_SQL, TRATORA_DA_VIAGEM_SQL, comissaoDaTratora, conjuntoDonoPorVeiculo, resultadoDoConjunto, custosDeVeiculosSemComposicao, periodosDoVeiculoNoConjunto,
 } = require('../utils/dreHelper');
 
 const router = express.Router();
@@ -214,8 +214,11 @@ router.get('/conjunto/:conjuntoId/detalhe/:categoria', requerAcessoModulo('dre',
     const veiculo = db.prepare('SELECT * FROM veiculos WHERE id = ?').get(item.veiculo_id);
     const centroCusto = buscarCentroCustoDoVeiculo(veiculo.id);
     if (!centroCusto) continue;
-    for (const l of lancamentosDoVeiculo(veiculo, centroCusto, categoria, inicio, fim)) {
-      linhas.push({ ...l, veiculo_id: veiculo.id, placa: veiculo.placa, veiculo_tipo: veiculo.tipo });
+    // So os lancamentos das datas em que a placa pertence a ESTE conjunto (ver periodosDoVeiculoNoConjunto).
+    for (const [de, ate] of periodosDoVeiculoNoConjunto(veiculo.id, conjunto.id, inicio, fim, dono)) {
+      for (const l of lancamentosDoVeiculo(veiculo, centroCusto, categoria, de, ate)) {
+        linhas.push({ ...l, veiculo_id: veiculo.id, placa: veiculo.placa, veiculo_tipo: veiculo.tipo });
+      }
     }
   }
   linhas.sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : 0));

@@ -14,6 +14,7 @@ const {
 } = require('../utils/dataHora');
 const { criarDespesaViagem, criarContaPagarCombinada, resolverContaPagarAposEdicao, exigirKmAbastecimento } = require('../utils/despesaViagemHelper');
 const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
+const { criarDespesaVinculada, removerDespesaVinculada } = require('../utils/custoVinculadoHelper');
 
 const router = express.Router();
 
@@ -409,8 +410,55 @@ router.get('/fretes/:freteId/baixas', requerAcessoModulo('viagens', 'Visualizar'
   if (!frete) throw new ApiError(404, 'Frete nao encontrado.');
   const receber = db.prepare('SELECT * FROM contas_receber WHERE frete_id = ?').get(req.params.freteId);
   if (!receber) throw new ApiError(404, 'Recebivel deste frete nao encontrado.');
-  const baixas = db.prepare('SELECT * FROM contas_receber_baixas WHERE contas_receber_id = ? ORDER BY data, id').all(receber.id);
+  // Cada baixa traz o custo lancado a partir dela (se houver): ver POST /fretes/baixas/:baixaId/custo.
+  const baixas = db.prepare(`
+    SELECT b.*, df.id AS custo_id, df.valor AS custo_valor, df.centro_custo_id AS custo_centro_id,
+           cc.nome AS custo_centro_nome, cat.nome AS custo_categoria_nome
+    FROM contas_receber_baixas b
+    LEFT JOIN despesas_fixas df ON df.id = b.despesa_fixa_id
+    LEFT JOIN centros_custo cc ON cc.id = df.centro_custo_id
+    LEFT JOIN categorias_despesa cat ON cat.id = df.categoria_id
+    WHERE b.contas_receber_id = ? ORDER BY b.data, b.id
+  `).all(receber.id);
   res.json({ frete, contaReceber: receber, baixas });
+}));
+
+// Baixa que e abatimento do frete (desconto/pedagio/outro) mas, na pratica, foi um CUSTO da placa
+// (ex.: o cliente comprou 4 pneus do caminhao e abateu do frete): lanca a despesa no centro de
+// custo escolhido - entra no DRE sem gerar conta a pagar (o dinheiro nunca saiu da empresa).
+const TIPOS_BAIXA_QUE_VIRAM_CUSTO = ['Pedagio', 'Desconto', 'Outro'];
+
+router.post('/fretes/baixas/:baixaId/custo', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { centro_custo_id, categoria_id, descricao, data } = req.body;
+  const resultado = withTransaction(db, () => {
+    const baixa = db.prepare('SELECT * FROM contas_receber_baixas WHERE id = ? AND empresa_id = ?').get(req.params.baixaId, req.empresaId);
+    if (!baixa) throw new ApiError(404, 'Baixa nao encontrada.');
+    if (!TIPOS_BAIXA_QUE_VIRAM_CUSTO.includes(baixa.tipo)) {
+      throw new ApiError(400, 'So baixas de desconto, pedagio ou outro (abatimentos do frete) podem virar custo.');
+    }
+    if (baixa.despesa_fixa_id && db.prepare('SELECT id FROM despesas_fixas WHERE id = ?').get(baixa.despesa_fixa_id)) {
+      throw new ApiError(409, 'Esta baixa ja foi lancada como custo.');
+    }
+    const frete = db.prepare('SELECT f.id FROM fretes f JOIN contas_receber cr ON cr.frete_id = f.id WHERE cr.id = ?').get(baixa.contas_receber_id);
+    const { despesa } = criarDespesaVinculada({
+      empresaId: req.empresaId, usuarioId: req.usuario.id, centroCustoId: Number(centro_custo_id), categoriaId: Number(categoria_id), valor: baixa.valor,
+      data: data || baixa.data,
+      descricao: descricao || `${baixa.tipo} DO FRETE #${frete ? frete.id : ''}${baixa.descricao ? ` - ${baixa.descricao}` : ''}`,
+    });
+    db.prepare('UPDATE contas_receber_baixas SET despesa_fixa_id = ? WHERE id = ?').run(despesa.id, baixa.id);
+    return { baixa: db.prepare('SELECT * FROM contas_receber_baixas WHERE id = ?').get(baixa.id), despesa };
+  });
+  res.status(201).json(resultado);
+}));
+
+router.delete('/fretes/baixas/:baixaId/custo', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  withTransaction(db, () => {
+    const baixa = db.prepare('SELECT * FROM contas_receber_baixas WHERE id = ? AND empresa_id = ?').get(req.params.baixaId, req.empresaId);
+    if (!baixa) throw new ApiError(404, 'Baixa nao encontrada.');
+    if (!baixa.despesa_fixa_id) throw new ApiError(400, 'Esta baixa nao tem custo lancado.');
+    removerDespesaVinculada({ empresaId: req.empresaId, usuarioId: req.usuario.id, despesaFixaId: baixa.despesa_fixa_id });
+  });
+  res.status(204).send();
 }));
 
 const TIPOS_BAIXA = ['Adiantamento', 'Pedagio', 'Saldo', 'Desconto', 'Outro'];
@@ -487,6 +535,8 @@ router.delete('/fretes/baixas/:baixaId', requerAcessoModulo('viagens', 'Gerencia
       .run(novoValorRecebido, novoValorDescontado, novoStatus, receber.id);
 
     db.prepare('DELETE FROM contas_receber_baixas WHERE id = ?').run(baixa.id);
+    // O custo lancado a partir desta baixa nao faz mais sentido sem ela.
+    if (baixa.despesa_fixa_id) removerDespesaVinculada({ empresaId: req.empresaId, usuarioId: req.usuario.id, despesaFixaId: baixa.despesa_fixa_id });
     return baixa;
   });
 

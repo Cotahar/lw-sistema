@@ -1,5 +1,5 @@
 import { get, post, put, del } from '../api.js';
-import { abrirModal, confirmarAcao } from './modal.js';
+import { abrirModal, fecharModal, confirmarAcao } from './modal.js';
 import { mostrarToast, mostrarErro } from './toast.js';
 import { criarSearchableSelect } from './searchableSelect.js';
 import { criarOcorrencias } from './ocorrencias.js';
@@ -12,6 +12,65 @@ export async function buscarContasBancarias(termo) {
   const contas = await get('/contas-bancarias');
   const filtradas = termo ? contas.filter((c) => c.nome.toLowerCase().includes(termo.toLowerCase())) : contas;
   return filtradas.map((c) => ({ value: c.id, label: c.nome }));
+}
+
+// Baixa do frete (desconto/pedagio/outro) que foi, na pratica, um CUSTO de uma placa (ex.: o cliente comprou 4
+// pneus do caminhao e abateu do frete): lanca a despesa no centro de custo escolhido - entra no DRE sem gerar
+// conta a pagar (o dinheiro nunca saiu da empresa).
+const TIPOS_QUE_VIRAM_CUSTO = ['Pedagio', 'Desconto', 'Outro'];
+
+async function abrirLancarComoCusto(baixa, aoConcluir) {
+  const categorias = await get('/categorias-despesa');
+  const form = document.createElement('form');
+  form.className = 'space-y-4';
+  form.innerHTML = `
+    <p class="text-sm text-slate-500">${esc(baixa.tipo)} de <strong>${formatarMoeda(baixa.valor)}</strong>${baixa.descricao ? ` (${esc(baixa.descricao)})` : ''}. O valor entra como <strong>custo</strong> da placa escolhida no DRE, sem criar conta a pagar.</p>
+    <div class="grid grid-cols-2 gap-3">
+      <div><label class="label">Placa / centro de custo *</label><div data-centro></div></div>
+      <div>
+        <label class="label">Categoria *</label>
+        <select name="categoria_id" class="input" required><option value="">Selecione...</option>${categorias.filter((c) => !c.oculta_na_busca).map((c) => `<option value="${c.id}">${esc(c.nome)}</option>`).join('')}</select>
+      </div>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div><label class="label">Data do custo</label><input type="text" name="data" class="input" /></div>
+      <div><label class="label">Descricao</label><input type="text" name="descricao" class="input" /></div>
+    </div>
+    <p class="hidden text-sm text-red-600" data-erro></p>
+    <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Lancar como custo</button></div>
+  `;
+  attachDataMask(form.data, baixa.data);
+  attachUppercaseInput(form.descricao);
+  const centroSelect = criarSearchableSelect({
+    buscar: async (termo) => (await get(`/centros-custo${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((c) => ({ value: c.id, label: c.nome })),
+    placeholder: 'Pesquisar placa...',
+  });
+  form.querySelector('[data-centro]').appendChild(centroSelect.el);
+  const erro = form.querySelector('[data-erro]');
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    erro.classList.add('hidden');
+    if (!centroSelect.getValue()) { erro.textContent = 'Escolha a placa / centro de custo.'; erro.classList.remove('hidden'); return; }
+    try {
+      await post(`/viagens/fretes/baixas/${baixa.id}/custo`, {
+        centro_custo_id: centroSelect.getValue(),
+        categoria_id: Number(form.categoria_id.value),
+        data: form.data.value ? parseDataBrParaIso(form.data.value) : null,
+        descricao: form.descricao.value || null,
+      });
+      fecharModal();
+      mostrarToast('Custo lancado na placa.');
+      await aoConcluir();
+    } catch (err) {
+      erro.textContent = err.message;
+      erro.classList.remove('hidden');
+    }
+  });
+  abrirModal({ titulo: 'Lancar baixa como custo', conteudo: form, largura: 'max-w-lg' });
+}
+
+function esc(texto) {
+  return String(texto === null || texto === undefined ? '' : texto).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 // Modal de gestao do recebivel de um frete (ver saldo, lancar/remover baixas,
@@ -29,9 +88,11 @@ export async function abrirBaixasFrete(frete, recarregar, gerenciar) {
     // descarga (chamado em ligarEventos, depois do render) saber o valor
     // atual sem precisar reler o DOM.
     let freteRowAtual = freteAtual;
+    let baixasAtuais = baixas;
 
     function montarConteudo(freteRow, cr, listaBaixas) {
       freteRowAtual = freteRow;
+      baixasAtuais = listaBaixas;
       const saldoEmAberto = cr.valor - cr.valor_recebido - cr.valor_descontado;
       const wrapper = document.createElement('div');
       wrapper.innerHTML = `
@@ -50,7 +111,7 @@ export async function abrirBaixasFrete(frete, recarregar, gerenciar) {
             : `<span>${freteRow.data_descarga ? formatarDataBr(freteRow.data_descarga) : '-'}</span>`}
         </div>
         <table class="mb-4 w-full text-sm">
-          <thead><tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500"><th class="py-1">Data</th><th class="py-1">Tipo</th><th class="py-1 text-right">Valor</th><th class="py-1">Obs.</th>${gerenciar ? '<th></th>' : ''}</tr></thead>
+          <thead><tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500"><th class="py-1">Data</th><th class="py-1">Tipo</th><th class="py-1 text-right">Valor</th><th class="py-1">Obs.</th>${gerenciar ? '<th class="py-1">Custo</th><th></th>' : ''}</tr></thead>
           <tbody data-lista-baixas>
             ${listaBaixas.map((b) => `
               <tr class="border-b border-slate-100" data-baixa-id="${b.id}">
@@ -58,9 +119,12 @@ export async function abrirBaixasFrete(frete, recarregar, gerenciar) {
                 <td class="py-1">${b.tipo}${b.conta_bancaria_id ? '' : ' (sem caixa)'}</td>
                 <td class="py-1 text-right">${formatarMoeda(b.valor)}</td>
                 <td class="py-1">${b.descricao || '-'}</td>
-                ${gerenciar ? `<td class="py-1 text-right"><button type="button" class="text-xs text-red-600 hover:underline" data-remover-baixa="${b.id}">Remover</button></td>` : ''}
+                ${gerenciar ? `<td class="py-1 text-xs">${b.custo_id
+                  ? `<span class="badge-neutro" title="Custo lancado no DRE">${esc(b.custo_centro_nome)} &middot; ${esc(b.custo_categoria_nome)}</span> <button type="button" class="text-red-600 hover:underline" data-desfazer-custo="${b.id}">Desfazer</button>`
+                  : (TIPOS_QUE_VIRAM_CUSTO.includes(b.tipo) ? `<button type="button" class="text-brand-yellow hover:underline" data-lancar-custo="${b.id}">Lancar como custo</button>` : '')}</td>
+                <td class="py-1 text-right"><button type="button" class="text-xs text-red-600 hover:underline" data-remover-baixa="${b.id}">Remover</button></td>` : ''}
               </tr>
-            `).join('') || `<tr><td colspan="5" class="py-3 text-center text-slate-400">Nenhuma baixa lancada.</td></tr>`}
+            `).join('') || `<tr><td colspan="6" class="py-3 text-center text-slate-400">Nenhuma baixa lancada.</td></tr>`}
           </tbody>
         </table>
         ${gerenciar && saldoEmAberto > 0 ? `
@@ -103,6 +167,26 @@ export async function abrirBaixasFrete(frete, recarregar, gerenciar) {
           try {
             await del(`/viagens/fretes/baixas/${btn.dataset.removerBaixa}`);
             mostrarToast('Baixa removida.');
+            await religar();
+            recarregar();
+          } catch (err) { mostrarErro(err); }
+        });
+      });
+
+      overlay.querySelectorAll('[data-lancar-custo]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const baixa = baixasAtuais.find((b) => String(b.id) === btn.dataset.lancarCusto);
+          if (!baixa) return;
+          try { await abrirLancarComoCusto(baixa, async () => { await religar(); recarregar(); }); } catch (err) { mostrarErro(err); }
+        });
+      });
+      overlay.querySelectorAll('[data-desfazer-custo]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const ok = await confirmarAcao({ titulo: 'Desfazer custo', mensagem: 'Remover o custo lancado a partir desta baixa? Ele sai do DRE da placa.', textoConfirmar: 'Desfazer' });
+          if (!ok) return;
+          try {
+            await del(`/viagens/fretes/baixas/${btn.dataset.desfazerCusto}/custo`);
+            mostrarToast('Custo removido.');
             await religar();
             recarregar();
           } catch (err) { mostrarErro(err); }

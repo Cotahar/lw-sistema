@@ -144,8 +144,9 @@ test('veiculo em dois conjuntos so tem o custo contado uma vez no total da frota
   assert.equal(somaCustos, res.body.custoTotalVeiculos, 'a soma por conjunto nao pode passar o total da frota');
   const original = res.body.porConjunto.find((c) => c.conjunto_id === conjuntoId);
   const novo = res.body.porConjunto.find((c) => c.conjunto_id === outro.body.id);
-  assert.equal(original.custoPorVeiculo.find((v) => v.placa === 'DRC2B22').custoTotal, 0, 'a carreta passou a ser contabilizada no conjunto mais recente');
-  assert.equal(novo.custoTotal, 20000);
+  // O custo vai para o conjunto em que a placa de fato rodou (o original tem as viagens); o novo, sem viagens, nao recebe nada.
+  assert.equal(original.custoPorVeiculo.find((v) => v.placa === 'DRC2B22').custoTotal, 20000, 'a carreta continua no conjunto onde fez as viagens');
+  assert.equal(novo.custoTotal, 0);
 });
 
 test('sem data final o DRE vai so ate hoje: parcelas futuras de financiamento nao entram (bug do "1 milhao")', async () => {

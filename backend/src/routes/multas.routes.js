@@ -7,6 +7,8 @@ const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { registrarAuditoria } = require('../utils/audit');
 const { withTransaction } = require('../utils/transaction');
 const { hojeIsoBrasilia, agoraDataHoraIsoBrasilia } = require('../utils/dataHora');
+const { buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
+const { criarDespesaVinculada, removerDespesaVinculada } = require('../utils/custoVinculadoHelper');
 
 const router = express.Router();
 
@@ -101,6 +103,9 @@ router.put('/:id', requerAcessoModulo('multas', 'Gerenciar'), exigirEmpresaEspec
     }
   }
   if (!sets.length) throw new ApiError(400, 'Nenhum campo valido informado.');
+  if (req.body.valor_original !== undefined && req.body.valor_original !== antes.valor_original && antes.despesa_fixa_id) {
+    throw new ApiError(400, 'Esta multa ja virou custo (despesa e conta a pagar): para mudar o valor, volte o status para Aguardando indicacao e marque de novo.');
+  }
   if (req.body.data_notificacao !== undefined) {
     sets.push('prazo_indicacao = ?');
     valores.push(somarDias(req.body.data_notificacao, PRAZO_INDICACAO_DIAS));
@@ -131,6 +136,35 @@ router.post('/:id/indicar-condutor', requerAcessoModulo('multas', 'Gerenciar'), 
 }));
 
 const STATUS_VALIDOS = ['AguardandoIndicacao', 'CondutorIndicado', 'NaoIndicado', 'Paga', 'Recorrida', 'Cancelada'];
+// A multa vira CUSTO da placa (DRE) quando a empresa assume o pagamento: condutor nao indicado (valor em
+// dobro) ou multa paga. Condutor indicado, recorrida e cancelada nao custam nada para a empresa.
+const STATUS_COM_CUSTO = ['NaoIndicado', 'Paga'];
+
+function categoriaMultaId() {
+  const existente = db.prepare("SELECT id FROM categorias_despesa WHERE nome = 'MULTA'").get();
+  if (existente) return existente.id;
+  return db.prepare("INSERT INTO categorias_despesa (nome) VALUES ('MULTA')").run().lastInsertRowid;
+}
+
+// Mantem o custo da multa (despesa fixa no centro de custo da placa + conta a pagar) de acordo com o status.
+// Roda dentro da transacao da troca de status.
+function sincronizarCustoDaMulta(req, multa, novoStatus, valorCusto) {
+  const temCusto = multa.despesa_fixa_id && db.prepare('SELECT id FROM despesas_fixas WHERE id = ?').get(multa.despesa_fixa_id);
+  if (!STATUS_COM_CUSTO.includes(novoStatus)) {
+    if (temCusto) removerDespesaVinculada({ empresaId: req.empresaId, usuarioId: req.usuario.id, despesaFixaId: multa.despesa_fixa_id });
+    return null;
+  }
+  if (temCusto) return multa.despesa_fixa_id;
+  const centro = buscarCentroCustoDoVeiculo(multa.veiculo_id);
+  if (!centro) throw new ApiError(400, 'O veiculo da multa nao tem centro de custo.');
+  const veiculo = db.prepare('SELECT placa FROM veiculos WHERE id = ?').get(multa.veiculo_id);
+  const { despesa } = criarDespesaVinculada({
+    empresaId: req.empresaId, usuarioId: req.usuario.id, centroCustoId: centro.id, categoriaId: categoriaMultaId(), valor: valorCusto, data: hojeIsoBrasilia(),
+    descricao: `MULTA ${veiculo ? veiculo.placa : ''} - ${multa.descricao}${multa.numero_ait ? ` - AIT ${multa.numero_ait}` : ''}`,
+    conta: { vencimento: hojeIsoBrasilia(), documento: multa.numero_ait || null, observacao: `MULTA #${multa.id}${novoStatus === 'NaoIndicado' ? ' - CONDUTOR NAO INDICADO (VALOR EM DOBRO)' : ''}` },
+  });
+  return despesa.id;
+}
 
 router.post('/:id/status', requerAcessoModulo('multas', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const { status } = req.body;
@@ -141,9 +175,14 @@ router.post('/:id/status', requerAcessoModulo('multas', 'Gerenciar'), exigirEmpr
   // Nao indicar o condutor a tempo dobra o valor da multa (art. 257 par. 8 CTB) -
   // calculado aqui, nao editavel manualmente, pra nao divergir da regra legal.
   const valorNaoIndicacao = status === 'NaoIndicado' ? antes.valor_original * 2 : antes.valor_nao_indicacao;
+  // Valor que a empresa paga: o dobro se o condutor nao foi indicado, senao o valor original.
+  const valorCusto = status === 'NaoIndicado' ? valorNaoIndicacao : (valorNaoIndicacao || antes.valor_original);
 
-  db.prepare(`UPDATE multas SET status = ?, valor_nao_indicacao = ?, atualizado_em = datetime('now', '-3 hours') WHERE id = ?`)
-    .run(status, valorNaoIndicacao, req.params.id);
+  withTransaction(db, () => {
+    const despesaId = sincronizarCustoDaMulta(req, antes, status, valorCusto);
+    db.prepare(`UPDATE multas SET status = ?, valor_nao_indicacao = ?, despesa_fixa_id = ?, atualizado_em = datetime('now', '-3 hours') WHERE id = ?`)
+      .run(status, valorNaoIndicacao, despesaId, req.params.id);
+  });
   const depois = db.prepare(`${SELECT_LISTA} WHERE m.id = ?`).get(req.params.id);
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'multas', registroId: depois.id, acao: 'UPDATE', antes, depois });
   res.json(comDiasRestantes(depois));

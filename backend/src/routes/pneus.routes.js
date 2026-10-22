@@ -57,39 +57,74 @@ router.get('/:id/eventos', requerAcessoModulo('pneus', 'Visualizar'), exigirEmpr
   res.json(db.prepare('SELECT * FROM pneu_eventos WHERE pneu_id = ? ORDER BY data DESC, id DESC').all(req.params.id));
 }));
 
-// Aquisicao de pneu novo: entra no estoque e gera Conta a Pagar. O custo fica
-// "pendente" ate a primeira instalacao, quando finalmente bate no DRE do veiculo.
+// Compra de UM pneu novo (dentro da transacao do chamador): entra no estoque, grava o evento de
+// aquisicao e - quando ha custo - gera a Conta a Pagar dele. O custo fica "pendente" ate a primeira
+// instalacao, quando finalmente bate no DRE do veiculo.
+function registrarCompraDePneu({ empresaId, usuarioId, numero_fogo, marca, modelo, medida, custo_unitario, fornecedor_id, data_aquisicao, data_vencimento, documento, observacao, descricaoConta }) {
+  const info = db.prepare(`
+    INSERT INTO pneus (empresa_id, numero_fogo, marca, modelo, medida, custo_unitario, status, custo_pendente_dre, fornecedor_id, data_aquisicao)
+    VALUES (?, ?, ?, ?, ?, ?, 'Estoque', ?, ?, COALESCE(?, date('now', '-3 hours')))
+  `).run(empresaId, numero_fogo.toUpperCase(), marca ? marca.toUpperCase() : null, modelo ? modelo.toUpperCase() : null, medida.toUpperCase(), custo_unitario, custo_unitario, fornecedor_id || null, data_aquisicao || null);
+  const novoPneu = db.prepare('SELECT * FROM pneus WHERE id = ?').get(info.lastInsertRowid);
+
+  const evento = registrarEvento({
+    empresaId, pneuId: novoPneu.id, tipoEvento: 'Aquisicao', fornecedorId: fornecedor_id, custo: custo_unitario, usuarioId,
+  });
+
+  // Pneu sem custo (ja estava no estoque, sem custo direto): nao ha o que pagar, entao nao gera
+  // conta a pagar - uma conta de R$ 0,00 so poluia o Contas a Pagar.
+  if (custo_unitario > 0) {
+    db.prepare(`
+      INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id, documento, observacao)
+      VALUES (?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), 'Pendente', 'PneuEvento', ?, ?, ?)
+    `).run(empresaId, fornecedor_id || null, (descricaoConta || `Compra de pneu: ${novoPneu.numero_fogo}`).toUpperCase(), custo_unitario, data_vencimento || null, evento.id, documento ? String(documento).trim().toUpperCase() || null : null, observacao ? String(observacao).trim().toUpperCase() || null : null);
+  }
+  return novoPneu;
+}
+
+// Aquisicao de pneu novo.
 router.post('/', requerAcessoModulo('pneus', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const { numero_fogo, marca, modelo, medida, custo_unitario, fornecedor_id, data_aquisicao } = req.body;
+  const { numero_fogo, marca, modelo, medida, custo_unitario, fornecedor_id, data_aquisicao, data_vencimento, documento, observacao } = req.body;
   if (!numero_fogo || !medida || custo_unitario === undefined) {
     throw new ApiError(400, 'Preencha numero_fogo, medida e custo_unitario.');
   }
 
-  const pneu = withTransaction(db, () => {
-    const info = db.prepare(`
-      INSERT INTO pneus (empresa_id, numero_fogo, marca, modelo, medida, custo_unitario, status, custo_pendente_dre, fornecedor_id, data_aquisicao)
-      VALUES (?, ?, ?, ?, ?, ?, 'Estoque', ?, ?, COALESCE(?, date('now', '-3 hours')))
-    `).run(req.empresaId, numero_fogo.toUpperCase(), marca ? marca.toUpperCase() : null, modelo ? modelo.toUpperCase() : null, medida.toUpperCase(), custo_unitario, custo_unitario, fornecedor_id || null, data_aquisicao || null);
-    const novoPneu = db.prepare('SELECT * FROM pneus WHERE id = ?').get(info.lastInsertRowid);
-
-    const evento = registrarEvento({
-      empresaId: req.empresaId, pneuId: novoPneu.id, tipoEvento: 'Aquisicao', fornecedorId: fornecedor_id, custo: custo_unitario, usuarioId: req.usuario.id,
-    });
-
-    // Pneu sem custo (ja estava no estoque, sem custo direto): nao ha o que pagar, entao nao gera
-    // conta a pagar - uma conta de R$ 0,00 so poluia o Contas a Pagar.
-    if (custo_unitario > 0) {
-      db.prepare(`
-        INSERT INTO contas_pagar (empresa_id, fornecedor_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
-        VALUES (?, ?, ?, ?, date('now', '-3 hours'), 'Pendente', 'PneuEvento', ?)
-      `).run(req.empresaId, fornecedor_id || null, `Compra de pneu: ${novoPneu.numero_fogo}`.toUpperCase(), custo_unitario, evento.id);
-    }
-
-    return novoPneu;
-  });
+  const pneu = withTransaction(db, () => registrarCompraDePneu({
+    empresaId: req.empresaId, usuarioId: req.usuario.id, numero_fogo, marca, modelo, medida, custo_unitario, fornecedor_id, data_aquisicao, data_vencimento, documento, observacao,
+  }));
 
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'pneus', registroId: pneu.id, acao: 'INSERT', depois: pneu });
   res.status(201).json(pneu);
+}));
+
+// COMPRA DE VARIOS PNEUS de uma vez (ex.: 8 pneus na mesma nota): os dados da compra (medida, marca, modelo,
+// custo unitario, fornecedor, vencimento, nota) valem para todos; cada pneu entra com o seu numero de fogo.
+// Tudo ou nada. Cada pneu gera a SUA conta a pagar (mesmo fornecedor/vencimento/nota) - assim cada um continua
+// podendo ser revertido/baixado isoladamente, e a baixa em lote do Contas a Pagar paga a nota inteira.
+router.post('/lote', requerAcessoModulo('pneus', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { numeros_fogo, marca, modelo, medida, custo_unitario, fornecedor_id, data_aquisicao, data_vencimento, documento, observacao } = req.body;
+  if (!medida || custo_unitario === undefined) throw new ApiError(400, 'Preencha medida e custo_unitario.');
+  if (!Number.isInteger(custo_unitario) || custo_unitario < 0) throw new ApiError(400, 'O custo unitario precisa ser um valor valido (centavos).');
+  if (!Array.isArray(numeros_fogo) || !numeros_fogo.length) throw new ApiError(400, 'Informe os numeros de fogo dos pneus.');
+  if (numeros_fogo.length > 100) throw new ApiError(400, 'No maximo 100 pneus por compra.');
+  const fogos = numeros_fogo.map((n) => String(n || '').trim().toUpperCase());
+  if (fogos.some((f) => !f)) throw new ApiError(400, 'Preencha o numero de fogo de todos os pneus.');
+  const repetidos = fogos.filter((f, i) => fogos.indexOf(f) !== i);
+  if (repetidos.length) throw new ApiError(400, `Numero de fogo repetido na lista: ${[...new Set(repetidos)].join(', ')}.`);
+  const jaExistem = fogos.filter((f) => db.prepare('SELECT id FROM pneus WHERE numero_fogo = ?').get(f));
+  if (jaExistem.length) throw new ApiError(400, `Ja existe pneu cadastrado com o numero de fogo: ${jaExistem.join(', ')}.`);
+  if (fornecedor_id && !db.prepare('SELECT id FROM fornecedores WHERE id = ? AND empresa_id = ?').get(fornecedor_id, req.empresaId)) {
+    throw new ApiError(400, 'Fornecedor nao encontrado.');
+  }
+
+  const pneus = withTransaction(db, () => fogos.map((numero_fogo, i) => registrarCompraDePneu({
+    empresaId: req.empresaId, usuarioId: req.usuario.id, numero_fogo, marca, modelo, medida, custo_unitario, fornecedor_id, data_aquisicao, data_vencimento, documento, observacao,
+    descricaoConta: `Compra de pneu: ${numero_fogo} (${i + 1}/${fogos.length}${documento ? ` - NF ${documento}` : ''})`,
+  })));
+  for (const pneu of pneus) {
+    registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'pneus', registroId: pneu.id, acao: 'INSERT', depois: pneu });
+  }
+  res.status(201).json({ quantidade: pneus.length, valor_total: custo_unitario * pneus.length, pneus });
 }));
 
 router.put('/:id', requerAcessoModulo('pneus', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {

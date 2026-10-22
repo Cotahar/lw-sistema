@@ -878,6 +878,7 @@ CREATE TABLE contas_receber_baixas (
     descricao           TEXT,
     criado_por          INTEGER REFERENCES usuarios(id),
     criado_em           TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
+    despesa_fixa_id     INTEGER,  -- despesas_fixas.id do custo lancado a partir desta baixa (desconto/pedagio/outro)
     CHECK (tipo != 'Desconto' OR conta_bancaria_id IS NULL)
 );
 CREATE INDEX idx_contas_receber_baixas_receber ON contas_receber_baixas(contas_receber_id);
@@ -1000,6 +1001,7 @@ CREATE TABLE multas (
     observacoes             TEXT,
     criado_por              INTEGER REFERENCES usuarios(id),
     criado_em               TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
+    despesa_fixa_id         INTEGER,  -- despesas_fixas.id do custo da multa paga pela empresa
     atualizado_em           TEXT
 );
 CREATE INDEX idx_multas_veiculo ON multas(veiculo_id);

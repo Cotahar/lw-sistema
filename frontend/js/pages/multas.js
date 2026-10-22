@@ -184,7 +184,7 @@ async function abrirIndicarCondutor(registro, recarregar) {
 async function marcarNaoIndicado(registro, recarregar) {
   const ok = await confirmarAcao({
     titulo: 'Marcar como nao indicado',
-    mensagem: `O prazo pra indicar o condutor desta multa (${registro.veiculo_placa}) vai ser marcado como vencido. O valor dobra automaticamente (Art. 257 par. 8 CTB): de ${formatarMoeda(registro.valor_original)} para ${formatarMoeda(registro.valor_original * 2)}. Confirma?`,
+    mensagem: `O prazo pra indicar o condutor desta multa (${registro.veiculo_placa}) vai ser marcado como vencido. O valor dobra automaticamente (Art. 257 par. 8 CTB): de ${formatarMoeda(registro.valor_original)} para ${formatarMoeda(registro.valor_original * 2)}. Como a empresa passa a pagar, o valor entra como <strong>custo da placa</strong> (DRE) e cria uma <strong>conta a pagar</strong>. Confirma?`,
     textoConfirmar: 'Confirmar',
   });
   if (!ok) return;
@@ -198,7 +198,7 @@ async function marcarNaoIndicado(registro, recarregar) {
 }
 
 async function marcarPaga(registro, recarregar) {
-  const ok = await confirmarAcao({ titulo: 'Marcar como paga', mensagem: `Confirma que a multa do veiculo ${registro.veiculo_placa} foi paga?`, textoConfirmar: 'Confirmar' });
+  const ok = await confirmarAcao({ titulo: 'Marcar como paga', mensagem: `Confirma que a multa do veiculo ${registro.veiculo_placa} foi paga pela empresa? Ela entra como <strong>custo da placa</strong> (DRE) e gera uma <strong>conta a pagar</strong> para registrar o pagamento (se ainda nao existir).`, textoConfirmar: 'Confirmar' });
   if (!ok) return;
   try {
     await post(`/multas/${registro.id}/status`, { status: 'Paga' });

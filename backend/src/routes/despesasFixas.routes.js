@@ -9,6 +9,7 @@ const { registrarAuditoria } = require('../utils/audit');
 const { withTransaction } = require('../utils/transaction');
 const { hojeIsoBrasilia } = require('../utils/dataHora');
 const { criarDespesaRateada } = require('../utils/despesaRateioHelper');
+const { desvincularReferencias } = require('../utils/custoVinculadoHelper');
 
 const router = express.Router();
 
@@ -166,6 +167,7 @@ router.delete('/:id', requerAcessoModulo('despesas_fixas', 'Gerenciar'), exigirE
     if (temParcelaPaga) throw new ApiError(400, 'Nao e possivel excluir uma despesa fixa com parcelas ja pagas.');
     withTransaction(db, () => {
       db.prepare("DELETE FROM contas_pagar WHERE origem_tipo = 'DespesaFixaParcela' AND origem_id IN (SELECT id FROM despesa_fixa_parcelas WHERE despesa_fixa_id = ?)").run(req.params.id);
+      desvincularReferencias(req.params.id);
       db.prepare('DELETE FROM despesas_fixas WHERE id = ?').run(req.params.id);
     });
   } else {
@@ -173,6 +175,7 @@ router.delete('/:id', requerAcessoModulo('despesas_fixas', 'Gerenciar'), exigirE
     if (contaPagar && contaPagar.status !== 'Pendente') throw new ApiError(400, 'Esta despesa ja possui pagamento lancado e nao pode ser excluida.');
     withTransaction(db, () => {
       if (contaPagar) db.prepare('DELETE FROM contas_pagar WHERE id = ?').run(contaPagar.id);
+      desvincularReferencias(req.params.id);
       db.prepare('DELETE FROM despesas_fixas WHERE id = ?').run(req.params.id);
     });
   }
@@ -217,6 +220,7 @@ router.post('/batch-delete', requerAcessoModulo('despesas_fixas', 'Gerenciar'), 
       } else {
         db.prepare("DELETE FROM contas_pagar WHERE origem_tipo = 'DespesaFixa' AND origem_id = ?").run(antes.id);
       }
+      desvincularReferencias(antes.id);
       db.prepare('DELETE FROM despesas_fixas WHERE id = ?').run(antes.id);
       registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'despesas_fixas', registroId: antes.id, acao: 'DELETE', antes });
     }

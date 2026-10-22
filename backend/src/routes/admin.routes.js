@@ -7,6 +7,7 @@ const { withTransaction } = require('../utils/transaction');
 const { desfazerTransferencia } = require('../utils/transferenciaHelper');
 const { dataPrevistaRecebimentoPadrao } = require('../utils/dataHora');
 const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
+const { removerDespesaVinculada } = require('../utils/custoVinculadoHelper');
 
 const router = express.Router();
 router.use(requerAdmin);
@@ -417,6 +418,7 @@ function reverterBaixasFrete(log) {
       db.prepare('UPDATE contas_bancarias SET saldo_atual = saldo_atual - ? WHERE id = ?').run(baixa.valor, baixa.conta_bancaria_id);
     }
     db.prepare('DELETE FROM contas_receber_baixas WHERE id = ?').run(baixa.id);
+    if (baixa.despesa_fixa_id) removerDespesaVinculada({ empresaId: baixa.empresa_id, usuarioId: log.usuario_id, despesaFixaId: baixa.despesa_fixa_id });
     recalcularRecebivel(baixa.contas_receber_id);
     return;
   }
@@ -428,6 +430,7 @@ function reverterBaixasFrete(log) {
     const jaBaixado = receber.valor_recebido + receber.valor_descontado;
     if (jaBaixado + antes.valor > receber.valor) throw new ApiError(400, 'Restaurar esta baixa passaria o valor do recebivel (ha baixas mais novas).');
     reverterGenerico(log);
+    db.prepare('UPDATE contas_receber_baixas SET despesa_fixa_id = NULL WHERE id = ?').run(antes.id); // o custo vinculado foi apagado junto com a baixa
     if (antes.conta_bancaria_id) {
       db.prepare(`
         INSERT INTO movimentacoes_caixa (empresa_id, conta_bancaria_id, tipo, valor, data, descricao, origem_tipo, origem_id, criado_por)
