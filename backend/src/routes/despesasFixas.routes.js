@@ -59,8 +59,8 @@ function excluirGrupoRateio(rateioId) {
 
 router.post('/', requerAcessoModulo('despesas_fixas', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   if (req.body.rateios !== undefined) {
-    const { rateios, categoria_id, valor, data, recorrente, descricao, qtd_parcelas, fornecedor_id, data_vencimento } = req.body;
-    const resultado = criarDespesaRateada({ empresaId: req.empresaId, usuarioId: req.usuario.id, rateios, categoria_id, valor, data, recorrente, descricao, qtd_parcelas, fornecedor_id, data_vencimento });
+    const { rateios, categoria_id, valor, data, recorrente, descricao, qtd_parcelas, fornecedor_id, data_vencimento, documento, observacao } = req.body;
+    const resultado = criarDespesaRateada({ empresaId: req.empresaId, usuarioId: req.usuario.id, rateios, categoria_id, valor, data, recorrente, descricao, qtd_parcelas, fornecedor_id, data_vencimento, documento, observacao });
     for (const d of resultado.despesas) {
       registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'despesas_fixas', registroId: d.id, acao: 'INSERT', depois: d });
     }
@@ -72,6 +72,11 @@ router.post('/', requerAcessoModulo('despesas_fixas', 'Gerenciar'), exigirEmpres
   }
   const centroCusto = db.prepare('SELECT * FROM centros_custo WHERE id = ? AND empresa_id = ?').get(centro_custo_id, req.empresaId);
   if (!centroCusto) throw new ApiError(400, 'Centro de custo nao encontrado.');
+  if (fornecedor_id && !db.prepare('SELECT id FROM fornecedores WHERE id = ? AND empresa_id = ?').get(fornecedor_id, req.empresaId)) {
+    throw new ApiError(400, 'Fornecedor nao encontrado.');
+  }
+  const documento = req.body.documento ? String(req.body.documento).trim() || null : null;
+  const observacao = req.body.observacao ? String(req.body.observacao).trim() || null : null;
 
   const despesa = withTransaction(db, () => {
     const info = db.prepare(`
@@ -81,7 +86,9 @@ router.post('/', requerAcessoModulo('despesas_fixas', 'Gerenciar'), exigirEmpres
     const nova = db.prepare('SELECT * FROM despesas_fixas WHERE id = ?').get(info.lastInsertRowid);
 
     const categoria = db.prepare('SELECT nome FROM categorias_despesa WHERE id = ?').get(categoria_id);
-    const nomeBase = `${categoria ? categoria.nome : 'Despesa fixa'} - ${centroCusto.nome}`.toUpperCase();
+    // A descricao digitada aparece na conta a pagar (antes so ficava na despesa fixa e a conta
+    // saia generica, ex.: "SEGURO - BASE/ADMINISTRATIVO").
+    const nomeBase = `${categoria ? categoria.nome : 'Despesa fixa'} - ${centroCusto.nome}${descricao ? ` - ${String(descricao).trim()}` : ''}`.toUpperCase();
 
     if (qtd_parcelas) {
       // Parcelada: mesmo padrao de financiamentos - uma parcela por mes,
@@ -97,15 +104,15 @@ router.post('/', requerAcessoModulo('despesas_fixas', 'Gerenciar'), exigirEmpres
           VALUES (?, ?, ?, ?, ?)
         `).run(req.empresaId, nova.id, numero, vencimento, valorParcela);
         db.prepare(`
-          INSERT INTO contas_pagar (empresa_id, centro_custo_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
-          VALUES (?, ?, ?, ?, ?, 'Pendente', 'DespesaFixaParcela', ?)
-        `).run(req.empresaId, centro_custo_id, `${nomeBase} - PARCELA ${numero}/${qtd_parcelas}`, valorParcela, vencimento, parcelaInfo.lastInsertRowid);
+          INSERT INTO contas_pagar (empresa_id, fornecedor_id, centro_custo_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id, documento, observacao)
+          VALUES (?, ?, ?, ?, ?, ?, 'Pendente', 'DespesaFixaParcela', ?, ?, ?)
+        `).run(req.empresaId, fornecedor_id || null, centro_custo_id, `${nomeBase} - PARCELA ${numero}/${qtd_parcelas}`, valorParcela, vencimento, parcelaInfo.lastInsertRowid, documento, observacao);
       }
     } else {
       db.prepare(`
-        INSERT INTO contas_pagar (empresa_id, fornecedor_id, centro_custo_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id)
-        VALUES (?, ?, ?, ?, ?, COALESCE(?, ?, date('now', '-3 hours')), 'Pendente', 'DespesaFixa', ?)
-      `).run(req.empresaId, fornecedor_id || null, centro_custo_id, nomeBase, valor, data_vencimento || null, data || null, nova.id);
+        INSERT INTO contas_pagar (empresa_id, fornecedor_id, centro_custo_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id, documento, observacao)
+        VALUES (?, ?, ?, ?, ?, COALESCE(?, ?, date('now', '-3 hours')), 'Pendente', 'DespesaFixa', ?, ?, ?)
+      `).run(req.empresaId, fornecedor_id || null, centro_custo_id, nomeBase, valor, data_vencimento || null, data || null, nova.id, documento, observacao);
     }
 
     return buscarDespesaFixaCompleta(nova.id, req.empresaId);

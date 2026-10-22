@@ -27,6 +27,11 @@ const SELECT_LISTA = `
          cc.nome AS centro_custo_nome,
          COALESCE(dv.categoria_id, df.categoria_id) AS categoria_id,
          cat.nome AS categoria_nome,
+         df.id AS despesa_fixa_id,
+         df.recorrente AS despesa_recorrente,
+         df.qtd_parcelas AS parcela_total,
+         dfp.numero_parcela AS parcela_numero,
+         CASE WHEN df.rateio_id IS NOT NULL THEN (SELECT COUNT(*) FROM despesas_fixas r WHERE r.rateio_id = df.rateio_id) END AS rateio_qtd,
          dv.viagem_id AS viagem_id,
          av.viagem_id AS acerto_viagem_id,
          COALESCE(vc.placa, vcc.placa) AS veiculo_placa
@@ -35,7 +40,8 @@ const SELECT_LISTA = `
   LEFT JOIN centros_custo cc ON cc.id = cp.centro_custo_id
   LEFT JOIN veiculos vcc ON vcc.id = cc.veiculo_id
   LEFT JOIN despesas_viagem dv ON cp.origem_tipo = 'DespesaViagem' AND dv.id = cp.origem_id
-  LEFT JOIN despesas_fixas df ON cp.origem_tipo = 'DespesaFixa' AND df.id = cp.origem_id
+  LEFT JOIN despesa_fixa_parcelas dfp ON cp.origem_tipo = 'DespesaFixaParcela' AND dfp.id = cp.origem_id
+  LEFT JOIN despesas_fixas df ON (cp.origem_tipo = 'DespesaFixa' AND df.id = cp.origem_id) OR (cp.origem_tipo = 'DespesaFixaParcela' AND df.id = dfp.despesa_fixa_id)
   LEFT JOIN acertos_viagem av ON cp.origem_tipo = 'AcertoViagem' AND av.id = cp.origem_id
   LEFT JOIN categorias_despesa cat ON cat.id = COALESCE(dv.categoria_id, df.categoria_id)
   LEFT JOIN viagens vg ON vg.id = dv.viagem_id
@@ -71,7 +77,7 @@ router.get('/', requerAcessoModulo('contas_pagar', 'Visualizar'), exigirEmpresaE
     condicoes.push('(cc.veiculo_id = ? OR EXISTS (SELECT 1 FROM conjunto_itens ci WHERE ci.conjunto_id = vg.conjunto_id AND ci.veiculo_id = ?))');
     params.push(Number(veiculo_id), Number(veiculo_id));
   }
-  const busca = condicaoBusca(['cp.descricao', 'f.nome'], search);
+  const busca = condicaoBusca(['cp.descricao', 'f.nome', 'cp.documento', 'cat.nome'], search);
   if (busca) { condicoes.push(busca.sql); params.push(...busca.params); }
   if (financiamento_id) {
     condicoes.push(`cp.origem_tipo = 'FinanciamentoParcela' AND cp.origem_id IN (SELECT id FROM financiamento_parcelas WHERE financiamento_id = ?)`);
@@ -180,7 +186,7 @@ router.post('/consolidar', requerAcessoModulo('contas_pagar', 'Gerenciar'), exig
 }));
 
 router.get('/:id', requerAcessoModulo('contas_pagar', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const conta = db.prepare('SELECT * FROM contas_pagar WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
+  const conta = db.prepare(`${SELECT_LISTA} WHERE cp.id = ? AND cp.empresa_id = ?`).get(req.params.id, req.empresaId);
   if (!conta) throw new ApiError(404, 'Conta a pagar nao encontrada.');
   // Quando a origem e um abastecimento, o "valor" da conta e so o RESTANTE
   // depois de descontar o que o motorista ja pagou em dinheiro (valor_pago_
@@ -218,12 +224,12 @@ router.get('/:id', requerAcessoModulo('contas_pagar', 'Visualizar'), exigirEmpre
 
 // Conta a pagar avulsa (nao gerada automaticamente por outro modulo).
 router.post('/', requerAcessoModulo('contas_pagar', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const { fornecedor_id, centro_custo_id, descricao, valor, data_vencimento } = req.body;
+  const { fornecedor_id, centro_custo_id, descricao, valor, data_vencimento, documento, observacao } = req.body;
   if (!descricao || !valor || !data_vencimento) throw new ApiError(400, 'Preencha descricao, valor e data_vencimento.');
   const info = db.prepare(`
-    INSERT INTO contas_pagar (empresa_id, fornecedor_id, centro_custo_id, descricao, valor, data_vencimento, status, origem_tipo)
-    VALUES (?, ?, ?, ?, ?, ?, 'Pendente', 'Outro')
-  `).run(req.empresaId, fornecedor_id || null, centro_custo_id || null, descricao.toUpperCase(), valor, data_vencimento);
+    INSERT INTO contas_pagar (empresa_id, fornecedor_id, centro_custo_id, descricao, valor, data_vencimento, status, origem_tipo, documento, observacao)
+    VALUES (?, ?, ?, ?, ?, ?, 'Pendente', 'Outro', ?, ?)
+  `).run(req.empresaId, fornecedor_id || null, centro_custo_id || null, descricao.toUpperCase(), valor, data_vencimento, documento ? String(documento).trim() || null : null, observacao ? String(observacao).trim() || null : null);
   const conta = db.prepare('SELECT * FROM contas_pagar WHERE id = ?').get(info.lastInsertRowid);
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'contas_pagar', registroId: conta.id, acao: 'INSERT', depois: conta });
   res.status(201).json(conta);

@@ -31,6 +31,10 @@ async function buscarVeiculos(termo) {
   return (await get(`/veiculos${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((v) => ({ value: v.id, label: v.placa }));
 }
 
+function esc(texto) {
+  return String(texto === null || texto === undefined ? '' : texto).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 function badgePrazo(conta) {
   if (conta.status === 'Pago') return '';
   const hoje = new Date(`${hojeIsoLocal()}T00:00:00Z`);
@@ -251,50 +255,132 @@ async function abrirBaixaLote(contas, recarregar) {
   abrirModal({ titulo: `Baixar ${contas.length} conta(s) a pagar`, conteudo: corpo, largura: 'max-w-5xl' });
 }
 
+// Tipo da conta (o que gerou a conta a pagar) - deixa a lista informativa mesmo para contas que
+// nao tem categoria propria (financiamento, OS, acerto...).
+const TIPO_POR_ORIGEM = {
+  DespesaViagem: 'Despesa de viagem',
+  FinanciamentoParcela: 'Financiamento',
+  OrdemServico: 'Manutencao (OS)',
+  OrdemServicoParcela: 'Manutencao (OS)',
+  EstoqueMovimentacao: 'Compra de estoque',
+  PneuEvento: 'Pneus',
+  AcertoViagem: 'Acerto de viagem',
+  ReembolsoMotorista: 'Reembolso a motorista',
+  Outro: 'Avulsa (sem categoria)',
+};
+
+function tipoDaConta(r) {
+  if (r.origem_tipo === 'DespesaFixa') {
+    if (r.rateio_qtd) return 'Despesa rateada';
+    return r.despesa_recorrente ? 'Despesa recorrente' : 'Despesa avulsa';
+  }
+  if (r.origem_tipo === 'DespesaFixaParcela') return `Despesa parcelada${r.parcela_numero ? ` ${r.parcela_numero}/${r.parcela_total}` : ''}`;
+  return TIPO_POR_ORIGEM[r.origem_tipo] || '-';
+}
+
+// Codigo da despesa que gerou a conta: "#195" (despesa de viagem - o mesmo numero da lista da
+// viagem) ou "DF-12" (despesa fixa/avulsa/parcelada/rateada, lancada em Despesas Fixas ou aqui).
+function codigoDaDespesa(r) {
+  if (r.origem_tipo === 'DespesaViagem') return `#${r.origem_id}`;
+  if (r.despesa_fixa_id) return `DF-${r.despesa_fixa_id}`;
+  return null;
+}
+
+// Nova conta a pagar = lancar uma despesa avulsa da empresa (escritorio, taxa, servico...). Ela
+// entra como despesa do centro de custo escolhido (aparece no DRE e nos relatorios por categoria)
+// e gera a conta a pagar com todos os dados - o mesmo "despesa fixa" de Despesas Fixas.
 async function abrirNovaConta(recarregar) {
+  const [categorias, centros] = await Promise.all([get('/categorias-despesa'), get('/centros-custo')]);
+  const centroBase = centros.find((c) => c.tipo === 'Base');
   const form = document.createElement('form');
   form.className = 'space-y-4';
   form.innerHTML = `
-    <div><label class="label">Descricao *</label><input type="text" name="descricao" class="input" required /></div>
+    <p class="text-sm text-slate-500">Lance aqui uma despesa avulsa (ex.: despesa do escritorio). Ela vira uma conta a pagar <strong>e</strong> entra no resultado (DRE) do centro de custo escolhido.</p>
     <div class="grid grid-cols-2 gap-3">
-      <div><label class="label">Valor *</label><input type="text" name="valor" class="input" required /></div>
-      <div><label class="label">Vencimento *</label><input type="text" name="data_vencimento" class="input" required /></div>
+      <div>
+        <label class="label">Categoria *</label>
+        <select name="categoria_id" class="input" required><option value="">Selecione...</option>${categorias.filter((c) => !c.oculta_na_busca).map((c) => `<option value="${c.id}">${c.nome}</option>`).join('')}</select>
+      </div>
+      <div><label class="label">Centro de custo *</label><div data-centro></div></div>
     </div>
-    <div><label class="label">Fornecedor</label><div data-fornecedor></div></div>
-    <div><label class="label">Centro de custo</label><div data-centro></div></div>
+    <div><label class="label">Descricao *</label><input type="text" name="descricao" class="input" required placeholder="Ex.: Material de escritorio - papel e toner" /></div>
+    <div class="grid grid-cols-2 gap-3">
+      <div><label class="label">Fornecedor</label><div data-fornecedor></div></div>
+      <div><label class="label">N&ordm; do documento (NF / boleto)</label><input type="text" name="documento" class="input" /></div>
+    </div>
+    <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div><label class="label">Valor total *</label><input type="text" name="valor" class="input" required /></div>
+      <div><label class="label">Vencimento *</label><input type="text" name="data_vencimento" class="input" required /></div>
+      <div><label class="label">Data da despesa</label><input type="text" name="data" class="input" title="Data em que a despesa aconteceu (competencia) - e a data usada no DRE. Em branco = hoje." /></div>
+      <div><label class="label">Parcelas</label><input type="number" name="qtd_parcelas" class="input" min="1" max="60" placeholder="1 (a vista)" /></div>
+    </div>
+    <p class="text-xs text-slate-500" data-previa-parcelas></p>
+    <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="recorrente" class="h-4 w-4" />Despesa recorrente (todo mes) <span class="text-xs text-slate-500">- so marca a despesa; os proximos meses sao lancados por voce</span></label>
+    <div><label class="label">Observacoes</label><textarea name="observacao" rows="2" class="input"></textarea></div>
     <p class="hidden text-sm text-red-600" data-erro></p>
-    <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Cadastrar</button></div>
+    <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Lancar despesa</button></div>
   `;
   attachMoedaMaskReais(form.valor, 0);
   attachDataMask(form.data_vencimento);
+  attachDataMask(form.data);
   attachUppercaseInput(form.descricao);
+  attachUppercaseInput(form.documento);
+  const centroSelect = criarSearchableSelect({
+    buscar: buscarCentrosCusto, placeholder: 'Pesquisar centro de custo...',
+    valorInicial: centroBase ? centroBase.id : null, labelInicial: centroBase ? centroBase.nome : '',
+  });
+  form.querySelector('[data-centro]').appendChild(centroSelect.el);
   const fornecedorSelect = criarSearchableSelect({ buscar: buscarFornecedores, placeholder: 'Pesquisar fornecedor...', criarNovo: { label: 'Cadastrar novo fornecedor', abrir: criarNovoFornecedor } });
   form.querySelector('[data-fornecedor]').appendChild(fornecedorSelect.el);
-  const centroSelect = criarSearchableSelect({ buscar: buscarCentrosCusto, placeholder: 'Pesquisar centro de custo...' });
-  form.querySelector('[data-centro]').appendChild(centroSelect.el);
+
+  const previa = form.querySelector('[data-previa-parcelas]');
+  function atualizarPrevia() {
+    const qtd = Number(form.qtd_parcelas.value) || 0;
+    const total = getMoedaValue(form.valor);
+    previa.textContent = qtd >= 2 && total > 0
+      ? `${qtd} parcelas de ~${formatarMoeda(Math.floor(total / qtd))}: a 1a vence na data de vencimento acima e as demais de mes em mes (uma conta a pagar por parcela).`
+      : '';
+  }
+  form.qtd_parcelas.addEventListener('input', atualizarPrevia);
+  form.valor.addEventListener('input', atualizarPrevia);
+
   const erro = form.querySelector('[data-erro]');
+  const falha = (msg) => { erro.textContent = msg; erro.classList.remove('hidden'); };
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     erro.classList.add('hidden');
-    const data_vencimento = parseDataBrParaIso(form.data_vencimento.value);
-    if (!data_vencimento) { erro.textContent = 'Data de vencimento invalida.'; erro.classList.remove('hidden'); return; }
+    const vencimento = parseDataBrParaIso(form.data_vencimento.value);
+    if (!vencimento) return falha('Data de vencimento invalida.');
+    if (form.data.value && !parseDataBrParaIso(form.data.value)) return falha('Data da despesa invalida.');
+    if (!form.categoria_id.value) return falha('Escolha a categoria da despesa.');
+    if (!centroSelect.getValue()) return falha('Escolha o centro de custo.');
+    const valor = getMoedaValue(form.valor);
+    if (valor <= 0) return falha('Informe o valor total.');
+    const qtd = Number(form.qtd_parcelas.value) || 0;
+    if (qtd === 1 || qtd > 60) return falha('Parcelas: deixe em branco (a vista) ou informe de 2 a 60.');
     try {
-      await post('/contas-pagar', {
-        descricao: form.descricao.value,
-        valor: getMoedaValue(form.valor),
-        data_vencimento,
-        fornecedor_id: fornecedorSelect.getValue(),
+      await post('/despesas-fixas', {
         centro_custo_id: centroSelect.getValue(),
+        categoria_id: Number(form.categoria_id.value),
+        valor,
+        data: form.data.value ? parseDataBrParaIso(form.data.value) : hojeIsoLocal(),
+        data_vencimento: qtd >= 2 ? null : vencimento,
+        primeira_parcela_vencimento: qtd >= 2 ? vencimento : null,
+        qtd_parcelas: qtd >= 2 ? qtd : null,
+        recorrente: form.recorrente.checked ? 1 : 0,
+        descricao: form.descricao.value,
+        fornecedor_id: fornecedorSelect.getValue(),
+        documento: form.documento.value || null,
+        observacao: form.observacao.value || null,
       });
       fecharModal();
-      mostrarToast('Conta a pagar cadastrada.');
+      mostrarToast(qtd >= 2 ? `Despesa lancada em ${qtd} parcelas.` : 'Despesa lancada e conta a pagar criada.');
       recarregar();
     } catch (err) {
-      erro.textContent = err.message;
-      erro.classList.remove('hidden');
+      falha(err.message);
     }
   });
-  abrirModal({ titulo: 'Nova conta a pagar', conteudo: form });
+  abrirModal({ titulo: 'Nova despesa / conta a pagar', conteudo: form, largura: 'max-w-2xl' });
 }
 
 async function enviarBaixa(conta, payload, recarregar, erroEl) {
@@ -429,6 +515,13 @@ async function abrirDetalhes(conta, recarregar, gerenciar) {
     const corpo = document.createElement('div');
     corpo.innerHTML = `
       <div class="mb-4 grid grid-cols-2 gap-2 text-sm">
+        <p><span class="font-medium">Tipo:</span> ${tipoDaConta(contaAtual)}</p>
+        <p><span class="font-medium">Codigo da despesa:</span> ${codigoDaDespesa(contaAtual) || '-'}</p>
+        <p><span class="font-medium">Categoria:</span> ${contaAtual.categoria_nome || '-'}</p>
+        <p><span class="font-medium">Centro de custo:</span> ${contaAtual.centro_custo_nome || (contaAtual.rateio_qtd ? `Rateio (${contaAtual.rateio_qtd} centros)` : '-')}</p>
+        <p><span class="font-medium">Fornecedor:</span> ${contaAtual.fornecedor_nome || '-'}</p>
+        <p><span class="font-medium">Documento:</span> ${esc(contaAtual.documento) || '-'}</p>
+        <p><span class="font-medium">Cadastrada em:</span> ${formatarDataBr(contaAtual.criado_em)}</p>
         <p><span class="font-medium">Status:</span> <span class="${STATUS_BADGE[contaAtual.status]}">${contaAtual.status}</span></p>
         <p><span class="font-medium">Vencimento:</span> ${formatarDataBr(contaAtual.data_vencimento)}</p>
         <p><span class="font-medium">Valor:</span> ${formatarMoeda(contaAtual.valor)}</p>
@@ -436,6 +529,7 @@ async function abrirDetalhes(conta, recarregar, gerenciar) {
         <p><span class="font-medium">Restante:</span> ${formatarMoeda(restante)}</p>
         ${contaAtual.data_pagamento ? `<p><span class="font-medium">Ultimo pagamento:</span> ${formatarDataBr(contaAtual.data_pagamento)}</p>` : ''}
       </div>
+      ${contaAtual.observacao ? `<p class="mb-4 rounded-lg border border-slate-200 p-3 text-sm text-slate-600"><span class="font-medium text-slate-900">Observacoes:</span> ${esc(contaAtual.observacao)}</p>` : ''}
       ${contaAtual.despesa_info && contaAtual.despesa_info.valor_pago_dinheiro > 0 ? `
         <div class="mb-4 rounded-lg border border-amber-800 bg-amber-950/30 p-3 text-sm">
           <p class="font-medium text-amber-400">Este valor e so o restante do abastecimento (despesa #${contaAtual.despesa_info.despesa_id})</p>
@@ -711,7 +805,7 @@ export async function render(container, params, query) {
 
   const tabela = criarDataTable({
     colunas: [
-      { chave: 'descricao', titulo: 'Descricao', truncar: true, render: (r) => (r.viagem_id ? `${r.descricao} <a href="#/viagens/${r.viagem_id}" class="ml-1 text-xs text-gray-900 hover:underline">(viagem #${r.viagem_id})</a>` : r.descricao) },
+      { chave: 'descricao', titulo: 'Descricao', truncar: true, render: (r) => `${r.viagem_id ? `${r.descricao} <a href="#/viagens/${r.viagem_id}" class="ml-1 text-xs text-gray-900 hover:underline">(viagem #${r.viagem_id})</a>` : r.descricao}${r.documento ? `<span class="ml-1 text-xs text-slate-400">&middot; doc. ${esc(r.documento)}</span>` : ''}` },
       // Codigo da despesa de origem (quando a conta veio de um abastecimento/
       // despesa de viagem) - por pedido do usuario, pra bater com o mesmo
       // numero ja mostrado na lista de despesas da viagem (viagemDetalhe.js)
@@ -719,10 +813,12 @@ export async function render(container, params, query) {
       {
         chave: 'despesa_codigo',
         titulo: 'Despesa',
-        render: (r) => (r.origem_tipo === 'DespesaViagem' ? `<a href="#/viagens/${r.viagem_id}" class="text-gray-900 hover:underline">#${r.origem_id}</a>` : '-'),
-        exportar: (r) => (r.origem_tipo === 'DespesaViagem' ? `#${r.origem_id}` : '-'),
+        render: (r) => (r.origem_tipo === 'DespesaViagem' ? `<a href="#/viagens/${r.viagem_id}" class="text-gray-900 hover:underline">#${r.origem_id}</a>` : (codigoDaDespesa(r) || '-')),
+        exportar: (r) => codigoDaDespesa(r) || '-',
       },
       { chave: 'categoria_nome', titulo: 'Categoria', render: (r) => r.categoria_nome || '-' },
+      { chave: 'tipo', titulo: 'Tipo', render: (r) => tipoDaConta(r), exportar: (r) => tipoDaConta(r) },
+      { chave: 'centro_custo_nome', titulo: 'Centro de custo', render: (r) => r.centro_custo_nome || (r.rateio_qtd ? `Rateio (${r.rateio_qtd} centros)` : '-'), exportar: (r) => r.centro_custo_nome || (r.rateio_qtd ? `Rateio (${r.rateio_qtd} centros)` : '') },
       { chave: 'fornecedor_nome', titulo: 'Fornecedor', render: (r) => r.fornecedor_nome || '-' },
       { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => r.veiculo_placa || '-' },
       { chave: 'valor', titulo: 'Valor', render: (r) => formatarMoeda(r.valor), exportar: (r) => r.valor / 100 },

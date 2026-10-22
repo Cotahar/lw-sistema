@@ -137,6 +137,7 @@ router.post('/sem-parar', exigirEmpresaEspecifica, asyncHandler(async (req, res)
     data_vencimento: vencimento,
     descricao: descricaoDaFatura({ ...fatura, vencimento: fatura.vencimento || vencimento }),
     fornecedor_id: fornecedor_id || null,
+    documento: fatura.numero,
     minimoCentros: 1,
   });
   for (const d of resultado.despesas) {

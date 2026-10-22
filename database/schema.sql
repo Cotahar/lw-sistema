@@ -834,7 +834,9 @@ CREATE TABLE contas_pagar (
     origem_tipo         TEXT CHECK (origem_tipo IN ('EstoqueMovimentacao', 'PneuEvento', 'OrdemServico', 'OrdemServicoParcela', 'DespesaViagem', 'DespesaFixa', 'DespesaFixaParcela', 'FinanciamentoParcela', 'ReembolsoMotorista', 'AcertoViagem', 'Outro')),
     origem_id           INTEGER,
     conta_bancaria_id   INTEGER REFERENCES contas_bancarias(id),
-    criado_em           TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
+    criado_em           TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
+    documento           TEXT,  -- numero da NF/boleto/fatura (opcional)
+    observacao          TEXT
 );
 CREATE INDEX idx_contas_pagar_status ON contas_pagar(status);
 CREATE INDEX idx_contas_pagar_origem ON contas_pagar(origem_tipo, origem_id);
