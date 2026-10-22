@@ -6,7 +6,7 @@ const { requerAcessoModulo } = require('../middleware/auth');
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { condicaoEmpresa } = require('../utils/empresaScope');
 const { registrarAuditoria } = require('../utils/audit');
-const { verificarAlertasDoVeiculo } = require('../utils/alertaEngine');
+const { verificarAlertasDoVeiculo, proximoKmDoAlerta } = require('../utils/alertaEngine');
 const { hodometroDoConjuntoDoVeiculo, veiculoIdsDosConjuntos, comConjuntoDoVeiculo } = require('../utils/conjuntoRelatorioHelper');
 
 const router = express.Router();
@@ -19,12 +19,13 @@ router.get('/regras', requerAcessoModulo('alertas', 'Visualizar'), exigirEmpresa
   const veiculosDoConjunto = veiculoIdsDosConjuntos(conjunto_id, req.empresaId);
   if (veiculosDoConjunto) { condicoes.push(`veiculo_id IN (${veiculosDoConjunto.map(() => '?').join(',')})`); params.push(...veiculosDoConjunto); }
   const rows = db.prepare(`SELECT * FROM alertas_regras WHERE ${condicoes.join(' AND ')} ORDER BY id DESC`).all(...params);
-  res.json(comConjuntoDoVeiculo(rows, req.empresaId));
+  res.json(comConjuntoDoVeiculo(rows.map((r) => ({ ...r, proximo_km: proximoKmDoAlerta(r) })), req.empresaId));
 }));
 
 router.post('/regras', requerAcessoModulo('alertas', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const { veiculo_id, descricao, intervalo_km, km_referencia } = req.body;
   if (!descricao || !intervalo_km) throw new ApiError(400, 'Preencha descricao e intervalo_km.');
+  if (!Number.isInteger(intervalo_km) || intervalo_km <= 0) throw new ApiError(400, 'O intervalo (km) deve ser um numero inteiro maior que zero.');
   let hodometroAtual = 0;
   if (veiculo_id) {
     const veiculo = db.prepare('SELECT id, tipo, hodometro_atual FROM veiculos WHERE id = ? AND empresa_id = ?').get(veiculo_id, req.empresaId);
@@ -45,6 +46,9 @@ router.post('/regras', requerAcessoModulo('alertas', 'Gerenciar'), exigirEmpresa
 router.put('/regras/:id', requerAcessoModulo('alertas', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const antes = db.prepare('SELECT * FROM alertas_regras WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
   if (!antes) throw new ApiError(404, 'Regra de alerta nao encontrada.');
+  if (req.body.intervalo_km !== undefined && (!Number.isInteger(req.body.intervalo_km) || req.body.intervalo_km <= 0)) {
+    throw new ApiError(400, 'O intervalo (km) deve ser um numero inteiro maior que zero.');
+  }
   const campos = ['descricao', 'intervalo_km', 'km_referencia', 'ativo'];
   const sets = [];
   const valores = [];
@@ -105,7 +109,8 @@ router.post('/ocorrencias/:id/resolver', requerAcessoModulo('alertas', 'Gerencia
   if (ocorrencia.status === 'Resolvido') throw new ApiError(400, 'Esta ocorrencia ja esta resolvida.');
 
   db.prepare("UPDATE alertas_ocorrencias SET status = 'Resolvido', resolvido_em = datetime('now', '-3 hours') WHERE id = ?").run(ocorrencia.id);
-  // Reinicia a contagem do intervalo a partir do km em que o alerta foi atendido.
+  // Guarda o km em que o alerta foi atendido; o proximo alerta continua no proximo
+  // multiplo do intervalo (contado desde 0 km), ver proximoKmDoAlerta.
   db.prepare('UPDATE alertas_regras SET km_referencia = ? WHERE id = ?').run(ocorrencia.km_atual_no_disparo, ocorrencia.regra_id);
 
   const depois = db.prepare('SELECT * FROM alertas_ocorrencias WHERE id = ?').get(ocorrencia.id);

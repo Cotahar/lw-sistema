@@ -9,6 +9,17 @@ const { hodometroDoConjuntoDoVeiculo, veiculosDoMesmoConjunto } = require('./con
 // O hodometro que vale e o do CONJUNTO: carreta nao tem hodometro proprio
 // (so a tratora e atualizada), entao a regra de uma carreta conta os km
 // rodados pela composicao dela - ver hodometroDoConjuntoDoVeiculo.
+//
+// O intervalo e contado DESDE O KM 0: uma regra de 25.000 em 25.000 km alerta em
+// 25.000, 50.000, 75.000... - nao "km em que foi cadastrada + 25.000". Se o
+// caminhao esta com 28.000 km quando a regra e cadastrada, o proximo alerta e em
+// 50.000. A km_referencia (km do cadastro ou do ultimo alerta resolvido) so diz
+// "de onde partir"; o proximo alerta e sempre o proximo multiplo do intervalo
+// acima dela (ver proximoKmDoAlerta).
+function proximoKmDoAlerta(regra) {
+  return (Math.floor(regra.km_referencia / regra.intervalo_km) + 1) * regra.intervalo_km;
+}
+
 function verificarAlertasDoVeiculo(veiculoId) {
   const veiculo = db.prepare('SELECT * FROM veiculos WHERE id = ?').get(veiculoId);
   if (!veiculo) return [];
@@ -19,7 +30,7 @@ function verificarAlertasDoVeiculo(veiculoId) {
   const novasOcorrencias = [];
 
   for (const regra of regras) {
-    if (hodometro - regra.km_referencia < regra.intervalo_km) continue;
+    if (hodometro < proximoKmDoAlerta(regra)) continue;
 
     const jaPendente = db
       .prepare("SELECT id FROM alertas_ocorrencias WHERE regra_id = ? AND status = 'Pendente'")
@@ -42,4 +53,4 @@ function verificarAlertasDoConjunto(veiculoId) {
   return veiculosDoMesmoConjunto(veiculoId).flatMap((id) => verificarAlertasDoVeiculo(id));
 }
 
-module.exports = { verificarAlertasDoVeiculo, verificarAlertasDoConjunto };
+module.exports = { verificarAlertasDoVeiculo, verificarAlertasDoConjunto, proximoKmDoAlerta };

@@ -26,14 +26,33 @@ async function abrirNovaRegra(recarregar) {
   form.innerHTML = `
     <div><label class="label">Veiculo *</label><div data-veiculo></div></div>
     <div><label class="label">Descricao *</label><input type="text" name="descricao" class="input" required placeholder="Ex.: Revisao a cada 50.000 km" /></div>
-    <div><label class="label">Intervalo (km) *</label><input type="number" name="intervalo_km" class="input" required min="1" /></div>
+    <div>
+      <label class="label">Intervalo (km) *</label>
+      <input type="number" name="intervalo_km" class="input" required min="1" step="1" />
+      <p class="mt-1 text-xs text-slate-500" data-previa>O intervalo e contado desde o 0 km: com 25.000 km, os alertas disparam em 25.000, 50.000, 75.000...</p>
+    </div>
     <p class="hidden text-sm text-red-600" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Cadastrar</button></div>
   `;
-  const veiculoSelect = criarSearchableSelect({ buscar: buscarVeiculos, placeholder: 'Pesquisar placa...' });
+  const veiculoSelect = criarSearchableSelect({ buscar: buscarVeiculos, placeholder: 'Pesquisar placa...', onChange: () => atualizarPrevia() });
   form.querySelector('[data-veiculo]').appendChild(veiculoSelect.el);
   attachUppercaseInput(form.descricao);
   const erro = form.querySelector('[data-erro]');
+  const previa = form.querySelector('[data-previa]');
+  const textoPadraoPrevia = previa.textContent;
+  // Mostra de antemao em que km sera o primeiro alerta (proximo multiplo acima do km atual do conjunto).
+  async function atualizarPrevia() {
+    const veiculoId = veiculoSelect.getValue();
+    const intervalo = Number(form.intervalo_km.value);
+    if (!veiculoId || !Number.isInteger(intervalo) || intervalo <= 0) { previa.textContent = textoPadraoPrevia; return; }
+    try {
+      const v = await get(`/veiculos/${veiculoId}`);
+      const km = v.hodometro_conjunto ?? v.hodometro_atual ?? 0;
+      const proximo = (Math.floor(km / intervalo) + 1) * intervalo;
+      previa.textContent = `KM atual do conjunto: ${km.toLocaleString('pt-BR')}. O primeiro alerta sera em ${proximo.toLocaleString('pt-BR')} km.`;
+    } catch { previa.textContent = textoPadraoPrevia; }
+  }
+  form.intervalo_km.addEventListener('input', atualizarPrevia);
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const veiculo_id = veiculoSelect.getValue();
@@ -94,7 +113,7 @@ export async function render(container) {
     acoesExtras: gerenciar ? () => [{
       label: 'Resolver',
       onClick: async (r) => {
-        const ok = await confirmarAcao({ titulo: 'Resolver alerta', mensagem: 'Marcar este alerta como resolvido? O contador reinicia a partir do km atual.', textoConfirmar: 'Resolver', perigo: false });
+        const ok = await confirmarAcao({ titulo: 'Resolver alerta', mensagem: 'Marcar este alerta como resolvido? O proximo alerta sera no proximo multiplo do intervalo (contado desde 0 km).', textoConfirmar: 'Resolver', perigo: false });
         if (!ok) return;
         try {
           await post(`/alertas/ocorrencias/${r.id}/resolver`, {});
@@ -114,7 +133,7 @@ export async function render(container) {
       { chave: 'placa', titulo: 'Veiculo' },
       { chave: 'descricao', titulo: 'Descricao', truncar: true },
       { chave: 'intervalo_km', titulo: 'Intervalo (km)', render: (r) => r.intervalo_km.toLocaleString('pt-BR') },
-      { chave: 'km_referencia', titulo: 'Referencia atual (km)', render: (r) => r.km_referencia.toLocaleString('pt-BR') },
+      { chave: 'proximo_km', titulo: 'Proximo alerta (km)', render: (r) => r.proximo_km.toLocaleString('pt-BR') },
     ],
     buscarDados: async () => {
       const regras = await get('/alertas/regras');
