@@ -1,6 +1,6 @@
 const { test, before } = require('node:test');
 const assert = require('node:assert/strict');
-const { login, api, criarEmpresa, criarFornecedor, criarFornecedorTipo, criarVeiculo, db } = require('./helpers');
+const { login, api, criarEmpresa, criarFornecedor, criarVeiculo, db } = require('./helpers');
 
 // Importacao (administracao) da fatura do Sem Parar: UMA conta a pagar com o total
 // da fatura, rateada entre os centros de custo das placas pelo valor liquido de cada
@@ -201,74 +201,4 @@ test('fatura de meses anteriores ja quitada fora do Frottex: importa baixada SEM
   // O custo continua entrando no DRE na data do vencimento (agosto).
   const dre = await admin().get(`/api/dre/veiculo/${veiculos.TWJ8C06}?data_inicio=2026-08-01&data_fim=2026-08-31`);
   assert.equal(dre.body.custos.despesasFixas, 299325);
-});
-
-// ---------------------------------------------------------------- creditos de transportadora (parte do frete)
-// Credito de TRANSPORTADORA na tag e parte do pagamento do frete: o pedagio continua sendo custo da empresa de qualquer forma,
-// entao NAO abate o custo (custo extra por placa, sem conta a pagar). Credito de EMBARCADOR e reembolso de verdade: abate.
-
-function abasComOrigens(numero) {
-  const abas = montarAbas({ numero, vencimento: '15/09/2026' });
-  const linha = (placa, valor, embarcador, cnpj) => [placa, PLACAS[placa].tag, valor, 'CRÉDITO PASSAGEM VP', embarcador, cnpj];
-  abas['CRÉDITOS'] = [
-    ['PLACA', 'TAG', 'VALOR', 'TIPO', 'EMBARCADOR', 'CNPJ'],
-    linha('TPN8E74', 1500.27, 'B NUNES LOGISTICA', '34524242000104'),
-    linha('TPN8E74', 500, 'DURATEX D005 AGUDOS', '97837181001976'),
-    linha('TVP0B82', 2595.37, 'DURATEX D063 UBERABA', '97837181001119'),
-    linha('TWA9C94', 2380.61, 'TRANSPORTES RODOVI', ''),
-    linha('TWJ8C06', 1959.96, 'DURATEX D005 AGUDOS', '97837181001976'),
-    linha('TWO4H96', 1681.29, 'DURATEX D005 AGUDOS', '97837181001976'),
-  ];
-  return abas;
-}
-
-test('credito de transportadora na tag nao abate o custo do pedagio: custo extra por placa, sem conta a pagar', async () => {
-  const tipoTransp = criarFornecedorTipo('TRANSPORTADORA');
-  criarFornecedor(empresaId, { nome: 'B. NUNES LOGÍSTICA', tipo_id: tipoTransp });
-  const abas = abasComOrigens('555');
-
-  const analise = await admin().post('/api/admin/importacoes/sem-parar/analisar').send({ abas });
-  assert.equal(analise.status, 200, JSON.stringify(analise.body));
-  const origem = Object.fromEntries(analise.body.creditos_origens.map((o) => [o.nome, o]));
-  assert.equal(origem['B NUNES LOGISTICA'].sugestao_transportadora, true, 'o nome bate com a transportadora cadastrada');
-  assert.equal(origem['B NUNES LOGISTICA'].chave, '34524242000104');
-  assert.equal(origem['TRANSPORTES RODOVI'].sugestao_transportadora, true, 'o nome parece de transportadora');
-  assert.equal(origem['DURATEX D005 AGUDOS'].sugestao_transportadora, false, 'embarcador de verdade');
-  assert.equal(analise.body.placas.find((p) => p.placa === 'TPN8E74').creditos_por_origem['34524242000104'], 150027);
-
-  const r = await admin().post('/api/admin/importacoes/sem-parar').send({ abas, categoria_id: categoriaId, ja_paga: true });
-  assert.equal(r.status, 201, JSON.stringify(r.body));
-  // A conta a pagar continua sendo o total da fatura (o que se paga ao Sem Parar).
-  assert.equal(db.prepare("SELECT valor FROM contas_pagar WHERE origem_tipo = 'DespesaFixa' AND origem_id = ?").get(r.body.rateio_id).valor, 736045);
-  // Custo extra = credito das transportadoras, por placa, sem conta a pagar.
-  const cred = r.body.creditos_transportadora;
-  assert.deepEqual(cred.por_placa.map((x) => [x.placa, x.valor]).sort(), [['TPN8E74', 150027], ['TWA9C94', 238061]]);
-  assert.equal(cred.conta_pagar_id, null);
-  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM contas_pagar WHERE origem_tipo = 'DespesaFixa' AND origem_id = ?").get(cred.rateio_id).n, 0);
-  assert.match(db.prepare('SELECT descricao FROM despesas_fixas WHERE id = ?').get(cred.despesas[0].id).descricao, /FATURA SEM PARAR 555 - CREDITOS DE TRANSPORTADORAS/);
-
-  // DRE: custo da placa = liquido da conta + credito da transportadora (pedagio cheio nessa parte).
-  const dre = async (placa) => (await admin().get(`/api/dre/veiculo/${veiculos[placa]}?data_inicio=2026-09-01&data_fim=2026-09-30`)).body.custos.despesasFixas;
-  assert.equal(await dre('TPN8E74'), 101495 + 150027);
-  assert.equal(await dre('TWA9C94'), 210930 + 238061);
-  assert.equal(await dre('TVP0B82'), 48305, 'so credito de embarcador: continua abatendo');
-
-  // A mesma fatura nao entra de novo (nem a conta, nem o custo extra).
-  assert.equal((await admin().post('/api/admin/importacoes/sem-parar').send({ abas, categoria_id: categoriaId })).status, 409);
-  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM despesas_fixas WHERE descricao LIKE 'FATURA SEM PARAR 555 - CREDITOS%'").get().n, 2);
-});
-
-test('o administrador pode escolher quais origens sao transportadora (ou nenhuma)', async () => {
-  const abas = abasComOrigens('556');
-  const nenhuma = await admin().post('/api/admin/importacoes/sem-parar').send({ abas, categoria_id: categoriaId, ja_paga: true, creditos_transportadora: [] });
-  assert.equal(nenhuma.status, 201, JSON.stringify(nenhuma.body));
-  assert.equal(nenhuma.body.creditos_transportadora, null, 'escolheu nenhuma: nada de custo extra');
-  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM despesas_fixas WHERE descricao LIKE 'FATURA SEM PARAR 556 - CREDITOS%'").get().n, 0);
-
-  // Depois, lancando so os creditos (fatura ja importada) - e uma segunda chamada nao duplica.
-  const { lancarCreditosDeTransportadora } = require('../src/utils/importacaoSemParar');
-  const dados = { empresaId, usuarioId: db.prepare('SELECT id FROM usuarios LIMIT 1').get().id, abas, categoria_id: categoriaId, data: '2026-09-15', chaves: ['97837181001976'] };
-  const so = lancarCreditosDeTransportadora(dados);
-  assert.deepEqual(so.por_placa.map((x) => [x.placa, x.valor]).sort(), [['TPN8E74', 50000], ['TWJ8C06', 195996], ['TWO4H96', 168129]]);
-  assert.equal(lancarCreditosDeTransportadora(dados), null, 'idempotente');
 });

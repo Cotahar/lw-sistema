@@ -16,7 +16,7 @@ const ABAS_NECESSARIAS = [
   'RESUMO DA FATURA', 'PASSAGENS PEDAGIO', 'PASSAGENS VALE-PEDAGIO', 'PASSAGENS ESTACIONAMENTO',
   'TRANSACOES ESTABELECIMENTOS', 'ADESOES', 'MENSALIDADES', 'OUTROS SERVICOS', 'CREDITOS',
 ];
-const COLUNAS_DETALHE = ['PLACA', 'TAG', 'VALOR', 'TIPO', 'EMBARCADOR', 'CNPJ'];
+const COLUNAS_DETALHE = ['PLACA', 'TAG', 'VALOR', 'TIPO'];
 
 function norm(s) {
   return String(s === null || s === undefined ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim();
@@ -44,7 +44,7 @@ async function lerPlanilha(arquivo) {
   return abas;
 }
 
-function linhaPlaca(p, totalLiquido, creditoFrete) {
+function linhaPlaca(p, totalLiquido) {
   const c = p.componentes;
   const passagens = c.pedagio + c.vale_pedagio + c.estacionamento + c.estabelecimentos;
   const servicos = c.adesao + c.mensalidade + c.outros_servicos;
@@ -59,9 +59,7 @@ function linhaPlaca(p, totalLiquido, creditoFrete) {
       <td class="table-td text-right">${formatarMoeda(passagens)}</td>
       <td class="table-td text-right">${formatarMoeda(servicos)}</td>
       <td class="table-td text-right">${p.creditos ? `- ${formatarMoeda(p.creditos)}` : formatarMoeda(0)}</td>
-      <td class="table-td text-right">${formatarMoeda(p.liquido)}</td>
-      <td class="table-td text-right">${creditoFrete ? `+ ${formatarMoeda(creditoFrete)}` : formatarMoeda(0)}</td>
-      <td class="table-td text-right font-bold">${formatarMoeda(p.liquido + creditoFrete)}</td>
+      <td class="table-td text-right font-bold">${formatarMoeda(p.liquido)}</td>
       <td class="table-td text-right text-slate-500">${pct}%</td>
     </tr>
   `;
@@ -103,8 +101,6 @@ export async function render(container) {
 async function mostrarAnalise(resultadoEl, abas, analise) {
   const { fatura, placas, conferencias, avisos, sugestoes, ja_importada: jaImportada } = analise;
   const comValor = placas.filter((p) => p.liquido !== 0);
-  const origens = analise.creditos_origens || [];
-  const creditosJaLancados = analise.creditos_ja_lancados;
   const totalLiquido = placas.filter((p) => p.liquido > 0).reduce((t, p) => t + p.liquido, 0);
   const bloqueios = [];
   if (jaImportada) bloqueios.push('fatura ja importada');
@@ -129,26 +125,15 @@ async function mostrarAnalise(resultadoEl, abas, analise) {
         <thead><tr>
           <th class="table-th">Placa</th><th class="table-th">Centro de custo</th>
           <th class="table-th text-right">Passagens</th><th class="table-th text-right">Mensalidade e servicos</th>
-          <th class="table-th text-right">Creditos</th><th class="table-th text-right">Conta a pagar (liquido)</th><th class="table-th text-right">+ Creditos de transportadora</th><th class="table-th text-right">Custo no DRE</th><th class="table-th text-right">%</th>
+          <th class="table-th text-right">Creditos</th><th class="table-th text-right">Valor a ratear</th><th class="table-th text-right">%</th>
         </tr></thead>
-        <tbody class="divide-y divide-slate-200" data-linhas-placas></tbody>
+        <tbody class="divide-y divide-slate-200">${comValor.map((p) => linhaPlaca(p, totalLiquido)).join('') || '<tr><td class="table-td text-slate-400" colspan="7">Nenhuma placa com valor.</td></tr>'}</tbody>
         <tfoot><tr>
           <td class="table-td font-bold" colspan="5">Soma das placas</td>
-          <td class="table-td text-right font-bold">${formatarMoeda(analise.soma_placas)}</td><td class="table-td text-right font-bold" data-total-creditos></td><td class="table-td text-right font-bold" data-total-dre></td><td class="table-td"></td>
+          <td class="table-td text-right font-bold">${formatarMoeda(analise.soma_placas)}</td><td class="table-td"></td>
         </tr></tfoot>
       </table>
     </div>
-    ${origens.length ? `
-    <div class="card mb-4 overflow-x-auto">
-      <p class="px-4 pt-3 text-sm font-semibold text-slate-900">Quem colocou os creditos na tag</p>
-      <p class="px-4 pb-2 text-xs text-slate-500">Credito de <strong>transportadora</strong> e parte do pagamento do frete (o pedagio continua sendo custo da empresa): <strong>nao abate o custo</strong> - entra como custo extra da placa, sem conta a pagar. Credito de <strong>embarcador</strong> e reembolso de verdade e continua abatendo.</p>
-      <table class="min-w-full divide-y divide-slate-200">
-        <thead><tr><th class="table-th">Origem</th><th class="table-th">CNPJ</th><th class="table-th text-right">Creditos</th><th class="table-th text-right">Valor</th><th class="table-th">E transportadora?</th></tr></thead>
-        <tbody class="divide-y divide-slate-200">${origens.map((o, i) => `
-          <tr><td class="table-td">${esc(o.nome)}</td><td class="table-td text-slate-500">${esc(o.cnpj || '-')}</td><td class="table-td text-right">${o.qtd}</td><td class="table-td text-right">${formatarMoeda(o.total)}</td>
-          <td class="table-td"><label class="flex items-center gap-2 text-xs"><input type="checkbox" class="h-4 w-4" data-origem="${i}" ${o.sugestao_transportadora ? 'checked' : ''} /><span class="text-slate-500">${esc(o.motivo_sugestao)}</span></label></td></tr>`).join('')}</tbody>
-      </table>
-    </div>` : ''}
     <details class="card mb-4 p-4">
       <summary class="cursor-pointer text-sm font-semibold text-slate-900">Conferencia com o resumo da fatura</summary>
       <table class="mt-3 min-w-full divide-y divide-slate-200">
@@ -179,20 +164,6 @@ async function mostrarAnalise(resultadoEl, abas, analise) {
       ${bloqueios.length ? `<p class="text-xs text-amber-400">Importacao bloqueada: ${esc(bloqueios.join('; '))}.</p>` : ''}
     </form>
   `;
-
-  // Creditos de transportadora marcados: custo extra por placa (recalcula a tabela quando o administrador muda a escolha).
-  const chavesMarcadas = () => origens.filter((o, i) => { const el = resultadoEl.querySelector(`[data-origem="${i}"]`); return el && el.checked; }).map((o) => o.chave);
-  const creditoFreteDaPlaca = (p, chaves) => Object.entries(p.creditos_por_origem || {}).filter(([k]) => chaves.includes(k)).reduce((t, [, v]) => t + v, 0);
-  function atualizarTabelaPlacas() {
-    const chaves = creditosJaLancados ? [] : chavesMarcadas();
-    const extras = comValor.map((p) => creditoFreteDaPlaca(p, chaves));
-    resultadoEl.querySelector('[data-linhas-placas]').innerHTML = comValor.map((p, i) => linhaPlaca(p, totalLiquido, extras[i])).join('') || '<tr><td class="table-td text-slate-400" colspan="9">Nenhuma placa com valor.</td></tr>';
-    const totalExtras = extras.reduce((t, v) => t + v, 0);
-    resultadoEl.querySelector('[data-total-creditos]').textContent = formatarMoeda(totalExtras);
-    resultadoEl.querySelector('[data-total-dre]').textContent = formatarMoeda(analise.soma_placas + totalExtras);
-  }
-  resultadoEl.querySelectorAll('[data-origem]').forEach((el) => el.addEventListener('change', atualizarTabelaPlacas));
-  atualizarTabelaPlacas();
 
   const form = resultadoEl.querySelector('[data-form]');
   attachDataMask(form.data, sugestoes.data);
@@ -231,14 +202,12 @@ async function mostrarAnalise(resultadoEl, abas, analise) {
         data_vencimento: vencimento,
         ratear_diferenca: Boolean(form.ratear_diferenca && form.ratear_diferenca.checked),
         ja_paga: form.ja_paga.checked,
-        creditos_transportadora: chavesMarcadas(),
       });
       mostrarToast(`Fatura ${fatura.numero} importada: ${formatarMoeda(r.valor_total)} rateados em ${r.despesas.length} centros de custo.`);
       resultadoEl.innerHTML = `
         <div class="card space-y-3 p-4">
           <p class="font-semibold text-emerald-500">Fatura importada com sucesso.</p>
           <p class="text-sm text-slate-600">Conta a pagar #${r.conta_pagar_id} de ${formatarMoeda(r.valor_total)}, rateada entre: ${r.rateio.map((x) => `${esc(x.centro_custo_nome)} (${formatarMoeda(x.valor)})`).join(', ')}.</p>
-          ${r.creditos_transportadora ? `<p class="text-sm text-slate-600">Custo extra de ${formatarMoeda(r.creditos_transportadora.valor_total)} (creditos de transportadora, sem conta a pagar): ${r.creditos_transportadora.por_placa.map((x) => `${esc(x.placa)} (${formatarMoeda(x.valor)})`).join(', ')}.</p>` : ''}
           <div class="flex gap-2">
             <a href="#/contas-pagar" class="btn-primary btn-sm">Ver em Contas a Pagar</a>
             <a href="#/despesas-fixas" class="btn-secondary btn-sm">Ver em Despesas Fixas</a>

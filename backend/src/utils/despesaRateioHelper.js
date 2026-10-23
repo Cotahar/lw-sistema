@@ -15,7 +15,7 @@ function formatarMoeda(centavos) {
 // Usado pela tela de Despesas Fixas ("Lancar com rateio entre centros") e pela
 // importacao da fatura do Sem Parar (administracao). `minimoCentros` so e
 // afrouxado pela importacao, que pode ter uma fatura com uma unica placa.
-function criarDespesaRateada({ empresaId, usuarioId, rateios, categoria_id, valor, data, recorrente, descricao, qtd_parcelas, fornecedor_id, data_vencimento, documento, observacao, baixaSemPagamentoEm = null, semContaPagar = false, minimoCentros = 2 }) {
+function criarDespesaRateada({ empresaId, usuarioId, rateios, categoria_id, valor, data, recorrente, descricao, qtd_parcelas, fornecedor_id, data_vencimento, documento, observacao, baixaSemPagamentoEm = null, minimoCentros = 2 }) {
   if (qtd_parcelas) throw new ApiError(400, 'Despesa rateada entre centros de custo nao pode ser parcelada.');
   if (!categoria_id) throw new ApiError(400, 'Informe a categoria da despesa.');
   if (!Array.isArray(rateios) || rateios.length < minimoCentros) {
@@ -50,12 +50,6 @@ function criarDespesaRateada({ empresaId, usuarioId, rateios, categoria_id, valo
     const linhasIds = rateios.map((r) => inserir.run(empresaId, r.centro_custo_id, categoria_id, r.valor, data || null, recorrente ? 1 : 0, nomeDescricao, usuarioId).lastInsertRowid);
     const principalId = linhasIds[0];
     db.prepare(`UPDATE despesas_fixas SET rateio_id = ? WHERE id IN (${linhasIds.map(() => '?').join(',')})`).run(principalId, ...linhasIds);
-    // Custo que nao e um pagamento (ex.: credito de transportadora na fatura do Sem Parar - parte do frete): so as despesas por centro,
-    // para o DRE, SEM conta a pagar.
-    if (semContaPagar) {
-      const despesasSemConta = db.prepare('SELECT * FROM despesas_fixas WHERE rateio_id = ? ORDER BY id').all(principalId);
-      return { rateio_id: principalId, valor_total: soma, conta_pagar_id: null, despesas: despesasSemConta };
-    }
     const nomeConta = `${categoria.nome} - RATEIO ENTRE ${centros.length} CENTROS DE CUSTO${nomeDescricao ? ` - ${nomeDescricao}` : ''}`.toUpperCase();
     const conta = db.prepare(`
       INSERT INTO contas_pagar (empresa_id, fornecedor_id, centro_custo_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id, documento, observacao)

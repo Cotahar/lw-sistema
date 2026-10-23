@@ -27,19 +27,9 @@ function buscarImportacaoAnterior(empresaId, numero) {
     SELECT d.rateio_id, d.data, cp.id AS conta_pagar_id, cp.valor AS conta_valor, cp.status AS conta_status
     FROM despesas_fixas d
     LEFT JOIN contas_pagar cp ON cp.origem_tipo = 'DespesaFixa' AND cp.origem_id = d.rateio_id
-    WHERE d.empresa_id = ? AND d.descricao LIKE ? AND d.descricao NOT LIKE '%CREDITOS DE TRANSPORTADORAS%'
-    ORDER BY d.id LIMIT 1
+    WHERE d.empresa_id = ? AND d.descricao LIKE ?
+    LIMIT 1
   `).get(empresaId, `FATURA SEM PARAR ${numero} - %`) || null;
-}
-
-// Lancamento (so despesas, sem conta a pagar) dos creditos de transportadora desta fatura: ja foi feito?
-function buscarCreditosLancados(empresaId, numero) {
-  return db.prepare('SELECT rateio_id FROM despesas_fixas WHERE empresa_id = ? AND descricao LIKE ? LIMIT 1')
-    .get(empresaId, `FATURA SEM PARAR ${numero} - CREDITOS DE TRANSPORTADORAS%`) || null;
-}
-
-function descricaoDosCreditos(fatura) {
-  return `FATURA SEM PARAR ${fatura.numero} - CREDITOS DE TRANSPORTADORAS (PARTE DO FRETE)`;
 }
 
 // Placa -> veiculo -> centro de custo da empresa. Placa sem cadastro (ou sem centro de
@@ -60,33 +50,6 @@ function resolverCentros(empresaId, placas) {
       encontrado: Boolean(centro),
     };
   });
-}
-
-// Quem colocou o credito na tag e TRANSPORTADORA (o credito faz parte do pagamento do frete: o pedagio continua sendo custo da
-// empresa) ou EMBARCADOR (reembolso de verdade)? Sugestao: o nome bate com uma transportadora cadastrada no Frottex, ou o nome tem
-// cara de transportadora/logistica. O administrador confirma na tela.
-const PALAVRAS_SEM_VALOR = new Set(['LTDA', 'S', 'A', 'SA', 'ME', 'EPP', 'DE', 'DA', 'DO', 'E', 'LOGISTICA', 'LOGISTICO', 'OPERADOR', 'TRANSPORTES', 'TRANSPORTE', 'TRANSPORT', 'TRANSP', 'TRAN', 'COMERCIO', 'SERVICOS', 'AGENCIADOR']);
-function palavrasDoNome(nome) {
-  return norm(nome).replace(/[^A-Z0-9 ]/g, ' ').split(/\s+/).filter((p) => p && !PALAVRAS_SEM_VALOR.has(p));
-}
-function sugerirTransportadora(nomeOrigem, transportadoras) {
-  const p = palavrasDoNome(nomeOrigem);
-  if (p.length) {
-    const igual = transportadoras.find((t) => {
-      const q = palavrasDoNome(t.nome);
-      return q.length && q.join(' ') === p.join(' ');
-    });
-    if (igual) return { sugerida: true, motivo: `transportadora cadastrada: ${igual.nome}` };
-  }
-  if (/\bTRAN|LOGIST|AGENCIA/.test(norm(nomeOrigem))) return { sugerida: true, motivo: 'o nome parece de transportadora/logistica' };
-  return { sugerida: false, motivo: 'embarcador (reembolso do vale-pedagio)' };
-}
-
-function origensComSugestao(empresaId, origens) {
-  const transportadoras = db.prepare(`
-    SELECT f.nome FROM fornecedores f JOIN fornecedor_tipos t ON t.id = f.tipo_id WHERE f.empresa_id = ? AND upper(t.nome) = 'TRANSPORTADORA'
-  `).all(empresaId);
-  return origens.map((o) => ({ ...o, ...(() => { const r = sugerirTransportadora(o.nome, transportadoras); return { sugestao_transportadora: r.sugerida, motivo_sugestao: r.motivo }; })() }));
 }
 
 function sugestoes(empresaId, fatura) {
@@ -118,50 +81,15 @@ function analisarParaEmpresa(empresaId, abas) {
   return {
     ...analise,
     placas,
-    creditos_origens: origensComSugestao(empresaId, analise.creditos_origens || []),
-    creditos_ja_lancados: buscarCreditosLancados(empresaId, analise.fatura.numero),
     ja_importada: anterior,
     sugestoes: sugestoes(empresaId, analise.fatura),
     avisos,
   };
 }
 
-// Credito de TRANSPORTADORA na tag = parte do pagamento do frete (frete cheio; o pedagio continua sendo custo da empresa de qualquer
-// forma): nao pode abater o custo do pedagio. Como a fatura (e a conta a pagar) ja vem LIQUIDA desses creditos, o custo que faltou
-// entra no DRE como despesa extra por placa, SEM conta a pagar (nao e pagamento). `chaves`: origens (CNPJ/nome normalizado) tratadas como
-// transportadora; sem informar, vale a sugestao. Devolve null se nao ha o que lancar ou se ja foi lancado.
-function lancarCreditosDeTransportadora({ empresaId, usuarioId, abas, categoria_id, data, chaves }) {
-  const analise = analisarParaEmpresa(empresaId, abas);
-  const { fatura } = analise;
-  if (!analise.ja_importada) throw new ApiError(400, `A fatura ${fatura.numero} ainda nao foi importada.`);
-  if (analise.creditos_ja_lancados) return null;
-  const escolhidas = new Set(Array.isArray(chaves) ? chaves : analise.creditos_origens.filter((o) => o.sugestao_transportadora).map((o) => o.chave));
-  const porPlaca = analise.placas
-    .map((p) => ({ p, valor: Object.entries(p.creditos_por_origem || {}).filter(([chave]) => escolhidas.has(chave)).reduce((t, [, v]) => t + v, 0) }))
-    .filter((x) => x.valor > 0);
-  if (!porPlaca.length) return null;
-  const semCentro = porPlaca.filter((x) => !x.p.encontrado).map((x) => x.p.placa);
-  if (semCentro.length) throw new ApiError(400, `Placa(s) sem centro de custo para os creditos de transportadora: ${semCentro.join(', ')}.`);
-  const resultado = criarDespesaRateada({
-    empresaId,
-    usuarioId,
-    rateios: porPlaca.map((x) => ({ centro_custo_id: x.p.centro_custo_id, valor: x.valor })),
-    categoria_id,
-    valor: porPlaca.reduce((t, x) => t + x.valor, 0),
-    data: data || fatura.vencimento || null,
-    descricao: descricaoDosCreditos(fatura),
-    semContaPagar: true,
-    minimoCentros: 1,
-  });
-  for (const d of resultado.despesas) {
-    registrarAuditoria({ usuarioId, empresaId, tabela: 'despesas_fixas', registroId: d.id, acao: 'INSERT', depois: d });
-  }
-  return { ...resultado, por_placa: porPlaca.map((x) => ({ placa: x.p.placa, centro_custo_nome: x.p.centro_custo_nome, valor: x.valor })) };
-}
-
 // Lanca a fatura (conta a pagar unica + despesa por centro). `jaPaga`: fatura quitada fora do Frottex (ex.: de um
 // mes anterior) - a conta e baixada SEM PAGAMENTO na data de vencimento (nada sai do caixa, fica a Ocorrencia).
-function importarFatura({ empresaId, usuarioId, abas, categoria_id, fornecedor_id, data, data_vencimento, ratear_diferenca, jaPaga = false, creditosTransportadora }) {
+function importarFatura({ empresaId, usuarioId, abas, categoria_id, fornecedor_id, data, data_vencimento, ratear_diferenca, jaPaga = false }) {
   const analise = analisarParaEmpresa(empresaId, abas);
   const { fatura } = analise;
 
@@ -207,15 +135,12 @@ function importarFatura({ empresaId, usuarioId, abas, categoria_id, fornecedor_i
   for (const d of resultado.despesas) {
     registrarAuditoria({ usuarioId, empresaId, tabela: 'despesas_fixas', registroId: d.id, acao: 'INSERT', depois: d });
   }
-  // Creditos de transportadora (parte do frete): custo extra por placa, sem conta a pagar.
-  const creditos = lancarCreditosDeTransportadora({ empresaId, usuarioId, abas, categoria_id, data: data || fatura.vencimento || null, chaves: creditosTransportadora });
   return {
     ...resultado,
     fatura,
-    creditos_transportadora: creditos,
     ja_paga: Boolean(jaPaga),
     rateio: comValor.map((p, i) => ({ placa: p.placa, centro_custo_id: p.centro_custo_id, centro_custo_nome: p.centro_custo_nome, valor: valores[i] })),
   };
 }
 
-module.exports = { analisarParaEmpresa, importarFatura, lancarCreditosDeTransportadora };
+module.exports = { analisarParaEmpresa, importarFatura };
