@@ -218,7 +218,7 @@ export async function abrirBaixasFrete(frete, recarregar, gerenciar) {
       attachUppercaseInput(formBaixa.descricao);
       const DICAS = {
         Desconto: 'O desconto entra como DESPESA da placa do frete no DRE (categoria DESCONTO NO FRETE).',
-        Pedagio: 'Pedagio abatido do frete continua como receita: nao vira custo.',
+        Pedagio: 'Pedagio creditado na tag: so informa que essa parte do frete foi paga como credito na tag (nao e transferencia para a conta). Continua como receita; o custo de pedagio e o liquido da fatura do Sem Parar.',
       };
       const dicaTipo = formBaixa.querySelector('[data-dica-tipo]');
       const atualizarTipo = () => {
