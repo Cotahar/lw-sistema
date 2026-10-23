@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const ApiError = require('./ApiError');
 const { withTransaction } = require('./transaction');
+const { baixarContaPagar } = require('./contaPagarBaixaHelper');
 
 function formatarMoeda(centavos) {
   return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -14,7 +15,7 @@ function formatarMoeda(centavos) {
 // Usado pela tela de Despesas Fixas ("Lancar com rateio entre centros") e pela
 // importacao da fatura do Sem Parar (administracao). `minimoCentros` so e
 // afrouxado pela importacao, que pode ter uma fatura com uma unica placa.
-function criarDespesaRateada({ empresaId, usuarioId, rateios, categoria_id, valor, data, recorrente, descricao, qtd_parcelas, fornecedor_id, data_vencimento, documento, observacao, minimoCentros = 2 }) {
+function criarDespesaRateada({ empresaId, usuarioId, rateios, categoria_id, valor, data, recorrente, descricao, qtd_parcelas, fornecedor_id, data_vencimento, documento, observacao, baixaSemPagamentoEm = null, minimoCentros = 2 }) {
   if (qtd_parcelas) throw new ApiError(400, 'Despesa rateada entre centros de custo nao pode ser parcelada.');
   if (!categoria_id) throw new ApiError(400, 'Informe a categoria da despesa.');
   if (!Array.isArray(rateios) || rateios.length < minimoCentros) {
@@ -54,6 +55,9 @@ function criarDespesaRateada({ empresaId, usuarioId, rateios, categoria_id, valo
       INSERT INTO contas_pagar (empresa_id, fornecedor_id, centro_custo_id, descricao, valor, data_vencimento, status, origem_tipo, origem_id, documento, observacao)
       VALUES (?, ?, NULL, ?, ?, COALESCE(?, ?, date('now', '-3 hours')), 'Pendente', 'DespesaFixa', ?, ?, ?)
     `).run(empresaId, fornecedor_id || null, nomeConta, soma, data_vencimento || null, data || null, principalId, documento ? String(documento).trim() || null : null, observacao ? String(observacao).trim() || null : null);
+    // Despesa de um periodo que ja foi quitado fora do Frottex (ex.: fatura de meses atras): a conta nasce Paga,
+    // baixada SEM PAGAMENTO na data informada (nada sai do caixa; fica a Ocorrencia).
+    if (baixaSemPagamentoEm) baixarContaPagar({ empresaId, usuarioId, contaId: conta.lastInsertRowid, semPagamento: true, dataPagamento: baixaSemPagamentoEm });
     const despesas = db.prepare('SELECT * FROM despesas_fixas WHERE rateio_id = ? ORDER BY id').all(principalId);
     return { rateio_id: principalId, valor_total: soma, conta_pagar_id: conta.lastInsertRowid, despesas };
   });

@@ -154,6 +154,7 @@ async function mostrarAnalise(resultadoEl, abas, analise) {
         <div><label class="label">Data da despesa (DRE)</label><input type="text" name="data" class="input" /></div>
         <div><label class="label">Vencimento da conta a pagar *</label><input type="text" name="data_vencimento" class="input" required /></div>
       </div>
+      <label class="flex items-start gap-2 text-sm"><input type="checkbox" name="ja_paga" class="mt-0.5 h-4 w-4" /><span>Fatura <strong>ja paga</strong> (de um mes anterior): baixar sem lancar movimento de caixa, na data do vencimento. O custo continua entrando no DRE.</span></label>
       ${temDiferenca ? `<label class="flex items-start gap-2 text-sm"><input type="checkbox" name="ratear_diferenca" class="mt-0.5 h-4 w-4" /><span>Ratear a diferenca de ${formatarMoeda(analise.diferenca)} (total da fatura menos a soma das placas) proporcionalmente entre as placas.</span></label>` : ''}
       <p class="hidden text-sm text-red-600" data-erro-form></p>
       <div class="flex items-center justify-between gap-3">
@@ -200,6 +201,7 @@ async function mostrarAnalise(resultadoEl, abas, analise) {
         data: form.data.value ? parseDataBrParaIso(form.data.value) : null,
         data_vencimento: vencimento,
         ratear_diferenca: Boolean(form.ratear_diferenca && form.ratear_diferenca.checked),
+        ja_paga: form.ja_paga.checked,
       });
       mostrarToast(`Fatura ${fatura.numero} importada: ${formatarMoeda(r.valor_total)} rateados em ${r.despesas.length} centros de custo.`);
       resultadoEl.innerHTML = `

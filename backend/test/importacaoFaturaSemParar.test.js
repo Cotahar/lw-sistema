@@ -184,3 +184,21 @@ test('arquivo que nao e a fatura: erro claro', async () => {
   assert.match(r.body.erro, /RESUMO DA FATURA/);
   assert.equal((await admin().post('/api/admin/importacoes/sem-parar/analisar').send({})).status, 400);
 });
+
+test('fatura de meses anteriores ja quitada fora do Frottex: importa baixada SEM PAGAMENTO (nada sai do caixa)', async () => {
+  const abas = montarAbas({ numero: '999', vencimento: '15/08/2026' });
+  const caixasAntes = db.prepare('SELECT COUNT(*) AS n FROM movimentacoes_caixa').get().n;
+  const r = await admin().post('/api/admin/importacoes/sem-parar').send({ abas, categoria_id: categoriaId, ja_paga: true });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(r.body.ja_paga, true);
+  const conta = db.prepare("SELECT * FROM contas_pagar WHERE origem_tipo = 'DespesaFixa' AND origem_id = ?").get(r.body.rateio_id);
+  assert.equal(conta.status, 'Pago');
+  assert.equal(conta.valor_pago, 0);
+  assert.equal(conta.valor_descontado, 736045);
+  assert.equal(conta.data_pagamento, '2026-08-15');
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM movimentacoes_caixa').get().n, caixasAntes, 'nenhum movimento de caixa');
+  assert.match(db.prepare("SELECT texto FROM ocorrencias WHERE entidade_tipo = 'ContaPagar' AND entidade_id = ?").get(conta.id).texto, /SEM PAGAMENTO/);
+  // O custo continua entrando no DRE na data do vencimento (agosto).
+  const dre = await admin().get(`/api/dre/veiculo/${veiculos.TWJ8C06}?data_inicio=2026-08-01&data_fim=2026-08-31`);
+  assert.equal(dre.body.custos.despesasFixas, 299325);
+});
