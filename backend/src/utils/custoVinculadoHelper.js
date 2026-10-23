@@ -8,6 +8,13 @@ const { registrarAuditoria } = require('./audit');
 //  - multa que a empresa paga (condutor nao indicado / paga): entra no DRE E gera a conta a pagar.
 // O registro de origem guarda o id da despesa (despesa_fixa_id) - e por ele que o custo e desfeito.
 
+// Categoria de despesa pelo nome (cria se ainda nao existir) - ex.: "DESCONTO NO FRETE".
+function categoriaPorNome(nome) {
+  const existente = db.prepare('SELECT id FROM categorias_despesa WHERE nome = ?').get(nome);
+  if (existente) return existente.id;
+  return db.prepare('INSERT INTO categorias_despesa (nome) VALUES (?)').run(nome).lastInsertRowid;
+}
+
 // Cria a despesa fixa (e, se `conta` for informado, a conta a pagar dela) dentro da transacao do chamador.
 function criarDespesaVinculada({ empresaId, usuarioId, centroCustoId, categoriaId, valor, data, descricao, conta = null }) {
   if (!Number.isInteger(valor) || valor <= 0) throw new ApiError(400, 'O valor do custo precisa ser maior que zero.');
@@ -61,4 +68,4 @@ function desvincularReferencias(despesaFixaId) {
   db.prepare('UPDATE multas SET despesa_fixa_id = NULL WHERE despesa_fixa_id = ?').run(despesaFixaId);
 }
 
-module.exports = { criarDespesaVinculada, removerDespesaVinculada, desvincularReferencias };
+module.exports = { criarDespesaVinculada, removerDespesaVinculada, desvincularReferencias, categoriaPorNome, CATEGORIA_DESCONTO_FRETE: 'DESCONTO NO FRETE' };

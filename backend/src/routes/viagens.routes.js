@@ -14,7 +14,7 @@ const {
 } = require('../utils/dataHora');
 const { criarDespesaViagem, criarContaPagarCombinada, resolverContaPagarAposEdicao, exigirKmAbastecimento } = require('../utils/despesaViagemHelper');
 const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
-const { criarDespesaVinculada, removerDespesaVinculada } = require('../utils/custoVinculadoHelper');
+const { criarDespesaVinculada, removerDespesaVinculada, categoriaPorNome, CATEGORIA_DESCONTO_FRETE } = require('../utils/custoVinculadoHelper');
 
 const router = express.Router();
 
@@ -509,7 +509,20 @@ router.post('/fretes/:freteId/baixas', requerAcessoModulo('viagens', 'Gerenciar'
       movimentacao = db.prepare('SELECT * FROM movimentacoes_caixa WHERE id = ?').get(movInfo.lastInsertRowid);
     }
 
-    return { baixa, movimentacao, contaReceber: db.prepare('SELECT * FROM contas_receber WHERE id = ?').get(receber.id) };
+    // Desconto concedido ao cliente/transportadora (seguro de carga, gerenciadora de risco, cintas...): e DESPESA da placa do
+    // frete no DRE (categoria DESCONTO NO FRETE), na data da baixa. Pedagio e Outro NAO viram custo sozinhos (pedagio abatido
+    // continua receita) - so se alguem lancar "como custo" na mao.
+    let despesaDesconto = null;
+    if (tipo === 'Desconto') {
+      despesaDesconto = criarDespesaVinculada({
+        empresaId: req.empresaId, usuarioId: req.usuario.id, centroCustoId: receber.centro_custo_id, categoriaId: categoriaPorNome(CATEGORIA_DESCONTO_FRETE), valor,
+        data: dataBaixa, descricao: `DESCONTO DO FRETE #${req.params.freteId}${descricao ? ` - ${descricao}` : ''}`,
+      }).despesa;
+      db.prepare('UPDATE contas_receber_baixas SET despesa_fixa_id = ? WHERE id = ?').run(despesaDesconto.id, baixa.id);
+      baixa.despesa_fixa_id = despesaDesconto.id;
+    }
+
+    return { baixa, movimentacao, despesa: despesaDesconto, contaReceber: db.prepare('SELECT * FROM contas_receber WHERE id = ?').get(receber.id) };
   });
 
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'contas_receber_baixas', registroId: resultado.baixa.id, acao: 'INSERT', depois: resultado.baixa });

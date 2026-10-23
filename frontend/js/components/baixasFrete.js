@@ -134,6 +134,7 @@ export async function abrirBaixasFrete(frete, recarregar, gerenciar) {
               <div><label class="label">Tipo *</label><select name="tipo" class="input" required>${TIPOS_BAIXA.map((t) => `<option value="${t}">${t}</option>`).join('')}</select></div>
               <div><label class="label">Valor *</label><input type="text" name="valor" class="input" required /></div>
             </div>
+            <p class="text-xs text-slate-500" data-dica-tipo></p>
             <div data-bloco-conta><label class="label">Conta bancaria (se recebeu de verdade)</label><div data-conta-select></div></div>
             <div><label class="label">Descricao</label><input type="text" name="descricao" class="input" /></div>
             <p class="hidden text-sm text-red-600" data-erro-baixa></p>
@@ -215,9 +216,17 @@ export async function abrirBaixasFrete(frete, recarregar, gerenciar) {
       formBaixa.querySelector('[data-conta-select]').appendChild(contaSelect.el);
       attachMoedaMaskReais(formBaixa.valor, 0);
       attachUppercaseInput(formBaixa.descricao);
-      formBaixa.tipo.addEventListener('change', () => {
+      const DICAS = {
+        Desconto: 'O desconto entra como DESPESA da placa do frete no DRE (categoria DESCONTO NO FRETE).',
+        Pedagio: 'Pedagio abatido do frete continua como receita: nao vira custo.',
+      };
+      const dicaTipo = formBaixa.querySelector('[data-dica-tipo]');
+      const atualizarTipo = () => {
         formBaixa.querySelector('[data-bloco-conta]').classList.toggle('hidden', formBaixa.tipo.value === 'Desconto');
-      });
+        dicaTipo.textContent = DICAS[formBaixa.tipo.value] || '';
+      };
+      formBaixa.tipo.addEventListener('change', atualizarTipo);
+      atualizarTipo();
       formBaixa.addEventListener('submit', async (ev) => {
         ev.preventDefault();
         const erroEl = formBaixa.querySelector('[data-erro-baixa]');

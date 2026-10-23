@@ -89,13 +89,37 @@ test('desfazer o custo apaga a despesa; apagar a baixa tambem', async () => {
   assert.equal((await dreDe(cavaloId)).custos.despesasFixas, 0);
 });
 
-test('apagar a despesa em Despesas Fixas solta o vinculo da baixa (sem erro de chave estrangeira)', async () => {
-  const baixa = await admin().post(`/api/viagens/fretes/${freteId}/baixas`).send({ tipo: 'Desconto', valor: 2000, data: '2026-09-26', descricao: 'seguro' });
-  const custo = await admin().post(`/api/viagens/fretes/baixas/${baixa.body.baixa.id}/custo`).send({ centro_custo_id: centroCavalo, categoria_id: categoriaId });
-  assert.equal(custo.status, 201, JSON.stringify(custo.body));
-  const del = await admin().delete(`/api/despesas-fixas/${custo.body.despesa.id}`);
+test('baixa de DESCONTO vira despesa da placa sozinha (categoria DESCONTO NO FRETE); Pedagio e Outro continuam so receita', async () => {
+  const antes = (await dreDe(outroCavaloId)).custos.despesasFixas;
+  const contasAntes = db.prepare('SELECT COUNT(*) AS n FROM contas_pagar').get().n;
+  const desconto = await admin().post(`/api/viagens/fretes/${freteId}/baixas`).send({ tipo: 'Desconto', valor: 2000, data: '2026-09-26', descricao: 'seguro de carga' });
+  assert.equal(desconto.status, 201, JSON.stringify(desconto.body));
+  assert.equal(desconto.body.baixa.despesa_fixa_id, desconto.body.despesa.id);
+  assert.equal(desconto.body.despesa.valor, 2000);
+  assert.equal(desconto.body.despesa.data, '2026-09-26');
+  assert.match(desconto.body.despesa.descricao, /DESCONTO DO FRETE #\d+ - SEGURO DE CARGA/);
+  assert.equal(db.prepare('SELECT nome FROM categorias_despesa WHERE id = ?').get(desconto.body.despesa.categoria_id).nome, 'DESCONTO NO FRETE');
+  assert.equal(desconto.body.despesa.centro_custo_id, db.prepare('SELECT id FROM centros_custo WHERE veiculo_id = ?').get(outroCavaloId).id, 'custo na placa do proprio frete');
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM contas_pagar').get().n, contasAntes, 'sem conta a pagar');
+  assert.equal((await dreDe(outroCavaloId)).custos.despesasFixas, antes + 2000);
+
+  // Pedagio abatido do frete continua RECEITA: nao cria despesa.
+  const pedagio = await admin().post(`/api/viagens/fretes/${freteId}/baixas`).send({ tipo: 'Pedagio', valor: 5000, data: '2026-09-26' });
+  assert.equal(pedagio.status, 201, JSON.stringify(pedagio.body));
+  assert.equal(pedagio.body.despesa, null);
+  assert.equal((await dreDe(outroCavaloId)).custos.despesasFixas, antes + 2000);
+
+  // Apagar a despesa em Despesas Fixas solta o vinculo da baixa (sem erro de chave estrangeira).
+  const del = await admin().delete(`/api/despesas-fixas/${desconto.body.despesa.id}`);
   assert.equal(del.status, 204, JSON.stringify(del.body));
-  assert.equal(db.prepare('SELECT despesa_fixa_id FROM contas_receber_baixas WHERE id = ?').get(baixa.body.baixa.id).despesa_fixa_id, null);
+  assert.equal(db.prepare('SELECT despesa_fixa_id FROM contas_receber_baixas WHERE id = ?').get(desconto.body.baixa.id).despesa_fixa_id, null);
+});
+
+test('apagar a baixa de desconto apaga a despesa dela', async () => {
+  const desconto = await admin().post(`/api/viagens/fretes/${freteId}/baixas`).send({ tipo: 'Desconto', valor: 1500, data: '2026-09-27' });
+  const despesaId2 = desconto.body.despesa.id;
+  assert.equal((await admin().delete(`/api/viagens/fretes/baixas/${desconto.body.baixa.id}`)).status, 204);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM despesas_fixas WHERE id = ?').get(despesaId2).n, 0);
 });
 
 // ---------------------------------------------------------------- multas
