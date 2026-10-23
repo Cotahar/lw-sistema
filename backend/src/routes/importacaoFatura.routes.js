@@ -14,9 +14,9 @@ router.post('/sem-parar/analisar', exigirEmpresaEspecifica, asyncHandler(async (
 }));
 
 router.post('/sem-parar', exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const { abas, categoria_id, fornecedor_id, data, data_vencimento, ratear_diferenca, ja_paga } = req.body;
+  const { abas, categoria_id, fornecedor_id, data, data_vencimento, ratear_diferenca, ja_paga, creditos_transportadora } = req.body;
   const resultado = importarFatura({
-    empresaId: req.empresaId, usuarioId: req.usuario.id, abas, categoria_id, fornecedor_id, data, data_vencimento, ratear_diferenca, jaPaga: Boolean(ja_paga),
+    empresaId: req.empresaId, usuarioId: req.usuario.id, abas, categoria_id, fornecedor_id, data, data_vencimento, ratear_diferenca, jaPaga: Boolean(ja_paga), creditosTransportadora: Array.isArray(creditos_transportadora) ? creditos_transportadora : undefined,
   });
   res.status(201).json(resultado);
 }));

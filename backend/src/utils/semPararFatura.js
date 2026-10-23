@@ -74,6 +74,36 @@ function somarPorPlaca(linhas, { negativo = false } = {}) {
   return mapa;
 }
 
+// Creditos por ORIGEM (quem colocou o vale-pedagio na tag: EMBARCADOR/CNPJ da aba CREDITOS). Chave = CNPJ (so digitos) ou, sem ele, o nome normalizado.
+// Serve para separar o credito que a TRANSPORTADORA coloca como parte do pagamento do frete (nao reduz o custo do pedagio) do
+// reembolso de um embarcador de verdade.
+function creditosPorOrigem(linhas) {
+  const porPlaca = new Map();
+  const origens = new Map();
+  if (!Array.isArray(linhas) || linhas.length < 2) return { porPlaca, origens: [] };
+  const cab = linhas[0].map(norm);
+  const iPlaca = cab.indexOf('PLACA');
+  const iValor = cab.indexOf('VALOR');
+  const iEmb = cab.indexOf('EMBARCADOR');
+  const iCnpj = cab.indexOf('CNPJ');
+  if (iPlaca < 0 || iValor < 0) return { porPlaca, origens: [] };
+  for (const l of linhas.slice(1)) {
+    const placa = normPlaca(l[iPlaca]);
+    const centavos = paraCentavos(l[iValor]);
+    if (!placa || centavos === null) continue;
+    const nome = iEmb >= 0 && l[iEmb] ? String(l[iEmb]).trim() : '(SEM ORIGEM)';
+    const cnpj = iCnpj >= 0 && l[iCnpj] ? String(l[iCnpj]).replace(/\D/g, '') : '';
+    const chave = cnpj || norm(nome);
+    const o = origens.get(chave) || { chave, nome, cnpj, qtd: 0, total: 0 };
+    o.qtd += 1; o.total += centavos;
+    origens.set(chave, o);
+    const mapa = porPlaca.get(placa) || {};
+    mapa[chave] = (mapa[chave] || 0) + centavos;
+    porPlaca.set(placa, mapa);
+  }
+  return { porPlaca, origens: [...origens.values()].sort((a, b) => b.total - a.total) };
+}
+
 function lerResumo(linhas) {
   if (!Array.isArray(linhas) || !linhas.length) throw new ApiError(400, 'A aba "RESUMO DA FATURA" nao foi encontrada no arquivo.');
   const resumo = { numero: null, nome: null, emissao: null, vencimento: null, valor: null, total: null, itens: [] };
@@ -122,6 +152,7 @@ function analisarFatura(abas) {
   const porComponente = {};
   for (const c of COMPONENTES) porComponente[c.chave] = somarPorPlaca(abaPorNome(abas, ...c.abas));
   const creditos = somarPorPlaca(abaPorNome(abas, 'CREDITOS'));
+  const porOrigem = creditosPorOrigem(abaPorNome(abas, 'CREDITOS'));
 
   const placas = new Set([...creditos.keys()]);
   for (const mapa of Object.values(porComponente)) for (const p of mapa.keys()) placas.add(p);
@@ -139,7 +170,7 @@ function analisarFatura(abas) {
     const cr = creditos.get(placa);
     const creditoCentavos = cr ? cr.centavos : 0;
     if (cr && cr.tag && !tag) tag = cr.tag;
-    return { placa, tag, componentes, creditos: creditoCentavos, liquido: bruto - creditoCentavos };
+    return { placa, tag, componentes, creditos: creditoCentavos, creditos_por_origem: porOrigem.porPlaca.get(placa) || {}, liquido: bruto - creditoCentavos };
   });
 
   // Confere cada linha do resumo da fatura com a soma da aba correspondente.
@@ -161,6 +192,7 @@ function analisarFatura(abas) {
     fatura: { numero: resumo.numero, nome: resumo.nome, emissao: resumo.emissao, vencimento: resumo.vencimento, total: resumo.total },
     conferencias,
     placas: linhas,
+    creditos_origens: porOrigem.origens,
     soma_placas: somaPlacas,
     diferenca: resumo.total - somaPlacas,
   };
