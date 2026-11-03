@@ -182,6 +182,14 @@ router.post('/consolidar', requerAcessoModulo('contas_pagar', 'Gerenciar'), exig
   });
 
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'contas_pagar', registroId: resultado.novaConta.id, acao: 'INSERT', depois: resultado.novaConta });
+  // As contas originais foram apagadas: cada uma deixa um DELETE no log, apontando a fatura que as substituiu
+  // (a Auditoria nao reverte esse DELETE - ver reverterContasPagar - porque as despesas ja apontam para a fatura).
+  for (const original of resultado.contasOriginais) {
+    registrarAuditoria({
+      usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'contas_pagar', registroId: original.id, acao: 'DELETE',
+      antes: original, depois: { consolidada_na_conta: resultado.novaConta.id },
+    });
+  }
   res.status(201).json(resultado.novaConta);
 }));
 

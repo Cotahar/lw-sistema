@@ -164,10 +164,14 @@ async function sincronizarEmpresa(empresaId, usuarioId = null) {
     db.prepare('UPDATE empresas SET onixsat_ultimo_mid = ? WHERE id = ?').run(maiorMid, empresaId);
   });
 
-  registrarAuditoria({
-    usuarioId, empresaId, tabela: 'empresas', registroId: empresaId, acao: 'UPDATE',
-    antes: { onixsat_ultimo_mid: mIdInicial }, depois: { onixsat_ultimo_mid: maiorMid },
-  });
+  // So a sincronizacao disparada por uma pessoa fica na auditoria. O agendador (usuarioId nulo) avanca o cursor a
+  // cada poucos minutos - registrar isso enchia o log (97% das linhas) sem informar nada.
+  if (usuarioId) {
+    registrarAuditoria({
+      usuarioId, empresaId, tabela: 'empresas', registroId: empresaId, acao: 'UPDATE',
+      antes: { onixsat_ultimo_mid: mIdInicial }, depois: { onixsat_ultimo_mid: maiorMid },
+    });
+  }
 
   const alertasDisparados = [];
   for (const veiculoId of veiculosComHodometroAtualizado) {

@@ -1,6 +1,7 @@
 const { test, before } = require('node:test');
 const assert = require('node:assert/strict');
 const { login, api, criarEmpresa, criarVeiculo, criarFornecedor, criarContaBancaria, db } = require('./helpers');
+const { hojeIsoBrasilia } = require('../src/utils/dataHora');
 
 // Custos lancados a partir de outro registro:
 //  (1) baixa do frete (desconto/pedagio/outro) que foi, na pratica, um custo da placa (ex.: 4 pneus abatidos do
@@ -23,7 +24,8 @@ function admin() {
   return api(tokenAdmin, empresaId);
 }
 
-const dreDe = async (veiculoId) => (await admin().get(`/api/dre/veiculo/${veiculoId}?data_inicio=2026-09-01&data_fim=2026-10-31`)).body;
+// Janela ate HOJE: a multa vira custo na data de hoje, entao uma data final fixa quebraria o teste quando o calendario passasse dela.
+const dreDe = async (veiculoId) => (await admin().get(`/api/dre/veiculo/${veiculoId}?data_inicio=2026-09-01&data_fim=${hojeIsoBrasilia()}`)).body;
 
 test('setup: viagem de um cavalo com um frete de R$ 2.700,00', async () => {
   const conjunto = await admin().post('/api/conjuntos').send({ nome: 'CONJ CUV', itens: [{ veiculo_id: outroCavaloId }] });

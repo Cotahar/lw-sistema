@@ -43,12 +43,23 @@ function criarContaPagarCombinada({ empresaId, viagemId, despesa, arlaDespesa, c
 // (mesma regra de ordem ja aplicada no DELETE de despesa com Arla).
 function resolverContaPagarAposEdicao({ contaPagarId, novoValor, despesaId }) {
   if (!contaPagarId) return contaPagarId;
-  if (novoValor > 0) {
-    db.prepare('UPDATE contas_pagar SET valor = ? WHERE id = ?').run(novoValor, contaPagarId);
-    return contaPagarId;
-  }
   const conta = db.prepare('SELECT * FROM contas_pagar WHERE id = ?').get(contaPagarId);
   if (!conta) return null;
+
+  // Conta que nao e mais "so desta despesa" nao acompanha a edicao:
+  //  - fatura consolidada (varias despesas apontam para a mesma conta; o valor e o do boleto): sobrescrever com o valor
+  //    de uma despesa so desfazia o boleto (ex.: fatura de R$ 2.867,71 virou R$ 33,99);
+  //  - conta que ja tem pagamento/desconto: o que foi pago e o que foi pago (o posto costuma lancar o preco maior e dar o
+  //    desconto no boleto); mexer no valor deixava a conta "Paga" com valor diferente do pago.
+  // O custo (despesa) muda normalmente; so a conta a pagar fica como esta.
+  const despesasDaConta = db.prepare("SELECT COUNT(*) AS n FROM despesas_viagem WHERE contas_pagar_id = ?").get(contaPagarId).n;
+  const compartilhada = conta.origem_tipo !== 'DespesaViagem' || despesasDaConta > 1;
+  const comPagamento = conta.valor_pago > 0 || conta.valor_descontado > 0 || conta.status !== 'Pendente';
+  if (compartilhada) return contaPagarId;
+  if (novoValor > 0) {
+    if (!comPagamento) db.prepare('UPDATE contas_pagar SET valor = ? WHERE id = ?').run(novoValor, contaPagarId);
+    return contaPagarId;
+  }
   if (conta.valor_pago > 0 || conta.valor_descontado > 0) {
     throw new ApiError(400, 'O valor em dinheiro informado zeraria uma conta a pagar que ja tem pagamento/desconto lancado. Estorne o pagamento antes de ajustar.');
   }

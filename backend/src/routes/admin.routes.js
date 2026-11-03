@@ -144,6 +144,9 @@ function reverterTransferencia(log) {
 function reverterContasPagar(log) {
   const antes = parseJson(log.dados_antes);
   const depois = parseJson(log.dados_depois);
+  if (log.acao === 'DELETE' && depois && depois.consolidada_na_conta) {
+    throw new ApiError(400, `Esta conta foi consolidada na fatura (conta a pagar #${depois.consolidada_na_conta}) e as despesas dela agora apontam para a fatura: nao da para restaurar a conta original pela auditoria.`);
+  }
   const ehBaixa = log.acao === 'UPDATE' && antes && depois && antes.valor_pago !== depois.valor_pago;
   if (!ehBaixa) return reverterGenerico(log);
 
