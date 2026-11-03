@@ -7,6 +7,7 @@ import { abrirModal, fecharModal, confirmarAcao } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
 import { formatarMoeda, attachMoedaMask, getMoedaValue, formatarDataBr, attachUppercaseInput, attachDataMask, parseDataBrParaIso } from '../masks.js';
 import { ICONE_SUCESSO, ICONE_ATENCAO, ICONE_CRITICO, ICONE_NEUTRO } from '../components/statusIcons.js';
+import { esc } from '../html.js';
 
 const STATUS_BADGE = {
   Estoque: 'badge-neutro',
@@ -176,8 +177,8 @@ async function abrirHistorico(pneu) {
           ${eventos.map((e) => `
             <tr class="border-b border-slate-100">
               <td class="py-1">${formatarDataBr(e.data)}</td>
-              <td class="py-1">${e.tipo_evento}</td>
-              <td class="py-1">${e.veiculo_id ? `Veiculo #${e.veiculo_id}${e.eixo ? ` - eixo ${e.eixo} ${e.lado || ''}` : ''}` : '-'}</td>
+              <td class="py-1">${esc(e.tipo_evento)}</td>
+              <td class="py-1">${e.veiculo_id ? `Veiculo #${e.veiculo_id}${e.eixo ? ` - eixo ${e.eixo} ${esc(e.lado || '')}` : ''}` : '-'}</td>
               <td class="py-1 text-right">${e.custo !== null ? formatarMoeda(e.custo) : '-'}</td>
             </tr>
           `).join('') || '<tr><td colspan="4" class="py-3 text-center text-slate-400">Sem eventos.</td></tr>'}
@@ -240,7 +241,7 @@ async function abrirInstalar(pneu, recarregar) {
 }
 
 async function abrirRemover(pneu, recarregar) {
-  const ok = await confirmarAcao({ titulo: 'Remover pneu', mensagem: `Remover o pneu ${pneu.numero_fogo} do veiculo? Ele volta para o Estoque.`, textoConfirmar: 'Remover', perigo: false });
+  const ok = await confirmarAcao({ titulo: 'Remover pneu', mensagem: `Remover o pneu ${esc(pneu.numero_fogo)} do veiculo? Ele volta para o Estoque.`, textoConfirmar: 'Remover', perigo: false });
   if (!ok) return;
   try {
     await post(`/pneus/${pneu.id}/remover`, {});
@@ -377,8 +378,8 @@ async function abrirDiagramaEixos() {
           <div class="flex flex-wrap justify-center gap-6">
             ${veiculos.map((v) => `
               <div>
-                <p class="mb-1 text-xs font-medium uppercase text-slate-500">${v.placa} (${v.tipo}) - ${v.qtd_eixos} eixo(s)${v.tipo_tracao ? ` - tracao ${v.tipo_tracao}` : ''}</p>
-                ${svgDiagramaEixos(v.qtd_eixos, v.tipo_tracao, Object.fromEntries(instalados.filter((p) => p.veiculo_id === v.id).map((p) => [`${p.eixo}-${p.lado}`, p])), v.id)}
+                <p class="mb-1 text-xs font-medium uppercase text-slate-500">${esc(v.placa)} (${esc(v.tipo)}) - ${v.qtd_eixos} eixo(s)${v.tipo_tracao ? ` - tracao ${esc(v.tipo_tracao)}` : ''}</p>
+                ${svgDiagramaEixos(v.qtd_eixos, v.tipo_tracao, Object.fromEntries(instalados.filter((p) => p.veiculo_id === v.id).map((p) => [`${p.eixo}-${esc(p.lado)}`, p])), v.id)}
               </div>
             `).join('')}
           </div>
@@ -398,7 +399,7 @@ async function abrirDiagramaEixos() {
 }
 
 async function sucatear(pneu, recarregar) {
-  const ok = await confirmarAcao({ titulo: 'Sucatear pneu', mensagem: `Marcar o pneu ${pneu.numero_fogo} como Sucata? Esta acao encerra a vida util dele no sistema.`, textoConfirmar: 'Sucatear' });
+  const ok = await confirmarAcao({ titulo: 'Sucatear pneu', mensagem: `Marcar o pneu ${esc(pneu.numero_fogo)} como Sucata? Esta acao encerra a vida util dele no sistema.`, textoConfirmar: 'Sucatear' });
   if (!ok) return;
   try {
     await post(`/pneus/${pneu.id}/sucatear`, {});
@@ -437,7 +438,7 @@ export async function render(container) {
       { chave: 'numero_fogo', titulo: 'Numero de Fogo' },
       { chave: 'marca_modelo', titulo: 'Marca/Modelo', render: (r) => [r.marca, r.modelo].filter(Boolean).join(' ') || '-' },
       { chave: 'medida', titulo: 'Medida' },
-      { chave: 'status', titulo: 'Status', render: (r) => `<span class="${STATUS_BADGE[r.status]}">${STATUS_ICONE[r.status] || ''}${r.status}</span>` },
+      { chave: 'status', titulo: 'Status', render: (r) => `<span class="${STATUS_BADGE[r.status]}">${STATUS_ICONE[r.status] || ''}${esc(r.status)}</span>` },
       { chave: 'conjunto', titulo: 'Conjunto', render: (r) => (r.status === 'Instalado' ? (r.conjunto || '-') : '-') },
       { chave: 'posicao', titulo: 'Posicao', render: (r) => (r.status === 'Instalado' ? `${r.placa_veiculo || '#' + r.veiculo_id} (${r.tipo_veiculo || '-'}) - eixo ${r.eixo} ${r.lado}` : '-') },
       { chave: 'numero_recapagens', titulo: 'Recapagens' },

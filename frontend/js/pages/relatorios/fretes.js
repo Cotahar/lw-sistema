@@ -7,6 +7,7 @@ import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js'
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { periodoAnteriorEquivalente, renderComparativoPeriodo } from '../../components/comparativoPeriodo.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso, hojeIsoLocal } from '../../masks.js';
+import { esc } from '../../html.js';
 
 // Sem badge de cor no status aqui (diferente de contasReceber.js/
 // saldosEmAberto.js): o render() de cada coluna deste catalogo e
@@ -16,12 +17,12 @@ import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso, hoje
 const CATALOGO_COLUNAS = [
   { chave: 'data_carregamento', titulo: 'Carregamento', padrao: true, render: (r) => (r.data_carregamento ? formatarDataBr(r.data_carregamento) : '-') },
   { chave: 'conjunto', titulo: 'Conjunto', padrao: true, render: (r) => r.conjunto || '-' },
-  { chave: 'motorista_nome', titulo: 'Motorista', padrao: true, render: (r) => r.motorista_nome || '-' },
-  { chave: 'rota', titulo: 'Origem/Destino', padrao: true, render: (r) => `${r.origem_cidade}/${r.origem_uf} &rarr; ${r.destino_cidade}/${r.destino_uf}` },
-  { chave: 'transportadora_nome', titulo: 'Transportadora', padrao: true, render: (r) => r.transportadora_nome || '-' },
+  { chave: 'motorista_nome', titulo: 'Motorista', padrao: true, render: (r) => esc(r.motorista_nome || '-') },
+  { chave: 'rota', titulo: 'Origem/Destino', padrao: true, render: (r) => `${esc(r.origem_cidade)}/${esc(r.origem_uf)} &rarr; ${esc(r.destino_cidade)}/${esc(r.destino_uf)}` },
+  { chave: 'transportadora_nome', titulo: 'Transportadora', padrao: true, render: (r) => esc(r.transportadora_nome || '-') },
   { chave: 'data_descarga', titulo: 'Entrega', padrao: false, render: (r) => (r.data_descarga ? formatarDataBr(r.data_descarga) : '-') },
   { chave: 'peso_carga_kg', titulo: 'Peso', padrao: false, render: (r) => (r.peso_carga_kg ? `${r.peso_carga_kg.toLocaleString('pt-BR')} kg` : '-') },
-  { chave: 'status', titulo: 'Status', padrao: true, render: (r) => r.status },
+  { chave: 'status', titulo: 'Status', padrao: true, render: (r) => esc(r.status) },
   { chave: 'saldo_pendente', titulo: 'Saldo pendente', padrao: false, render: (r) => formatarMoeda(r.saldo_pendente) },
 ];
 const COLUNA_VALOR = { chave: 'valor', titulo: 'Frete Bruto', render: (r) => formatarMoeda(r.valor), exportar: (r) => r.valor / 100 };

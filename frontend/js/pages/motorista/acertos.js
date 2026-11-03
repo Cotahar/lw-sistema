@@ -3,6 +3,7 @@ import { navegar } from '../../router.js';
 import { formatarDataBr, formatarMoeda } from '../../masks.js';
 import { esqueletoLinhas } from '../../components/skeleton.js';
 import { iconeFilaHtml, atualizarIndicadorFila } from './offlineQueue.js';
+import { esc } from '../../html.js';
 
 function linha(rotulo, valor, destaque = false) {
   return `<div class="flex items-center justify-between border-b border-slate-100 py-2 last:border-0 ${destaque ? 'font-semibold text-gray-900' : 'text-slate-700'}">
@@ -10,10 +11,6 @@ function linha(rotulo, valor, destaque = false) {
   </div>`;
 }
 
-// Descricoes de reembolso/desconto sao texto livre digitado pelo escritorio.
-function esc(texto) {
-  return String(texto ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
 
 // Reembolsos/descontos linha a linha, recuados sob o total da categoria.
 function linhasItens(itens) {

@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const { requerAcessoModulo } = require('../middleware/auth');
+const { exigirEmpresaOuTodas } = require('../middleware/empresa');
 const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
 
 const router = express.Router();
@@ -9,7 +10,7 @@ const router = express.Router();
 // Rota nao exige empresa especifica: no modo "Todas" (req.empresaId === null)
 // as listas trazem itens de todas as empresas, cada um com sua razao_social,
 // para nao misturar itens de tenants diferentes de forma indistinguivel.
-router.get('/resumo', requerAcessoModulo('dre', 'Visualizar'), asyncHandler(async (req, res) => {
+router.get('/resumo', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaOuTodas, asyncHandler(async (req, res) => {
   const paramsEmpresa = req.empresaId ? [req.empresaId] : [];
 
   const alertasPendentes = db.prepare(`

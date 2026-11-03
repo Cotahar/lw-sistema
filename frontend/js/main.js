@@ -1,6 +1,7 @@
 import { iniciarRouter, registrar, navegar } from './router.js';
 import { getToken, getUsuario, limparSessao, podeVisualizar, getEmpresaAtiva, salvarEmpresaAtiva, get, post } from './api.js';
 import { confirmarAcao } from './components/modal.js';
+import { esc } from './html.js';
 import { aoReceberMudanca } from './components/syncAbas.js';
 import './components/copiar.js'; // registra a delegacao global de click-to-copy
 import { renderLogin } from './pages/login.js';
@@ -8,7 +9,7 @@ import { renderRelatorio } from './pages/acertoRelatorio.js';
 import { renderRecibos } from './pages/recibos.js';
 import { renderDreRelatorio } from './pages/dreRelatorio.js';
 import { render as renderImpressaoGenerica } from './pages/relatorios/imprimir.js';
-import { GRUPOS_MENU, ROTA_PAINEL, ITEM_ADMIN, ITEM_AUDITORIA, ITEM_ATIVIDADE_USUARIOS, ITEM_IMPORTAR_SEM_PARAR, ITENS_CONFIGURACAO } from './modulosConfig.js';
+import { GRUPOS_MENU, ROTA_PAINEL, ITEM_ADMIN, ITEM_AUDITORIA, ITEM_ATIVIDADE_USUARIOS, ITEM_IMPORTAR_SEM_PARAR, ITEM_BACKUPS, ITENS_CONFIGURACAO } from './modulosConfig.js';
 
 const appEl = document.getElementById('app');
 let shellConstruido = false;
@@ -107,7 +108,7 @@ function montarSidebarHtml() {
   )).join('');
 
   const admin = usuario && usuario.perfil === 'Admin'
-    ? renderGrupoAccordion('administracao', 'Administracao', [ITEM_ADMIN, ITEM_AUDITORIA, ITEM_ATIVIDADE_USUARIOS, ITEM_IMPORTAR_SEM_PARAR, ...ITENS_CONFIGURACAO])
+    ? renderGrupoAccordion('administracao', 'Administracao', [ITEM_ADMIN, ITEM_AUDITORIA, ITEM_ATIVIDADE_USUARIOS, ITEM_IMPORTAR_SEM_PARAR, ITEM_BACKUPS, ...ITENS_CONFIGURACAO])
     : '';
 
   return `
@@ -125,7 +126,7 @@ function montarSeletorEmpresaHtml() {
   if (empresas.length <= 1 && !(usuario && usuario.podeTodas)) return '';
   const ativa = getEmpresaAtiva();
   const opcoes = empresas
-    .map((e) => `<option value="${e.id}" ${String(e.id) === ativa ? 'selected' : ''}>${e.nome_fantasia || e.razao_social}</option>`)
+    .map((e) => `<option value="${e.id}" ${String(e.id) === ativa ? 'selected' : ''}>${esc(e.nome_fantasia || e.razao_social)}</option>`)
     .join('');
   const opcaoTodas = usuario && usuario.podeTodas
     ? `<option value="todas" ${ativa === 'todas' ? 'selected' : ''}>Todas as empresas</option>`
@@ -170,11 +171,11 @@ function renderShellHtml() {
             </a>
             <div class="flex items-center gap-2">
               <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-black text-sm font-bold text-brand-yellow">
-                ${usuario && usuario.nome ? usuario.nome.charAt(0).toUpperCase() : '?'}
+                ${usuario && usuario.nome ? esc(usuario.nome.charAt(0).toUpperCase()) : '?'}
               </span>
               <div class="text-right">
-                <p class="text-sm font-medium text-slate-900">${usuario ? usuario.nome : ''}</p>
-                <p class="text-xs text-slate-500">${usuario ? usuario.perfil : ''}</p>
+                <p class="text-sm font-medium text-slate-900">${usuario ? esc(usuario.nome) : ''}</p>
+                <p class="text-xs text-slate-500">${usuario ? esc(usuario.perfil) : ''}</p>
               </div>
             </div>
             <button type="button" class="btn-secondary btn-sm" data-sair>Sair</button>
@@ -521,6 +522,7 @@ registrarPagina('/relatorios/atividade-usuarios', () => import('./pages/relatori
 registrarPagina('/usuarios', () => import('./pages/usuarios.js'));
 registrarPagina('/auditoria', () => import('./pages/auditoria.js'));
 registrarPagina('/importar/sem-parar', () => import('./pages/importarSemParar.js'));
+registrarPagina('/backups', () => import('./pages/backups.js'));
 registrarPagina('/config/empresas', () => import('./pages/config/empresas.js'));
 registrarPagina('/config/fornecedor-tipos', () => import('./pages/config/fornecedorTipos.js'));
 registrarPagina('/config/categorias-despesa', () => import('./pages/config/categoriasDespesa.js'));

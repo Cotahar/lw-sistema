@@ -2,6 +2,7 @@ const db = require('../config/db');
 const ApiError = require('./ApiError');
 const { withTransaction } = require('./transaction');
 const { agoraDataHoraIsoBrasilia } = require('./dataHora');
+const { exigirIdDaCategoria } = require('./categoriasHelper');
 
 // Cria a conta a pagar combinada (diesel + Arla, quando houver) de uma
 // despesa de abastecimento. Extraida do meio de criarDespesaViagem() pra
@@ -112,15 +113,14 @@ function criarDespesaViagem({
     // categoria propria pra continuar aparecendo separada nos relatorios.
     let arlaDespesa = null;
     if (arla && arla.valor > 0) {
-      const categoriaArla = db.prepare("SELECT id FROM categorias_despesa WHERE lower(trim(nome)) = 'arla'").get();
-      if (!categoriaArla) throw new ApiError(400, 'Categoria "Arla" nao encontrada no cadastro.');
+      const categoriaArlaId = exigirIdDaCategoria('arla');
       const infoArla = db.prepare(`
         INSERT INTO despesas_viagem (
           empresa_id, viagem_id, frete_id, centro_custo_id, categoria_id, valor, data, pago_por, pago_por_usuario_id,
           posto_fornecedor_id, preco_litro, litragem, criado_por, forma_pagamento_posto, validado_por, validado_em
         ) VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, date('now', '-3 hours')), ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        empresaId, viagem.id, freteId, centroCustoId, categoriaArla.id, arla.valor, data || null, pagoPor, pagoPorUsuarioId || null,
+        empresaId, viagem.id, freteId, centroCustoId, categoriaArlaId, arla.valor, data || null, pagoPor, pagoPorUsuarioId || null,
         postoFornecedorId || null, arla.preco_litro || null, arla.litragem || null, usuarioId, formaPagamentoPosto || null, validadoPor, validadoEm
       );
       arlaDespesa = db.prepare('SELECT * FROM despesas_viagem WHERE id = ?').get(infoArla.lastInsertRowid);

@@ -1,3 +1,5 @@
+import { esc } from '../html.js';
+
 // Pilha de modais abertos (do mais antigo ao mais recente) - permite abrir um
 // modal por cima de outro (ex.: "+ Cadastrar novo fornecedor" a partir de um
 // formulario de despesa ja aberto) sem destruir o de baixo. Cada item:
@@ -54,7 +56,7 @@ export function abrirModal({ titulo, conteudo, largura = 'max-w-lg', aoFechar })
   overlay.innerHTML = `
     <div class="scale-in w-full ${largura} rounded-2xl bg-brand-surface shadow-xl">
       <div class="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-        <h3 class="text-base font-semibold text-gray-900">${titulo}</h3>
+        <h3 class="text-base font-semibold text-gray-900">${esc(titulo)}</h3>
         <button type="button" data-fechar-modal class="rounded-lg p-1 text-gray-400 hover:bg-white/10 hover:text-gray-900">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
         </button>

@@ -6,6 +6,7 @@ import { buscarConjuntos } from '../../components/conjuntoOpcoes.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
+import { esc } from '../../html.js';
 
 const TIPOS_EVENTO = ['Aquisicao', 'Instalacao', 'Remocao', 'EnvioRecapagem', 'RetornoRecapagem', 'Sucateamento'];
 
@@ -101,7 +102,7 @@ export async function render(container) {
           <tbody>
             ${grupos.map((g) => `
               <tr class="border-b border-slate-100 last:border-0">
-                <td class="table-td">${g.numero_fogo}</td>
+                <td class="table-td">${esc(g.numero_fogo)}</td>
                 <td class="table-td text-right">${g.qtdEventos}</td>
                 <td class="table-td text-right">${g.kmRodado != null ? `${g.kmRodado.toLocaleString('pt-BR')} km` : '-'}</td>
                 <td class="table-td text-right font-medium">${formatarMoeda(g.custoTotal)}</td>
@@ -116,13 +117,13 @@ export async function render(container) {
   const tabela = criarDataTable({
     colunas: [
       { chave: 'data', titulo: 'Data', render: (r) => formatarDataBr(r.data) },
-      { chave: 'numero_fogo', titulo: 'Numero de fogo', render: (r) => r.numero_fogo },
-      { chave: 'tipo_evento', titulo: 'Evento', render: (r) => r.tipo_evento },
+      { chave: 'numero_fogo', titulo: 'Numero de fogo', render: (r) => esc(r.numero_fogo) },
+      { chave: 'tipo_evento', titulo: 'Evento', render: (r) => esc(r.tipo_evento) },
       { chave: 'conjunto', titulo: 'Conjunto', render: (r) => r.conjunto || '-' },
-      { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => r.veiculo_placa || '-' },
+      { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => esc(r.veiculo_placa || '-') },
       { chave: 'posicao', titulo: 'Posicao', render: (r) => (r.eixo ? `Eixo ${r.eixo} - ${r.lado}` : '-') },
       { chave: 'km_veiculo', titulo: 'KM', render: (r) => (r.km_veiculo != null ? r.km_veiculo.toLocaleString('pt-BR') : '-') },
-      { chave: 'fornecedor_nome', titulo: 'Fornecedor/Recapadora', render: (r) => r.fornecedor_nome || '-' },
+      { chave: 'fornecedor_nome', titulo: 'Fornecedor/Recapadora', render: (r) => esc(r.fornecedor_nome || '-') },
       { chave: 'custo', titulo: 'Custo', render: (r) => (r.custo != null ? formatarMoeda(r.custo) : '-'), exportar: (r) => (r.custo != null ? r.custo / 100 : '') },
     ],
     ordenacaoInicial: { chave: 'data', direcao: 'desc' },

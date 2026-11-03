@@ -4,6 +4,7 @@ import { criarNovoFornecedor } from '../components/fornecedorQuickCreate.js';
 import { mostrarToast } from '../components/toast.js';
 import { confirmarAcao } from '../components/modal.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../masks.js';
+import { esc } from '../html.js';
 
 // Importacao da fatura do Sem Parar (administracao): le o relatorio .xlsx da fatura no
 // navegador (SheetJS, ja carregado no index.html), manda as abas para a API calcular o
@@ -22,9 +23,6 @@ function norm(s) {
   return String(s === null || s === undefined ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim();
 }
 
-function esc(s) {
-  return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
 
 async function lerPlanilha(arquivo) {
   if (typeof XLSX === 'undefined') throw new Error('A biblioteca de leitura de planilhas ainda esta carregando. Tente de novo em instantes.');

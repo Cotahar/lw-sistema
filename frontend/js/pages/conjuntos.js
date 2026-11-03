@@ -4,6 +4,7 @@ import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { abrirModal, fecharModal, confirmarAcao } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
 import { attachUppercaseInput } from '../masks.js';
+import { esc } from '../html.js';
 
 async function buscarVeiculos(termo) {
   const veiculos = await get(`/veiculos${termo ? `?search=${encodeURIComponent(termo)}` : ''}`);
@@ -100,7 +101,7 @@ async function sincronizarCarretaPadraoDoCavalo(itens) {
 
   const propagar = await confirmarAcao({
     titulo: 'Atualizar carreta padrao do cavalo?',
-    mensagem: `A carreta desta composicao (${carreta.placa}) e diferente da carreta padrao cadastrada no cavalo ${cavalo.placa}${cavalo.carreta_padrao_placa ? ` (atual: ${cavalo.carreta_padrao_placa})` : ' (nenhuma cadastrada ainda)'}. Deseja atualizar o cadastro do cavalo para usar ${carreta.placa} como padrao?`,
+    mensagem: `A carreta desta composicao (${esc(carreta.placa)}) e diferente da carreta padrao cadastrada no cavalo ${esc(cavalo.placa)}${cavalo.carreta_padrao_placa ? ` (atual: ${esc(cavalo.carreta_padrao_placa)})` : ' (nenhuma cadastrada ainda)'}. Deseja atualizar o cadastro do cavalo para usar ${esc(carreta.placa)} como padrao?`,
     textoConfirmar: 'Atualizar cadastro do cavalo',
     perigo: false,
   });

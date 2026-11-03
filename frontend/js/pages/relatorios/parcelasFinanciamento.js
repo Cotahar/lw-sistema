@@ -6,6 +6,7 @@ import { buscarConjuntos } from '../../components/conjuntoOpcoes.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
+import { esc } from '../../html.js';
 
 const STATUS_BADGE = { Pendente: 'badge-atencao', Paga: 'badge-sucesso', Atrasada: 'badge-critico' };
 
@@ -57,12 +58,12 @@ export async function render(container) {
   const tabela = criarDataTable({
     colunas: [
       { chave: 'data_vencimento', titulo: 'Vencimento', render: (r) => formatarDataBr(r.data_vencimento) },
-      { chave: 'financiamento_descricao', titulo: 'Financiamento', render: (r) => r.financiamento_descricao },
+      { chave: 'financiamento_descricao', titulo: 'Financiamento', render: (r) => esc(r.financiamento_descricao) },
       { chave: 'conjunto', titulo: 'Conjunto', render: (r) => r.conjunto || '-' },
-      { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => r.veiculo_placa || '-' },
-      { chave: 'credor_nome', titulo: 'Credor', render: (r) => r.credor_nome || '-' },
+      { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => esc(r.veiculo_placa || '-') },
+      { chave: 'credor_nome', titulo: 'Credor', render: (r) => esc(r.credor_nome || '-') },
       { chave: 'numero_parcela', titulo: 'Parcela', render: (r) => `${r.numero_parcela}` },
-      { chave: 'status', titulo: 'Status', render: (r) => `<span class="${STATUS_BADGE[r.status] || 'badge-neutro'}">${r.status}</span>`, exportar: (r) => r.status },
+      { chave: 'status', titulo: 'Status', render: (r) => `<span class="${STATUS_BADGE[r.status] || 'badge-neutro'}">${esc(r.status)}</span>`, exportar: (r) => r.status },
       { chave: 'valor_parcela', titulo: 'Valor', render: (r) => formatarMoeda(r.valor_parcela), exportar: (r) => r.valor_parcela / 100 },
     ],
     ordenacaoInicial: { chave: 'data_vencimento', direcao: 'asc' },

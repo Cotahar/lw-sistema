@@ -3,12 +3,8 @@ import { criarDataTable } from '../../components/dataTable.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { periodoAnteriorEquivalente, renderComparativoPeriodo } from '../../components/comparativoPeriodo.js';
-import { formatarMoeda, formatarDataBr, hojeIsoLocal, attachDataMask, parseDataBrParaIso } from '../../masks.js';
-
-function primeiroDiaMesAtualIso() {
-  const hoje = new Date(`${hojeIsoLocal()}T00:00:00`);
-  return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-01`;
-}
+import { formatarMoeda, formatarDataBr, hojeIsoLocal, attachDataMask, parseDataBrParaIso, primeiroDiaMesAtualIso } from '../../masks.js';
+import { esc } from '../../html.js';
 
 export async function render(container) {
   container.innerHTML = `
@@ -65,7 +61,7 @@ export async function render(container) {
 
   const tabela = criarDataTable({
     colunas: [
-      { chave: 'motorista_nome', titulo: 'Motorista', render: (r) => r.motorista_nome },
+      { chave: 'motorista_nome', titulo: 'Motorista', render: (r) => esc(r.motorista_nome) },
       { chave: 'faturamento_gerado', titulo: 'Faturamento gerado', render: (r) => formatarMoeda(r.faturamento_gerado), exportar: (r) => r.faturamento_gerado / 100 },
       { chave: 'comissao_total', titulo: 'Comissao', render: (r) => formatarMoeda(r.comissao_total), exportar: (r) => r.comissao_total / 100 },
       { chave: 'media_consumo_km_l', titulo: 'Media de consumo', render: (r) => (r.media_consumo_km_l !== null ? `${r.media_consumo_km_l.toFixed(2)} km/l` : '-'), exportar: (r) => (r.media_consumo_km_l !== null ? r.media_consumo_km_l.toFixed(2) : '') },

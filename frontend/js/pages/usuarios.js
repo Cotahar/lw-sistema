@@ -5,6 +5,7 @@ import { abrirModal, fecharModal } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
 import { renderizarAcessoNegado } from '../components/acessoNegado.js';
 import { attachUppercaseInput } from '../masks.js';
+import { esc } from '../html.js';
 
 const PERFIS = ['Admin', 'Comum', 'Visualizacao', 'Motorista'];
 const NIVEIS = ['Nenhum', 'Visualizar', 'Gerenciar'];
@@ -105,15 +106,15 @@ async function abrirPermissoes(usuarioRow) {
     const { usuario, permissoes } = await get(`/usuarios/${usuarioRow.id}/permissoes`);
     const corpo = document.createElement('div');
     corpo.innerHTML = `
-      <p class="mb-3 text-sm text-slate-500">Perfil base: <span class="font-medium">${usuario.perfil}</span>. Mude o nivel abaixo so onde o acesso deve ser diferente do padrao.</p>
+      <p class="mb-3 text-sm text-slate-500">Perfil base: <span class="font-medium">${esc(usuario.perfil)}</span>. Mude o nivel abaixo so onde o acesso deve ser diferente do padrao.</p>
       <div class="max-h-96 space-y-1 overflow-y-auto">
         <div class="grid grid-cols-[1fr_repeat(3,5rem)] items-center gap-1 px-2 pb-1 text-xs font-medium uppercase text-slate-500">
           <span></span>
           ${NIVEIS.map((n) => `<span class="text-center">${n}</span>`).join('')}
         </div>
         ${permissoes.map((p) => `
-          <div class="grid grid-cols-[1fr_repeat(3,5rem)] items-center gap-1 rounded-lg px-2 py-1 ${p.excecao ? 'bg-amber-950/40' : ''}" data-linha-modulo="${p.modulo}">
-            <span class="truncate text-sm text-slate-700" title="${p.nome}">${p.nome}</span>
+          <div class="grid grid-cols-[1fr_repeat(3,5rem)] items-center gap-1 rounded-lg px-2 py-1 ${p.excecao ? 'bg-amber-950/40' : ''}" data-linha-modulo="${esc(p.modulo)}">
+            <span class="truncate text-sm text-slate-700" title="${esc(p.nome)}">${esc(p.nome)}</span>
             ${NIVEIS.map((n) => celulaPermissao(p.modulo, n, p.nivel)).join('')}
           </div>
         `).join('')}
@@ -150,11 +151,11 @@ async function abrirEmpresas(usuarioRow) {
     const { usuario, empresas } = await get(`/usuarios/${usuarioRow.id}/empresas`);
     const corpo = document.createElement('div');
     corpo.innerHTML = `
-      <p class="mb-3 text-sm text-slate-500">Marque as empresas que <span class="font-medium">${usuario.nome}</span> pode acessar.</p>
+      <p class="mb-3 text-sm text-slate-500">Marque as empresas que <span class="font-medium">${esc(usuario.nome)}</span> pode acessar.</p>
       <div class="max-h-96 space-y-1 overflow-y-auto">
         ${empresas.map((e) => `
           <div class="flex items-center justify-between rounded-lg px-2 py-1.5">
-            <span class="text-sm text-slate-700">${e.razao_social}</span>
+            <span class="text-sm text-slate-700">${esc(e.razao_social)}</span>
             <input type="checkbox" class="h-4 w-4" data-empresa="${e.id}" ${e.concedida ? 'checked' : ''} />
           </div>
         `).join('')}

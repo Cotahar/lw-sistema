@@ -24,6 +24,14 @@ function somarDiasIso(dataIso, dias) {
   return data.toISOString().slice(0, 10);
 }
 
+// Mesmo, somando meses (parcelas mensais de financiamento, despesa fixa e OS). Dia 31 + 1 mes cai no
+// comeco do mes seguinte ao curto (comportamento do Date) - igual ao que as tres rotas ja faziam.
+function somarMesesIso(dataIso, meses) {
+  const data = new Date(`${dataIso}T00:00:00Z`);
+  data.setUTCMonth(data.getUTCMonth() + meses);
+  return data.toISOString().slice(0, 10);
+}
+
 // Prazo padrao de recebimento do frete: data de descarga (entrega) + 3 dias.
 // Sem data de descarga ainda, usa hoje + 3 dias - nunca o inicio da viagem,
 // que deixava fretes recem-lancados "vencidos ha 40 dias" numa viagem longa.
@@ -33,5 +41,5 @@ function dataPrevistaRecebimentoPadrao(dataDescarga) {
 }
 
 module.exports = {
-  agoraBrasilia, hojeIsoBrasilia, agoraDataHoraIsoBrasilia, somarDiasIso, dataPrevistaRecebimentoPadrao, PRAZO_RECEBIMENTO_DIAS,
+  agoraBrasilia, hojeIsoBrasilia, agoraDataHoraIsoBrasilia, somarDiasIso, somarMesesIso, dataPrevistaRecebimentoPadrao, PRAZO_RECEBIMENTO_DIAS,
 };

@@ -1,8 +1,6 @@
 const db = require('../config/db');
-
-function somar(lista) {
-  return lista.reduce((total, valor) => total + (valor || 0), 0);
-}
+const { somar } = require('./formatacao');
+const { idDaCategoria } = require('./categoriasHelper');
 
 // Media de consumo "tanque cheio a tanque cheio" - o unico jeito confiavel
 // de medir litros/km reais (abastecer so uma parte do tanque pra chegar a um
@@ -52,8 +50,7 @@ function calcularMediasConsumo(despesas, categoriaAbastecimentoId) {
 }
 
 function buscarCategoriaAbastecimentoId() {
-  const categoria = db.prepare("SELECT id FROM categorias_despesa WHERE lower(trim(nome)) = 'abastecimento'").get();
-  return categoria ? categoria.id : null;
+  return idDaCategoria('abastecimento');
 }
 
 // Abastecimentos do VEICULO (via centro de custo), nao so os da viagem

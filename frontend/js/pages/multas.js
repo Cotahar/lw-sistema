@@ -6,6 +6,7 @@ import { mostrarToast, mostrarErro } from '../components/toast.js';
 import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr, attachUppercaseInput } from '../masks.js';
 
 import { ICONE_SUCESSO, ICONE_ATENCAO, ICONE_CRITICO, ICONE_NEUTRO } from '../components/statusIcons.js';
+import { esc } from '../html.js';
 
 const STATUS_LABEL = {
   AguardandoIndicacao: 'Aguardando indicacao',
@@ -184,7 +185,7 @@ async function abrirIndicarCondutor(registro, recarregar) {
 async function marcarNaoIndicado(registro, recarregar) {
   const ok = await confirmarAcao({
     titulo: 'Marcar como nao indicado',
-    mensagem: `O prazo pra indicar o condutor desta multa (${registro.veiculo_placa}) vai ser marcado como vencido. O valor dobra automaticamente (Art. 257 par. 8 CTB): de ${formatarMoeda(registro.valor_original)} para ${formatarMoeda(registro.valor_original * 2)}. Como a empresa passa a pagar, o valor entra como <strong>custo da placa</strong> (DRE) e cria uma <strong>conta a pagar</strong>. Confirma?`,
+    mensagem: `O prazo pra indicar o condutor desta multa (${esc(registro.veiculo_placa)}) vai ser marcado como vencido. O valor dobra automaticamente (Art. 257 par. 8 CTB): de ${formatarMoeda(registro.valor_original)} para ${formatarMoeda(registro.valor_original * 2)}. Como a empresa passa a pagar, o valor entra como <strong>custo da placa</strong> (DRE) e cria uma <strong>conta a pagar</strong>. Confirma?`,
     textoConfirmar: 'Confirmar',
   });
   if (!ok) return;
@@ -198,7 +199,7 @@ async function marcarNaoIndicado(registro, recarregar) {
 }
 
 async function marcarPaga(registro, recarregar) {
-  const ok = await confirmarAcao({ titulo: 'Marcar como paga', mensagem: `Confirma que a multa do veiculo ${registro.veiculo_placa} foi paga pela empresa? Ela entra como <strong>custo da placa</strong> (DRE) e gera uma <strong>conta a pagar</strong> para registrar o pagamento (se ainda nao existir).`, textoConfirmar: 'Confirmar' });
+  const ok = await confirmarAcao({ titulo: 'Marcar como paga', mensagem: `Confirma que a multa do veiculo ${esc(registro.veiculo_placa)} foi paga pela empresa? Ela entra como <strong>custo da placa</strong> (DRE) e gera uma <strong>conta a pagar</strong> para registrar o pagamento (se ainda nao existir).`, textoConfirmar: 'Confirmar' });
   if (!ok) return;
   try {
     await post(`/multas/${registro.id}/status`, { status: 'Paga' });
@@ -240,7 +241,7 @@ export async function render(container) {
   const tabela = criarDataTable({
     colunas: [
       { chave: 'veiculo_placa', titulo: 'Veiculo' },
-      { chave: 'motorista_nome', titulo: 'Motorista', render: (r) => r.motorista_nome || '-' },
+      { chave: 'motorista_nome', titulo: 'Motorista', render: (r) => esc(r.motorista_nome || '-') },
       { chave: 'descricao', titulo: 'Infracao', truncar: true },
       { chave: 'valor_original', titulo: 'Valor', render: (r) => formatarMoeda(r.status === 'NaoIndicado' && r.valor_nao_indicacao ? r.valor_nao_indicacao : r.valor_original) },
       { chave: 'prazo_indicacao', titulo: 'Prazo indicacao', render: (r) => `${formatarDataBr(r.prazo_indicacao)}${badgePrazo(r)}` },

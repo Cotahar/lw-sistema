@@ -49,7 +49,24 @@ const calculoFreteRoutes = require('./routes/calculoFrete.routes');
 const motoristaMobileRoutes = require('./routes/motorista.routes');
 const recibosRoutes = require('./routes/recibos.routes');
 
+const backupsRoutes = require('./routes/backups.routes');
+const saudeRoutes = require('./routes/saude.routes');
+const { VERSAO_APP } = require('./utils/versaoApp');
+
 const app = express();
+// Atras do proxy do Railway: req.ip/req.secure passam a refletir o cliente de verdade (limite de login, HSTS).
+app.set('trust proxy', 1);
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.set({
+    // Um anexo nunca e "interpretado" como outro tipo (ex.: HTML disfarcado de imagem).
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'SAMEORIGIN',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+  });
+  if (req.secure) res.set('Strict-Transport-Security', 'max-age=15552000');
+  next();
+});
 app.use(cors());
 // Limite maior que o padrao (100kb): a importacao de fatura do Sem Parar (administracao)
 // manda as abas da planilha (centenas de passagens) num unico JSON.
@@ -61,10 +78,18 @@ app.use('/api', limparQuery);
 // simplifica o "rodar localmente" (um so `npm start`). O roteamento de tela
 // no frontend e via hash (#/modulo), entao servir os arquivos estaticos
 // normalmente (sem fallback de SPA) e suficiente.
-app.use(express.static(path.resolve(__dirname, '../../frontend')));
+// So o que o navegador precisa - a pasta frontend/ tambem tem package.json, testes e
+// configuracoes que nao tem por que ficar publicos.
+const FRONTEND = path.resolve(__dirname, '../../frontend');
+for (const pasta of ['js', 'dist', 'img', 'data']) app.use(`/${pasta}`, express.static(path.join(FRONTEND, pasta)));
+for (const arquivo of ['index.html', 'sw.js', 'manifest.json']) app.get(`/${arquivo}`, (req, res) => res.sendFile(path.join(FRONTEND, arquivo)));
+app.get('/', (req, res) => res.sendFile(path.join(FRONTEND, 'index.html')));
 app.use('/uploads', express.static(process.env.UPLOAD_DIR || path.resolve(__dirname, '../uploads')));
 
-app.get('/api/health', (req, res) => res.json({ ok: true }));
+// Versao do frontend em toda resposta da API (ver utils/versaoApp.js e frontend/js/versao.js).
+app.use('/api', (req, res, next) => { res.set('X-App-Versao', VERSAO_APP); next(); });
+
+app.use('/api/health', saudeRoutes);
 
 app.use('/api/auth', authRoutes);
 
@@ -101,6 +126,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/ocorrencias', ocorrenciasRoutes);
 app.use('/api/anexos', anexosRoutes);
 app.use('/api/admin/importacoes', importacaoFaturaRoutes);
+app.use('/api/admin/backups', backupsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/empresas', empresasRoutes);
 app.use('/api/cnpj', cnpjRoutes);

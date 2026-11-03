@@ -8,6 +8,12 @@ const SCHEMA_PATH = path.resolve(__dirname, '../../../database/schema.sql');
 
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
+// Restauracao de backup pedida por variavel (ver utils/restauracaoBackup.js) - antes de abrir o banco.
+if (process.env.RESTAURAR_BACKUP) {
+  const { restaurarSePedido } = require('../utils/restauracaoBackup');
+  restaurarSePedido({ dbPath: DB_PATH, dirBackups: process.env.BACKUP_DIR || path.join(path.dirname(DB_PATH), 'backups'), arquivo: process.env.RESTAURAR_BACKUP });
+}
+
 const isNewDatabase = !fs.existsSync(DB_PATH);
 
 const db = new DatabaseSync(DB_PATH);
@@ -18,6 +24,13 @@ if (isNewDatabase) {
   db.exec(schema);
   console.log(`Banco de dados criado em ${DB_PATH} a partir de ${SCHEMA_PATH}`);
 }
+
+// Migracoes automaticas pendentes (ver utils/migracoes.js). Falha aqui derruba a subida de proposito.
+require('../utils/migracoes').aplicarMigracoes({
+  db,
+  bancoNovo: isNewDatabase,
+  pastaBackups: process.env.BACKUP_DIR || path.join(path.dirname(DB_PATH), 'backups'),
+});
 
 const usuarioCount = db.prepare('SELECT COUNT(*) AS total FROM usuarios').get().total;
 if (usuarioCount === 0) {

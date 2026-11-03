@@ -4,6 +4,7 @@ import { criarMultiSearchableSelect } from '../../components/multiSearchableSele
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
+import { esc } from '../../html.js';
 
 const STATUS_OPCOES = ['AguardandoIndicacao', 'CondutorIndicado', 'NaoIndicado', 'Paga', 'Recorrida', 'Cancelada'];
 const STATUS_BADGE = {
@@ -64,11 +65,11 @@ export async function render(container) {
   const tabela = criarDataTable({
     colunas: [
       { chave: 'data_infracao', titulo: 'Data infracao', render: (r) => (r.data_infracao ? formatarDataBr(r.data_infracao) : '-') },
-      { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => r.veiculo_placa },
-      { chave: 'motorista_nome', titulo: 'Motorista', render: (r) => r.motorista_nome || '-' },
-      { chave: 'descricao', titulo: 'Descricao', render: (r) => r.descricao, truncar: true },
-      { chave: 'orgao_autuador', titulo: 'Orgao', render: (r) => r.orgao_autuador || '-' },
-      { chave: 'status', titulo: 'Status', render: (r) => `<span class="${STATUS_BADGE[r.status] || 'badge-neutro'}">${r.status}</span>`, exportar: (r) => r.status },
+      { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => esc(r.veiculo_placa) },
+      { chave: 'motorista_nome', titulo: 'Motorista', render: (r) => esc(r.motorista_nome || '-') },
+      { chave: 'descricao', titulo: 'Descricao', render: (r) => esc(r.descricao), truncar: true },
+      { chave: 'orgao_autuador', titulo: 'Orgao', render: (r) => esc(r.orgao_autuador || '-') },
+      { chave: 'status', titulo: 'Status', render: (r) => `<span class="${STATUS_BADGE[r.status] || 'badge-neutro'}">${esc(r.status)}</span>`, exportar: (r) => r.status },
       { chave: 'valor_original', titulo: 'Valor', render: (r) => formatarMoeda(r.valor_original), exportar: (r) => r.valor_original / 100 },
     ],
     ordenacaoInicial: { chave: 'data_infracao', direcao: 'desc' },

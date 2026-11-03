@@ -4,18 +4,19 @@ import { mostrarErro } from '../components/toast.js';
 import { criarBotaoSincronizarOnixsat } from '../components/onixsatSync.js';
 import { modalAberto } from '../components/modal.js';
 import { esqueletoPagina } from '../components/skeleton.js';
+import { esc } from '../html.js';
 
 function cartaoVeiculoViagem(v) {
   const consumo = v.media_consumo_atual ? `${v.media_consumo_atual.toFixed(2)} km/l` : '-';
   const localizacao = v.localizacao_cidade
-    ? `${v.localizacao_cidade}/${v.localizacao_uf} <span class="text-slate-400">(${formatarDataHoraBr(v.localizacao_atualizado_em)})</span>`
+    ? `${esc(v.localizacao_cidade)}/${esc(v.localizacao_uf)} <span class="text-slate-400">(${formatarDataHoraBr(v.localizacao_atualizado_em)})</span>`
     : '-';
   const diasEmViagem = Math.max(1, Math.round((new Date(`${hojeIsoLocal()}T00:00:00Z`) - new Date(`${v.data_inicio}T00:00:00Z`)) / 86400000));
   return `
     <a href="#/viagens/${v.viagem_id}" class="card block p-4 hover:border-brand-yellow hover:shadow-sm">
       <div class="mb-2 flex items-center justify-between">
-        <p class="text-base font-bold text-slate-900">${v.placa}</p>
-        <span class="text-xs text-slate-500">${v.motorista_nome}</span>
+        <p class="text-base font-bold text-slate-900">${esc(v.placa)}</p>
+        <span class="text-xs text-slate-500">${esc(v.motorista_nome)}</span>
       </div>
       <dl class="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
         <dt class="text-slate-500">Inicio da viagem</dt><dd class="text-right text-slate-900">${formatarDataBr(v.data_inicio)}</dd>
@@ -113,7 +114,7 @@ export async function render(container) {
     listaAlertas.innerHTML = resumo.alertasPendentes.length
       ? resumo.alertasPendentes.map((a) => `
           <div class="rounded-lg border border-amber-800 bg-amber-950/40 px-3 py-2 text-sm">
-            <p class="font-medium text-amber-400">${a.placa} - ${a.regra_descricao}</p>
+            <p class="font-medium text-amber-400">${esc(a.placa)} - ${esc(a.regra_descricao)}</p>
             <p class="text-xs text-amber-500">Disparado em ${a.km_atual_no_disparo.toLocaleString('pt-BR')} km</p>
           </div>
         `).join('')
@@ -123,7 +124,7 @@ export async function render(container) {
     listaPagar.innerHTML = resumo.contasPagarVencidas.length
       ? resumo.contasPagarVencidas.map((c) => `
           <div class="flex items-center justify-between rounded-lg border border-red-800 bg-red-950/40 px-3 py-2 text-sm">
-            <span class="text-red-400">${c.descricao}</span>
+            <span class="text-red-400">${esc(c.descricao)}</span>
             <span class="font-medium text-red-400">${formatarMoeda(c.valor - c.valor_pago)}</span>
           </div>
         `).join('')
@@ -137,7 +138,7 @@ export async function render(container) {
           const cor = vencido ? 'border-red-800 bg-red-950/40 text-red-400' : 'border-amber-800 bg-amber-950/40 text-amber-400';
           return `
             <a href="#/viagens/${c.viagem_id}" class="flex items-center justify-between rounded-lg border ${cor} px-3 py-2 text-sm hover:opacity-80">
-              <span>${c.origem_cidade}/${c.origem_uf} &rarr; ${c.destino_cidade}/${c.destino_uf} (${formatarDataBr(c.data_prevista)})</span>
+              <span>${esc(c.origem_cidade)}/${esc(c.origem_uf)} &rarr; ${esc(c.destino_cidade)}/${esc(c.destino_uf)} (${formatarDataBr(c.data_prevista)})</span>
               <span class="font-medium">${formatarMoeda(c.valor - c.valor_recebido - c.valor_descontado)}</span>
             </a>
           `;

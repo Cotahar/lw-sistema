@@ -36,6 +36,13 @@ jobs:
       - name: Compilar CSS (garante que o Tailwind nao quebrou)
         working-directory: frontend
         run: npm run build
+      # Sem bundler, um modulo com erro de sintaxe so quebra quando alguem abre a tela dele.
+      - name: Conferir sintaxe de todos os modulos do frontend
+        working-directory: frontend
+        run: |
+          for f in $(find js -name '*.js') sw.js; do
+            node --input-type=module --check < "$f" || { echo "Erro de sintaxe em $f"; exit 1; }
+          done
 
   e2e-tests:
     runs-on: ubuntu-latest

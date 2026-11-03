@@ -4,6 +4,7 @@ import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda, formatarDataHoraBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
+import { esc } from '../../html.js';
 
 const TIPO_LABEL = { DebitoResidual: 'Debito residual', CreditoAbatido: 'Credito abatido', AjusteManual: 'Ajuste manual' };
 
@@ -41,9 +42,9 @@ export async function render(container) {
   const tabela = criarDataTable({
     colunas: [
       { chave: 'data', titulo: 'Data', render: (r) => formatarDataHoraBr(r.data) },
-      { chave: 'motorista_nome', titulo: 'Motorista', render: (r) => r.motorista_nome },
+      { chave: 'motorista_nome', titulo: 'Motorista', render: (r) => esc(r.motorista_nome) },
       { chave: 'tipo', titulo: 'Tipo', render: (r) => TIPO_LABEL[r.tipo] || r.tipo },
-      { chave: 'descricao', titulo: 'Descricao', render: (r) => r.descricao || '-', truncar: true },
+      { chave: 'descricao', titulo: 'Descricao', render: (r) => esc(r.descricao || '-'), truncar: true },
       { chave: 'saldo_anterior', titulo: 'Saldo antes', render: (r) => formatarMoeda(r.saldo_anterior), exportar: (r) => r.saldo_anterior / 100 },
       { chave: 'saldo_posterior', titulo: 'Saldo depois', render: (r) => `<span class="font-semibold">${formatarMoeda(r.saldo_posterior)}</span>`, exportar: (r) => r.saldo_posterior / 100 },
       { chave: 'valor', titulo: 'Valor do lancamento', render: (r) => formatarMoeda(r.valor), exportar: (r) => r.valor / 100 },

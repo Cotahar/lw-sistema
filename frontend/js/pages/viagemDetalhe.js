@@ -14,6 +14,7 @@ import { navegar } from '../router.js';
 import { criarBotaoSincronizarOnixsat } from '../components/onixsatSync.js';
 import { esqueletoPagina } from '../components/skeleton.js';
 import { criarTimelineAuditoria } from '../components/auditoriaTimeline.js';
+import { esc } from '../html.js';
 
 const TIPOS_TRATORA = ['Cavalo', 'Truck', 'Toco'];
 
@@ -225,7 +226,7 @@ export async function abrirNovaDespesa(viagemId, recarregar, centroCustoPadrao) 
   form.innerHTML = `
     <div class="grid grid-cols-2 gap-3">
       <div data-bloco-valor-generico><label class="label">Valor *</label><input type="text" name="valor" class="input" required /></div>
-      <div><label class="label">Categoria *</label><select name="categoria_id" class="input" required>${categorias.map((c) => `<option value="${c.id}">${c.nome}</option>`).join('')}</select></div>
+      <div><label class="label">Categoria *</label><select name="categoria_id" class="input" required>${categorias.map((c) => `<option value="${c.id}">${esc(c.nome)}</option>`).join('')}</select></div>
     </div>
     <div class="grid grid-cols-2 gap-3">
       <div><label class="label">Data</label><input type="text" name="data" class="input" /></div>
@@ -512,7 +513,7 @@ function montarFormularioDespesaExistente({ despesa, arlaDespesa, categoriaNome,
     ${despesa.foto_recibo ? `
       <div>
         <label class="label">Foto da nota/cupom</label>
-        <img src="/uploads/abastecimentos/${despesa.foto_recibo}" class="h-32 w-32 cursor-pointer rounded-lg border border-slate-200 object-cover" data-ver-foto />
+        <img src="/uploads/abastecimentos/${esc(despesa.foto_recibo)}" class="h-32 w-32 cursor-pointer rounded-lg border border-slate-200 object-cover" data-ver-foto />
       </div>
     ` : ''}
     <div class="grid grid-cols-2 gap-3">
@@ -1026,7 +1027,7 @@ export async function render(container, params) {
       <div class="mb-4 flex items-center justify-between">
         <div>
           <button type="button" class="mb-2 text-sm text-gray-900 hover:underline" data-voltar>&larr; Voltar para Viagens</button>
-          <h1 class="text-xl font-bold text-slate-900">Viagem #${viagem.id} - ${motorista.nome}</h1>
+          <h1 class="text-xl font-bold text-slate-900">Viagem #${viagem.id} - ${esc(motorista.nome)}</h1>
           <p class="text-sm text-slate-500">${conjunto.itens.map((i) => i.placa).join(' + ')} · ${formatarDataBr(viagem.data_inicio)}${viagem.data_fim ? ` a ${formatarDataBr(viagem.data_fim)}` : ''} · ${diasDecorridos} dia${diasDecorridos === 1 ? '' : 's'}</p>
         </div>
         <div class="flex items-center gap-2">
@@ -1051,7 +1052,7 @@ export async function render(container, params) {
           <p class="text-xs font-medium uppercase text-slate-500">Localizacao atual</p>
           ${tratora && tratora.localizacao_cidade ? `
             <details>
-              <summary class="inline cursor-pointer text-sm font-semibold text-slate-900">${tratora.localizacao_cidade}/${tratora.localizacao_uf}</summary>
+              <summary class="inline cursor-pointer text-sm font-semibold text-slate-900">${esc(tratora.localizacao_cidade)}/${esc(tratora.localizacao_uf)}</summary>
               <div class="mt-1 text-xs text-slate-500">
                 Atualizado em ${formatarDataHoraBr(tratora.localizacao_atualizado_em)}<br />
                 <a href="${linkMapsTratora}" target="_blank" rel="noopener" class="text-gray-900 hover:underline">Google Maps</a>
@@ -1137,7 +1138,7 @@ export async function render(container, params) {
           <label class="label">Filtrar por categoria</label>
           <select class="input" data-filtro-categoria-despesa>
             <option value="">Todas as categorias</option>
-            ${categorias.map((c) => `<option value="${c.id}">${c.nome}</option>`).join('')}
+            ${categorias.map((c) => `<option value="${c.id}">${esc(c.nome)}</option>`).join('')}
           </select>
         </div>
         <div data-tabela-despesas></div>
@@ -1162,7 +1163,7 @@ export async function render(container, params) {
               <th class="table-th">Data</th><th class="table-th">Valor</th><th class="table-th">Descricao</th><th class="table-th"></th>
             </tr></thead>
             <tbody>
-              ${adiantamentos.map((a) => `<tr class="border-b border-slate-100"><td class="table-td">${formatarDataBr(a.data)}</td><td class="table-td">${formatarMoeda(a.valor)}${a.conta_bancaria_id ? '' : ' (sem caixa)'}</td><td class="table-td">${a.descricao || '-'}</td><td class="table-td text-right whitespace-nowrap"><a href="#/viagens/${viagemId}/recibos?adiantamento=${a.id}" target="_blank" rel="noopener" class="mr-3 text-xs text-gray-900 hover:underline">Recibo</a>${gerenciar && viagem.status !== 'Finalizada' ? `<button type="button" class="mr-3 text-xs text-gray-900 hover:underline" data-editar-adiantamento="${a.id}">Editar</button><button type="button" class="text-xs text-red-600 hover:underline" data-remover-adiantamento="${a.id}">Remover</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="4" class="table-td py-6 text-center text-slate-400">Nenhum adiantamento lancado.</td></tr>'}
+              ${adiantamentos.map((a) => `<tr class="border-b border-slate-100"><td class="table-td">${formatarDataBr(a.data)}</td><td class="table-td">${formatarMoeda(a.valor)}${a.conta_bancaria_id ? '' : ' (sem caixa)'}</td><td class="table-td">${esc(a.descricao || '-')}</td><td class="table-td text-right whitespace-nowrap"><a href="#/viagens/${viagemId}/recibos?adiantamento=${a.id}" target="_blank" rel="noopener" class="mr-3 text-xs text-gray-900 hover:underline">Recibo</a>${gerenciar && viagem.status !== 'Finalizada' ? `<button type="button" class="mr-3 text-xs text-gray-900 hover:underline" data-editar-adiantamento="${a.id}">Editar</button><button type="button" class="text-xs text-red-600 hover:underline" data-remover-adiantamento="${a.id}">Remover</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="4" class="table-td py-6 text-center text-slate-400">Nenhum adiantamento lancado.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -1219,7 +1220,7 @@ export async function render(container, params) {
     const tabelaFretes = criarDataTable({
       colunas: [
         { chave: 'transportadora', titulo: 'Transportadora', render: (r) => (r.transportadora_id ? nomeFornecedoresPorId[r.transportadora_id] || `#${r.transportadora_id}` : '-') },
-        { chave: 'rota', titulo: 'Rota', render: (r) => `${r.origem_cidade}/${r.origem_uf} &rarr; ${r.destino_cidade}/${r.destino_uf}` },
+        { chave: 'rota', titulo: 'Rota', render: (r) => `${esc(r.origem_cidade)}/${esc(r.origem_uf)} &rarr; ${esc(r.destino_cidade)}/${esc(r.destino_uf)}` },
         { chave: 'data_carregamento', titulo: 'Carregamento', render: (r) => (r.data_carregamento ? formatarDataBr(r.data_carregamento) : '-') },
         { chave: 'data_descarga', titulo: 'Descarga', render: (r) => (r.data_descarga ? formatarDataBr(r.data_descarga) : '-') },
         { chave: 'peso_carga_kg', titulo: 'Peso', render: (r) => (r.peso_carga_kg ? `${r.peso_carga_kg.toLocaleString('pt-BR')} kg` : '-') },

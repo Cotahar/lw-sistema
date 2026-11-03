@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('node:path');
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const multer = require('multer');
 const db = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
@@ -11,7 +12,10 @@ const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 const { criarDespesaViagem, exigirKmAbastecimento } = require('../utils/despesaViagemHelper');
 const { registrarAuditoria } = require('../utils/audit');
-const { calcularMediasConsumo, buscarCategoriaAbastecimentoId: buscarCategoriaAbastecimentoIdGlobal, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
+const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
+const { exigirIdDaCategoria } = require('../utils/categoriasHelper');
+const { somar } = require('../utils/formatacao');
+const { percentualComissaoPorMedia } = require('../utils/comissaoHelper');
 const { SELECT_STATUS_PAGAMENTO, comStatusPagamento } = require('../utils/acertoPagamentoHelper');
 const { montarDetalhamentoAcerto } = require('../utils/acertoDetalhamentoHelper');
 
@@ -24,7 +28,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 const upload = multer({
   storage: multer.diskStorage({
     destination: UPLOAD_DIR,
-    filename: (req, file, cb) => cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}.jpg`),
+    filename: (req, file, cb) => cb(null, `${Date.now()}-${crypto.randomUUID()}.jpg`),
   }),
   limits: { fileSize: 5 * 1024 * 1024 }, // o frontend ja comprime antes de enviar; isto e so um limite de seguranca
   fileFilter: (req, file, cb) => cb(null, /^image\//.test(file.mimetype)),
@@ -41,30 +45,13 @@ function buscarViagemAtualDoMotorista(motoristaId, empresaId) {
   `).get(motoristaId, empresaId);
 }
 
-function somar(lista) {
-  return lista.reduce((total, valor) => total + (valor || 0), 0);
-}
-
-// Mesma faixa usada pelo Acerto oficial (acertos.routes.js) - mantido
-// identico de proposito, pra "% de comissao" nunca divergir entre o painel
-// e o fechamento real.
-function resolverPercentualComissao(mediaKmL, marca) {
-  if (mediaKmL === null) return null;
-  const faixa = db.prepare(`
-    SELECT * FROM comissao_faixas
-    WHERE ativo = 1 AND km_l_de <= ? AND km_l_ate >= ? AND (marca = ? OR marca IS NULL)
-    ORDER BY (marca IS NULL) ASC, km_l_de LIMIT 1
-  `).get(mediaKmL, mediaKmL, marca);
-  return faixa ? faixa.percentual_comissao : null;
-}
-
 // Mesma formula "tanque cheio a tanque cheio" do Acerto (mediaConsumoHelper.js)
 // - a unica usada pra estimar a comissao, pra nunca mostrar ao motorista um
 // numero que o Acerto real vai contrariar depois. Olha pro historico do
 // VEICULO a partir do km_inicial (nao so desta viagem) - ver
 // mediaConsumoHelper.js/buscarAbastecimentosDoVeiculo.
 function calcularMediaAbastecimentos(viagem, tratora) {
-  const categoriaAbastecimentoId = buscarCategoriaAbastecimentoIdGlobal();
+  const categoriaAbastecimentoId = buscarCategoriaAbastecimentoId();
   const centroCusto = tratora ? buscarCentroCustoDoVeiculo(tratora.id) : null;
   const abastecimentosVeiculo = centroCusto
     ? buscarAbastecimentosDoVeiculo(centroCusto.id, viagem.km_inicial, viagem.km_final)
@@ -118,7 +105,7 @@ router.get('/viagem-atual', asyncHandler(async (req, res) => {
   const adiantamentosTotal = somar(adiantamentos.map((a) => a.valor));
 
   const { mediaViagemKmL, mediaUltimaAbastecidaKmL } = calcularMediaAbastecimentos(viagem, tratora);
-  const percentualComissao = resolverPercentualComissao(mediaViagemKmL, tratora ? tratora.marca : null);
+  const percentualComissao = percentualComissaoPorMedia(mediaViagemKmL, tratora ? tratora.marca : null);
   const comissaoEstimada = percentualComissao !== null
     ? Math.round(faturamentoLiquido * (percentualComissao / 100)) - adiantamentosTotal
     : null;
@@ -213,6 +200,9 @@ router.post('/abastecimentos', upload.single('foto'), asyncHandler(async (req, r
   // Depois do reenvio idempotente de proposito: um item gravado antes desta
   // regra existir (fila offline) continua sendo devolvido, nao recusado.
   exigirKmAbastecimento(km_abastecimento);
+  if (posto_fornecedor_id && !db.prepare('SELECT 1 FROM fornecedores WHERE id = ? AND empresa_id = ?').get(posto_fornecedor_id, req.empresaId)) {
+    throw new ApiError(400, 'Posto nao encontrado nesta empresa.');
+  }
 
   const viagem = buscarViagemAtualDoMotorista(req.usuario.motorista_id, req.empresaId);
   if (!viagem) throw new ApiError(400, 'Nenhuma viagem em andamento no momento - fale com o escritorio.');
@@ -230,7 +220,7 @@ router.post('/abastecimentos', upload.single('foto'), asyncHandler(async (req, r
   const despesa = dieselValor > 0
     ? criarDespesaViagem({
         empresaId: req.empresaId, viagem, freteId, centroCustoId: centroCusto.id,
-        categoriaId: buscarCategoriaAbastecimentoId(), valor: dieselValor, data: data || null, pagoPor: 'Empresa',
+        categoriaId: exigirIdDaCategoria('abastecimento'), valor: dieselValor, data: data || null, pagoPor: 'Empresa',
         postoFornecedorId: posto_fornecedor_id || null, precoLitro: preco_litro ? Number(preco_litro) : null,
         litragem: litragem ? Number(litragem) : null, kmAbastecimento: km_abastecimento ? Number(km_abastecimento) : null,
         usuarioId: req.usuario.id, fotoRecibo: req.file ? req.file.filename : null, idempotencyKey: idempotency_key,
@@ -242,7 +232,7 @@ router.post('/abastecimentos', upload.single('foto'), asyncHandler(async (req, r
       })
     : criarDespesaViagem({
         empresaId: req.empresaId, viagem, freteId, centroCustoId: centroCusto.id,
-        categoriaId: buscarCategoriaArlaId(), valor: arlaValor, data: data || null, pagoPor: 'Empresa',
+        categoriaId: exigirIdDaCategoria('arla'), valor: arlaValor, data: data || null, pagoPor: 'Empresa',
         postoFornecedorId: posto_fornecedor_id || null, precoLitro: arla_preco_litro ? Number(arla_preco_litro) : null,
         litragem: arla_litragem ? Number(arla_litragem) : null, kmAbastecimento: km_abastecimento ? Number(km_abastecimento) : null,
         usuarioId: req.usuario.id, fotoRecibo: req.file ? req.file.filename : null, idempotencyKey: idempotency_key,
@@ -290,7 +280,7 @@ router.post('/postos', asyncHandler(async (req, res) => {
 
   const info = db.prepare(`
     INSERT INTO fornecedores (empresa_id, nome, tipo_id, localizacao, ativo) VALUES (?, ?, ?, ?, 1)
-  `).run(req.empresaId, nome.trim(), tipoId, localizacao || null);
+  `).run(req.empresaId, nome.trim().toUpperCase(), tipoId, localizacao ? String(localizacao).toUpperCase() : null); // caixa alta como no cadastro de Fornecedores
   const criado = db.prepare('SELECT id, nome, localizacao FROM fornecedores WHERE id = ?').get(info.lastInsertRowid);
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'fornecedores', registroId: criado.id, acao: 'INSERT', depois: criado });
   res.status(201).json(criado);
@@ -308,17 +298,5 @@ router.get('/postos-favoritos', asyncHandler(async (req, res) => {
   `).all(req.empresaId);
   res.json(postos);
 }));
-
-function buscarCategoriaAbastecimentoId() {
-  const categoria = db.prepare("SELECT id FROM categorias_despesa WHERE lower(trim(nome)) = 'abastecimento'").get();
-  if (!categoria) throw new ApiError(400, 'Categoria "Abastecimento" nao encontrada no cadastro.');
-  return categoria.id;
-}
-
-function buscarCategoriaArlaId() {
-  const categoria = db.prepare("SELECT id FROM categorias_despesa WHERE lower(trim(nome)) = 'arla'").get();
-  if (!categoria) throw new ApiError(400, 'Categoria "Arla" nao encontrada no cadastro.');
-  return categoria.id;
-}
 
 module.exports = router;

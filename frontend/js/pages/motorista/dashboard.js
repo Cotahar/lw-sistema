@@ -3,6 +3,7 @@ import { navegar } from '../../router.js';
 import { formatarDataBr, formatarMoeda } from '../../masks.js';
 import { listarPendentes, tentarSincronizarTodos, iconeFilaHtml, atualizarIndicadorFila } from './offlineQueue.js';
 import { esqueletoLinhas } from '../../components/skeleton.js';
+import { esc } from '../../html.js';
 
 function formatarKmL(valor) {
   return valor != null ? `${valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km/l` : '-';
@@ -15,7 +16,7 @@ export async function render(appEl) {
       <header class="flex items-center justify-between bg-brand-black px-4 py-3 text-white">
         <div>
           <p class="text-lg font-bold leading-tight">Frottex</p>
-          <p class="text-xs leading-tight text-gray-400">Ola, ${usuario ? usuario.nome : ''}</p>
+          <p class="text-xs leading-tight text-gray-400">Ola, ${usuario ? esc(usuario.nome) : ''}</p>
         </div>
         <div class="flex items-center gap-1">
           ${iconeFilaHtml()}
@@ -60,7 +61,7 @@ async function renderizarViagem(conteudo) {
       ${viagem ? `
         <div class="card p-4">
           <p class="text-xs font-medium uppercase text-slate-500">Viagem atual</p>
-          <p class="text-2xl font-bold leading-tight text-gray-900">${viagem.motorista_nome || ''}</p>
+          <p class="text-2xl font-bold leading-tight text-gray-900">${esc(viagem.motorista_nome || '')}</p>
           <p class="text-sm text-slate-500">Inicio em ${formatarDataBr(viagem.data_inicio)} - ${viagem.dias_fora} dia(s) fora</p>
           <p class="text-xs text-slate-400">${viagem.placas.join(' + ')}</p>
 
@@ -92,16 +93,16 @@ async function renderizarViagem(conteudo) {
               <dd class="font-medium text-slate-900">${viagem.comissao_estimada != null ? formatarMoeda(viagem.comissao_estimada) : '-'}</dd>
             </div>
             <div><dt class="text-slate-500">Hodometro</dt><dd class="font-medium text-slate-900">${viagem.hodometro_atual != null ? `${viagem.hodometro_atual.toLocaleString('pt-BR')} km` : '-'}</dd></div>
-            <div class="col-span-2"><dt class="text-slate-500">Localizacao</dt><dd class="font-medium text-slate-900">${viagem.localizacao_cidade ? `${viagem.localizacao_cidade}/${viagem.localizacao_uf}` : '-'}</dd></div>
+            <div class="col-span-2"><dt class="text-slate-500">Localizacao</dt><dd class="font-medium text-slate-900">${viagem.localizacao_cidade ? `${esc(viagem.localizacao_cidade)}/${esc(viagem.localizacao_uf)}` : '-'}</dd></div>
           </dl>
         </div>
 
         ${viagem.frete_atual ? `
           <button type="button" data-ver-fretes class="card block w-full p-4 text-left">
             <p class="text-xs font-medium uppercase text-slate-500">Frete atual</p>
-            <p class="mt-1 font-semibold text-gray-900">${viagem.frete_atual.origem_cidade}/${viagem.frete_atual.origem_uf} &rarr; ${viagem.frete_atual.destino_cidade}/${viagem.frete_atual.destino_uf}</p>
+            <p class="mt-1 font-semibold text-gray-900">${esc(viagem.frete_atual.origem_cidade)}/${esc(viagem.frete_atual.origem_uf)} &rarr; ${esc(viagem.frete_atual.destino_cidade)}/${esc(viagem.frete_atual.destino_uf)}</p>
             <dl class="mt-2 grid grid-cols-2 gap-3 text-sm">
-              <div><dt class="text-slate-500">Transportadora</dt><dd class="font-medium text-slate-900">${viagem.frete_atual.transportadora_nome || '-'}</dd></div>
+              <div><dt class="text-slate-500">Transportadora</dt><dd class="font-medium text-slate-900">${esc(viagem.frete_atual.transportadora_nome || '-')}</dd></div>
               <div><dt class="text-slate-500">Peso</dt><dd class="font-medium text-slate-900">${viagem.frete_atual.peso_carga_kg != null ? `${viagem.frete_atual.peso_carga_kg.toLocaleString('pt-BR')} kg` : '-'}</dd></div>
               <div class="col-span-2"><dt class="text-slate-500">Frete (liquido)</dt><dd class="font-semibold text-gray-900">${formatarMoeda(viagem.frete_atual.frete_liquido)}</dd></div>
             </dl>

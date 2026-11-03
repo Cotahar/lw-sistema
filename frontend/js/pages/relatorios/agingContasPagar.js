@@ -4,6 +4,7 @@ import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
+import { esc } from '../../html.js';
 
 const ORIGEM_LABEL = {
   EstoqueMovimentacao: 'Compra de Estoque', PneuEvento: 'Pneu', OrdemServico: 'Ordem de Servico',
@@ -95,8 +96,8 @@ export async function render(container) {
   const tabela = criarDataTable({
     colunas: [
       { chave: 'data_vencimento', titulo: 'Vencimento', render: (r) => formatarDataBr(r.data_vencimento) },
-      { chave: 'fornecedor_nome', titulo: 'Fornecedor', render: (r) => r.fornecedor_nome || '-' },
-      { chave: 'descricao', titulo: 'Descricao', render: (r) => r.descricao, truncar: true },
+      { chave: 'fornecedor_nome', titulo: 'Fornecedor', render: (r) => esc(r.fornecedor_nome || '-') },
+      { chave: 'descricao', titulo: 'Descricao', render: (r) => esc(r.descricao), truncar: true },
       { chave: 'origem_tipo', titulo: 'Origem', render: (r) => ORIGEM_LABEL[r.origem_tipo] || r.origem_tipo || '-' },
       { chave: 'dias_vencido', titulo: 'Situacao', render: (r) => `<span class="badge-${faixaDe(r.dias_vencido).cor === 'zinc' ? 'neutro' : faixaDe(r.dias_vencido).cor === 'amber' ? 'atencao' : 'critico'}">${textoDias(r.dias_vencido)}</span>`, exportar: (r) => textoDias(r.dias_vencido) },
       { chave: 'saldo_pendente', titulo: 'Saldo pendente', render: (r) => `<span class="font-semibold">${formatarMoeda(r.saldo_pendente)}</span>`, exportar: (r) => r.saldo_pendente / 100 },

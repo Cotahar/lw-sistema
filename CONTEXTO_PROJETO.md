@@ -119,6 +119,55 @@ Node/Express) e Passo 3 (frontend HTML/CSS/JS + TailwindCSS).
     "fora" da matriz de permissões granular — não modelar como módulo
     comum.
 
+11. **DRE (regras que valem em toda tela de resultado)** — tudo em
+    `backend/src/utils/dreHelper.js`, reaproveitado por DRE, rankings e
+    multi-período (nunca recalcular "do seu jeito" em outra rota):
+    - Receita do frete entra pela **data de carregamento** (sem ela, início
+      da viagem); despesas pela data da despesa.
+    - Período sem data final = **até hoje** (com "fim dos tempos" a DRE
+      somava as 60 parcelas futuras de cada financiamento).
+    - A linha de resultado é o **conjunto** (cavalo + carreta). Uma placa que
+      trocou de conjunto tem o custo dividido no tempo: em cada data, vai para
+      o conjunto da última viagem dela iniciada até ali. A soma dos conjuntos
+      continua igual ao total da frota.
+    - **Comissão do motorista** (acerto fechado) é custo do centro do
+      **cavalo**, na data de fim da viagem. Reembolsos/descontos do acerto
+      não entram (repassam despesas já lançadas).
+    - **Pedágio**: o valor informado no acerto é só informativo. O custo
+      entra pela **fatura do Sem Parar** (Administração → Importar Fatura),
+      que vira uma conta a pagar rateada por placa pelo valor **líquido**
+      (passagens + mensalidade + serviços − créditos de vale-pedágio).
+    - Baixa **Desconto** do frete vira automaticamente despesa da placa
+      (categoria "DESCONTO NO FRETE"). Baixa Pedágio/Outro só vira custo se
+      alguém lançar "como custo" na baixa (`custoVinculadoHelper.js`; o
+      dinheiro nunca saiu, então não gera conta a pagar).
+    - OS entra por `valor_pecas + valor_mao_obra`; uma baixa "lançada como
+      custo" também entra. **Nunca** usar os dois para a mesma compra
+      (aconteceu: pneus contados 2x — auditoria de 03/11/2026).
+
+12. **Contas a pagar — formas de quitar** (`contaPagarBaixaHelper.js`):
+    - Baixa normal: sai do caixa (movimentação + saldo da conta bancária).
+      Valor acima do restante só com confirmação (`ajustarValorConta`).
+    - **Sem pagamento**: quita sem caixa nem banco (pago por fora,
+      compensado). Vai em `valor_descontado` e deixa uma Ocorrência.
+    - Conta de valor zero: baixar só marca Paga.
+    - **Fatura consolidada**: várias contas pendentes do mesmo fornecedor
+      viram uma só (as despesas passam a apontar para ela). Parcelas e
+      acertos não entram, porque sincronizam o próprio status pela conta
+      original.
+    - Conta paga ou consolidada **não** acompanha a edição da despesa de
+      origem (o custo muda, o que foi pago fica).
+    - Conta gerada por outro módulo só é excluída pela origem, nunca avulsa.
+
+13. **Acerto** (além do item 8): reembolsos e descontos são uma **lista de
+    itens** (`acerto_itens`), não um número digitado. O imposto da empresa
+    (`empresas.percentual_desconto_geral`) reduz a base da comissão, mas é
+    só informativo (não vira conta a pagar). Fechar exige todas as despesas
+    da viagem validadas. Viagem Finalizada = valores congelados: não aceita
+    lançar, editar **nem excluir** frete, despesa ou adiantamento. Para
+    mexer, reabra a viagem (Admin; recusa se a conta do acerto já teve
+    qualquer baixa).
+
 ## Como validar mudanças (não pule isso)
 
 - **Backend**: sempre que alterar lógica financeira/regra de negócio, teste
@@ -126,7 +175,20 @@ Node/Express) e Passo 3 (frontend HTML/CSS/JS + TailwindCSS).
   usei um script Node com `fetch` simulando o fluxo completo (login →
   cadastros → estoque → pneu com recapagem → viagem → acerto → DRE) e
   comparando valores exatos esperados. Vale recriar esse tipo de script
-  pontualmente ao mexer em cálculo financeiro.
+  pontualmente ao mexer em cálculo financeiro. Hoje isso virou a suíte
+  `backend/test` (`npm test`, ~275 testes, um banco temporário por arquivo):
+  toda correção de regra ganha um teste que reproduz o caso real.
+- **Frontend sem bundler**: um módulo com erro de sintaxe só quebra quando
+  alguém abre a tela dele. O CI confere a sintaxe de todos; localmente:
+  `node --input-type=module --check < arquivo.js`.
+- **Texto do banco em HTML**: sempre `esc()` (`frontend/js/html.js`) ao
+  interpolar dado do banco num template que vai para `innerHTML`. A tabela
+  genérica já escapa o valor padrão da célula e o modal escapa o título;
+  quem usa `render()` ou `mensagem:` de `confirmarAcao` (que aceita HTML,
+  `<strong>`/`<br />`) escapa o que interpola. Em 03/11 todas as telas
+  foram varridas pela árvore sintática.
+- **Dinheiro na API**: validar com `exigirCentavos` (`utils/validacao.js`)
+  toda rota nova que receba valor e mexa em saldo.
 - **Frontend**: **sempre** teste no navegador de verdade antes de dizer que
   terminou. Bugs reais que só apareceram rodando (não apareciam lendo o
   código):
@@ -145,6 +207,12 @@ Node/Express) e Passo 3 (frontend HTML/CSS/JS + TailwindCSS).
     Às vezes nem isso basta numa aba que já viveu muitas navegações nesta
     sessão de browser automatizado — se algo parecer duplicado/bugado sem
     explicação, teste numa aba nova antes de assumir que é bug de verdade.
+    Em produção isso é automático desde 03/11/2026: o servidor manda a
+    versão do frontend (hash dos arquivos, `utils/versaoApp.js`) no
+    cabeçalho `X-App-Versao`. Quando muda, `frontend/js/versao.js` mostra
+    o aviso e o router recarrega a aba na próxima troca de tela. Localmente,
+    com `npm run dev`, a versão só é recalculada quando o servidor reinicia
+    (mudança só no frontend não reinicia) — então continue dando F5.
   - **`node:sqlite` sempre reporta `err.code === 'ERR_SQLITE_ERROR'`**,
     nunca `'SQLITE_CONSTRAINT_UNIQUE'`/`'SQLITE_CONSTRAINT_FOREIGNKEY'` como
     seria de esperar (isso é do `better-sqlite3`). O código real do SQLite
@@ -172,53 +240,67 @@ Node/Express) e Passo 3 (frontend HTML/CSS/JS + TailwindCSS).
   encontrou e corrigiu vários bugs reais só por testar no navegador em vez
   de confiar na leitura do código.
 
-## Estado atual / possíveis próximos passos (não pedidos ainda)
+## Estado atual (03/11/2026)
 
-**IMPORTANTE**: o projeto cresceu muito além do PRD original (Passos 1-3).
-Hoje já tem multi-empresa, integração real com Onixsat, módulo de Multas e
-está em produção no Railway. Ver `PROMPT_NOVA_SESSAO.md` para o estado mais
-recente sessão-a-sessão — este arquivo (`CONTEXTO_PROJETO.md`) documenta o
-"porquê" arquitetural que não muda com frequência.
+O projeto foi muito além do PRD original (Passos 1-3) e está **em produção
+no Railway, em uso diário**. O `PROMPT_NOVA_SESSAO.md` tem o histórico
+recente e as pendências; aqui fica o "porquê" que muda pouco.
 
-- **Multi-empresa (multi-tenant)**: `empresa_id` em toda tabela operacional,
-  seletor de empresa no cabeçalho (header `X-Empresa-Id`, não JWT), modo
-  "Todas as empresas" para quem tem permissão em todas. Ver
-  `backend/src/middleware/empresa.js`.
-- **Onixsat/TrucksControl**: integração real via webservice legado (XML puro
-  sobre HTTP, não SOAP) em `backend/src/utils/onixsatClient.js`. Sincroniza
-  posição/hodômetro automaticamente a cada 5 minutos (agendador em
-  `onixsatScheduler.js`) — o mapeamento veículo↔placa (limite de 5 min entre
-  chamadas) fica cacheado em memória por 30 min pra não conflitar com a
-  consulta de mensagens (limite de 30s), permitindo essa cadência. Botão
-  manual "Atualizar posições" (componente `onixsatSync.js`) em toda tela que
-  mostra localização/hodômetro.
-- **Multas de Trânsito**: lançamento manual (sem integração com órgãos),
-  prazo de indicação do condutor automático (30 dias, Art. 257 §8º CTB),
-  valor dobra automaticamente se o condutor não for indicado a tempo.
-- **Checklist de Bordo**: vistorias periódicas por **conjunto** (histórico no
-  tempo em `checklist_vistorias`/`checklist_vistoria_itens`, não mais um
-  estado único mutável), mas os itens são registrados por **placa**
-  (`veiculo_checklist` guarda o último valor conhecido, usado como ponto de
-  partida da próxima vistoria) — importante porque carretas trocam de
-  conjunto. Alerta de divergência quando a composição do conjunto mudou
-  desde a última vistoria.
-- **Deploy**: produção no Railway (serviço `frotista`, projeto `frotista`),
-  auto-deploy no push pra `main` do GitHub. **Cuidado**: o banco de produção
-  já existe (SQLite em volume), então `schema.sql` só roda automaticamente
-  em banco **novo** — qualquer tabela/coluna nova precisa de um script em
-  `database/migrations/` rodado manualmente contra produção (via
-  `railway ssh`, chave SSH já configurada nesta máquina) **antes** ou logo
-  depois do push, senão a rota que usa a coluna/tabela nova quebra em
-  produção até a migração rodar.
-- Sem paginação nas tabelas do frontend (ok pro volume de dados atual; se
-  crescer muito, `dataTable.js` precisaria de paginação server-side).
-- `estoque_itens` não tem exclusão em lote no frontend (a rota é
-  customizada e não implementa `/batch-delete` como o CRUD genérico).
-- `JWT_SECRET` e `ADMIN_SENHA` no `.env.example` são placeholders óbvios —
-  trocar antes de expor o sistema fora da rede local.
-- `backend/data/frotista.db` não é versionado (propositalmente, está no
-  `.gitignore`) — cada máquina onde o projeto rodar terá seu próprio banco,
-  vazio na primeira execução (só com o usuário Admin).
+- **Multi-empresa**: `empresa_id` em toda tabela operacional. A empresa
+  ativa vai no cabeçalho `X-Empresa-Id` (não no JWT). `todas` = modo
+  consolidado, só para quem tem acesso a todas
+  (`backend/src/middleware/empresa.js`). Rota que aceita o consolidado usa
+  `exigirEmpresaOuTodas`; as demais usam `exigirEmpresaEspecifica`. **Nunca**
+  trate `req.empresaId` nulo como "todas" sem esse middleware: antes de
+  03/11 o Painel e o DRE geral devolviam dados de todas as empresas para
+  quem chamasse sem o cabeçalho.
+- **Onixsat/TrucksControl**: webservice legado (XML sobre HTTP, não SOAP)
+  em `utils/onixsatClient.js`. O agendador (`onixsatScheduler.js`) roda um
+  tick por minuto e sincroniza cada empresa no intervalo dela
+  (`empresas.onixsat_poll_minutos`, padrão 3 min). O mapeamento
+  veículo↔placa fica 30 min em memória por causa do limite de taxa.
+- **App do motorista** (`#/motorista`, perfil Motorista): PWA com service
+  worker (`frontend/sw.js`, só registrado para motorista), fila offline de
+  abastecimentos com chave de idempotência. Toda rota resolve a viagem por
+  `req.usuario.motorista_id` e nunca por id vindo do cliente. Lançamentos
+  do motorista nascem pendentes de validação pelo escritório.
+- **Auditoria e reversão**: toda escrita grava `logs_auditoria` com a foto
+  antes/depois. A reversão genérica restaura a linha; tabelas com efeito em
+  cascata (caixa, parcelas, acerto, pneus...) têm handler próprio em
+  `routes/admin.routes.js` (`HANDLERS_ESPECIFICOS`). Entidade nova que crie
+  parcelas/contas numa transação **precisa** de handler próprio.
+- **Backup** (desde 03/11): diário automático no volume (7 diários + 3
+  mensais), cópia externa opcional para S3/R2 (`utils/backupExterno.js`,
+  assinatura AWS v4 feita à mão, sem SDK), tela Administração → Backups
+  (baixar, executar agora) e restauração na subida por `RESTAURAR_BACKUP`
+  (`utils/restauracaoBackup.js`). Passo a passo no README.
+- **Segurança** (revisão de 03/11): só os arquivos do app são públicos
+  (`app.js`; antes a pasta `frontend/` inteira era servida); anexos são
+  salvos com extensão derivada do tipo e nome aleatório (`crypto`); cabeçalhos
+  `nosniff`/`X-Frame-Options`/HSTS; limite de 10 erros de login por
+  usuário+IP a cada 15 min; o servidor não sobe sem `JWT_SECRET`; o
+  último Admin ativo não pode se rebaixar.
+- **Deploy**: auto-deploy no push para `main`; o Railway espera
+  `/api/health` (que testa o banco) antes de dar o deploy como pronto.
+  **Migrações automáticas** desde 03/11 (`utils/migracoes.js`): da 037 em
+  diante, `database/migrations/NNN_*.js` exporta `up(db)` e roda sozinho na
+  subida (uma vez, em transação, com cópia do banco antes; se falhar, o
+  servidor não sobe). Toda migração nova também vai para o `schema.sql`:
+  banco novo só as marca como aplicadas. As 000–036 são scripts manuais
+  antigos e nunca rodam de novo. Ver `database/migrations/LEIAME.md`.
+- **Conferência de saldo** (desde 03/11): `contas_bancarias.saldo_inicial`
+  é o ponto de partida; `saldo_atual` tem que ser igual a saldo inicial +
+  entradas − saídas de `movimentacoes_caixa` (`GET
+  /contas-bancarias/conferencia`). Todo código que mexer em `saldo_atual`
+  precisa gravar a movimentação junto, senão a tela acusa divergência.
+- **Monitoramento**: `/api/health` (banco), `/api/health/backup` (backup em
+  dia) e o workflow `.github/workflows/monitor.yml` (de hora em hora; o
+  GitHub manda e-mail quando falha).
+- Tabelas do frontend paginam **no cliente** (25 por página,
+  `dataTable.js`); as rotas devolvem a lista inteira. Ok para o volume
+  atual; se crescer muito, paginar no servidor.
+- `backend/data/frotista.db` não é versionado: cada máquina tem o próprio
+  banco, criado vazio na primeira execução.
 
 ## Onde encontrar as coisas
 

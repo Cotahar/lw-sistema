@@ -1,15 +1,13 @@
 const db = require('../config/db');
 const { buscarCentroCustoDoVeiculo } = require('./conjuntoHelper');
 const { hojeIsoBrasilia } = require('./dataHora');
+const { somar } = require('./formatacao');
 
 // Extraido de dre.routes.js pra ser reaproveitado tambem pelo Ranking de
 // Veiculos (relatorios.routes.js) - a mesma conta de receita/custo/lucro
 // por veiculo nao pode divergir entre a DRE e o ranking, entao os dois
 // usam exatamente a mesma logica em vez de cada um recalcular do seu jeito.
 
-function somar(lista) {
-  return lista.reduce((total, valor) => total + (valor || 0), 0);
-}
 
 function periodoOuTudo(dataInicio, dataFim) {
   return { inicio: dataInicio || '0000-01-01', fim: dataFim || '9999-12-31' };
@@ -330,7 +328,7 @@ function totaisGeraisDoPeriodo(empresaId, inicio, fim) {
 }
 
 module.exports = {
-  somar, periodoOuTudo, periodoRealizado, custosDoCentroCusto, receitaECustosDaViagemPorCentro, custosDiretosDoVeiculo, resultadoDoVeiculo, totaisGeraisDoPeriodo,
+  periodoOuTudo, periodoRealizado, custosDoCentroCusto, receitaECustosDaViagemPorCentro, custosDiretosDoVeiculo, resultadoDoVeiculo, totaisGeraisDoPeriodo,
   DATA_RECEITA_SQL, CATEGORIAS_CUSTO, receitaTotalDoPeriodo, receitaDoConjunto, custosDoVeiculo, conjuntoDonoPorVeiculo, veiculosDoConjunto,
   resultadoDoConjunto, custosDeVeiculosSemComposicao, DATA_VIAGEM_SQL, TRATORA_DA_VIAGEM_SQL, comissaoDaTratora, periodosDoVeiculoNoConjunto,
 };

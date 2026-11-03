@@ -1,5 +1,6 @@
 const express = require('express');
 const db = require('../config/db');
+const { formatarMoeda } = require('../utils/formatacao');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const { requerAcessoModulo, requerAdmin } = require('../middleware/auth');
@@ -9,12 +10,10 @@ const { withTransaction } = require('../utils/transaction');
 const { baixarContaPagar, TABELA_PARCELA_POR_ORIGEM } = require('../utils/contaPagarBaixaHelper');
 const { condicaoBusca } = require('../utils/busca');
 const { hojeIsoBrasilia } = require('../utils/dataHora');
+const { exigirCentavos } = require('../utils/validacao');
 
 const router = express.Router();
 
-function formatarMoeda(centavos) {
-  return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
 
 
 // Join usado tanto na listagem quanto na busca por :id - traz o nome da
@@ -135,6 +134,8 @@ router.get('/consolidaveis', requerAcessoModulo('contas_pagar', 'Gerenciar'), ex
 // das contas selecionadas nao bater com o valor real do boleto (juros,
 // desconto do posto etc.), avisa (409) e so segue com
 // confirmarDivergencia=true - mesmo padrao ja usado em POST /:id/baixar.
+const ORIGENS_QUE_NAO_CONSOLIDAM = [...Object.keys(TABELA_PARCELA_POR_ORIGEM), 'AcertoViagem'];
+
 router.post('/consolidar', requerAcessoModulo('contas_pagar', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const { conta_pagar_ids, valor_boleto, data_vencimento, descricao, confirmarDivergencia } = req.body;
   if (!Array.isArray(conta_pagar_ids) || conta_pagar_ids.length < 2) {
@@ -143,6 +144,7 @@ router.post('/consolidar', requerAcessoModulo('contas_pagar', 'Gerenciar'), exig
   if (!valor_boleto || Number(valor_boleto) <= 0 || !data_vencimento) {
     throw new ApiError(400, 'Preencha o valor e o vencimento do boleto.');
   }
+  exigirCentavos(valor_boleto, { campo: 'valor_boleto' });
 
   const resultado = withTransaction(db, () => {
     const contas = conta_pagar_ids.map((id) => {
@@ -150,6 +152,11 @@ router.post('/consolidar', requerAcessoModulo('contas_pagar', 'Gerenciar'), exig
       if (!c) throw new ApiError(404, `Conta a pagar #${id} nao encontrada.`);
       if (c.status !== 'Pendente' || c.valor_pago > 0 || c.valor_descontado > 0) {
         throw new ApiError(400, `A conta #${id} ja tem pagamento/desconto lancado e nao pode ser consolidada.`);
+      }
+      // Parcela (financiamento/despesa fixa/OS) e acerto de motorista sincronizam o proprio status com
+      // ESTA conta (por origem_tipo/origem_id): apagada na consolidacao, a parcela ficaria "Pendente" para sempre.
+      if (ORIGENS_QUE_NAO_CONSOLIDAM.includes(c.origem_tipo)) {
+        throw new ApiError(400, `A conta #${id} e uma parcela/acerto e nao pode entrar numa fatura consolidada.`);
       }
       return c;
     });
@@ -234,6 +241,7 @@ router.get('/:id', requerAcessoModulo('contas_pagar', 'Visualizar'), exigirEmpre
 router.post('/', requerAcessoModulo('contas_pagar', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const { fornecedor_id, centro_custo_id, descricao, valor, data_vencimento, documento, observacao } = req.body;
   if (!descricao || !valor || !data_vencimento) throw new ApiError(400, 'Preencha descricao, valor e data_vencimento.');
+  exigirCentavos(valor);
   const info = db.prepare(`
     INSERT INTO contas_pagar (empresa_id, fornecedor_id, centro_custo_id, descricao, valor, data_vencimento, status, origem_tipo, documento, observacao)
     VALUES (?, ?, ?, ?, ?, ?, 'Pendente', 'Outro', ?, ?)
@@ -253,6 +261,7 @@ router.put('/:id', requerAcessoModulo('contas_pagar', 'Gerenciar'), exigirEmpres
     if (req.body[campo] !== undefined) { sets.push(`${campo} = ?`); valores.push(campo === 'descricao' ? String(req.body[campo]).toUpperCase() : req.body[campo]); }
   }
   if (!sets.length) throw new ApiError(400, 'Nenhum campo valido informado.');
+  if (req.body.valor !== undefined) exigirCentavos(req.body.valor);
   // Conta ja paga fica travada. Com pagamento parcial, so o vencimento do
   // restante pode ser reagendado - valor/descricao/fornecedor continuam
   // restritos a contas ainda Pendentes (sem nenhum pagamento lancado).
@@ -412,6 +421,11 @@ router.delete('/:id', requerAcessoModulo('contas_pagar', 'Gerenciar'), exigirEmp
   const antes = db.prepare('SELECT * FROM contas_pagar WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
   if (!antes) throw new ApiError(404, 'Conta a pagar nao encontrada.');
   if (antes.status !== 'Pendente') throw new ApiError(400, 'So e possivel excluir contas ainda Pendentes.');
+  // Conta gerada por outro modulo (despesa de viagem, parcela, acerto...) e removida pela origem - apagar
+  // so ela deixava a origem apontando para o nada (parcela "Pendente" sem conta, despesa sem pagamento).
+  if (antes.origem_tipo && antes.origem_tipo !== 'Outro') {
+    throw new ApiError(400, 'Esta conta foi gerada por outro lancamento (viagem, parcela, acerto...). Exclua pela origem.');
+  }
   db.prepare('DELETE FROM contas_pagar WHERE id = ?').run(req.params.id);
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'contas_pagar', registroId: antes.id, acao: 'DELETE', antes });
   res.status(204).send();

@@ -7,6 +7,7 @@ import { mostrarToast, mostrarErro } from '../components/toast.js';
 import { formatarMoeda, attachMoedaMask, attachMoedaMaskReais, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr, attachUppercaseInput } from '../masks.js';
 import { navegar } from '../router.js';
 import { criarAnexos } from '../components/anexos.js';
+import { esc } from '../html.js';
 
 async function buscarVeiculos(termo) {
   return (await get(`/veiculos${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((v) => ({ value: v.id, label: v.placa }));
@@ -214,11 +215,11 @@ async function verDetalhes(os, gerenciar) {
         <p><span class="font-medium">Pecas:</span> ${formatarMoeda(completa.valor_pecas)}</p>
         <p><span class="font-medium">Mao de obra:</span> ${formatarMoeda(completa.valor_mao_obra)}</p>
       </div>
-      ${completa.descricao ? `<p class="mb-3 text-sm text-slate-600">${completa.descricao}</p>` : ''}
+      ${completa.descricao ? `<p class="mb-3 text-sm text-slate-600">${esc(completa.descricao)}</p>` : ''}
       <table class="w-full text-sm">
         <thead><tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500"><th class="py-1">Item</th><th class="py-1">Qtd</th><th class="py-1 text-right">Valor Unit.</th></tr></thead>
         <tbody>
-          ${completa.itens.map((i) => `<tr class="border-b border-slate-100"><td class="py-1">${i.descricao}</td><td class="py-1">${i.quantidade}</td><td class="py-1 text-right">${formatarMoeda(i.valor_unitario)}</td></tr>`).join('') || '<tr><td colspan="3" class="py-3 text-center text-slate-400">Sem itens detalhados.</td></tr>'}
+          ${completa.itens.map((i) => `<tr class="border-b border-slate-100"><td class="py-1">${esc(i.descricao)}</td><td class="py-1">${i.quantidade}</td><td class="py-1 text-right">${formatarMoeda(i.valor_unitario)}</td></tr>`).join('') || '<tr><td colspan="3" class="py-3 text-center text-slate-400">Sem itens detalhados.</td></tr>'}
         </tbody>
       </table>
       <div class="mt-4 border-t border-slate-200 pt-3" data-anexos></div>

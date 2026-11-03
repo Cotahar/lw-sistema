@@ -4,6 +4,7 @@ import { criarMultiSearchableSelect } from '../../components/multiSearchableSele
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
+import { esc } from '../../html.js';
 
 async function buscarVeiculos(termo) {
   return (await get(`/veiculos${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((v) => ({ value: v.id, label: v.placa }));
@@ -57,8 +58,8 @@ export async function render(container) {
   const tabela = criarDataTable({
     colunas: [
       { chave: 'data_inicio', titulo: 'Viagem', render: (r) => `<a href="#/viagens/${r.viagem_id}" class="text-gray-900 hover:underline">#${r.viagem_id} (${formatarDataBr(r.data_inicio)})</a>`, exportar: (r) => `#${r.viagem_id} (${formatarDataBr(r.data_inicio)})` },
-      { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => r.veiculo_placa },
-      { chave: 'motorista_nome', titulo: 'Motorista', render: (r) => r.motorista_nome || '-' },
+      { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => esc(r.veiculo_placa) },
+      { chave: 'motorista_nome', titulo: 'Motorista', render: (r) => esc(r.motorista_nome || '-') },
       { chave: 'media_viagem_km_l', titulo: 'Media da viagem', render: (r) => `${r.media_viagem_km_l.toFixed(2)} km/l` },
       { chave: 'media_historica_km_l', titulo: 'Media historica', render: (r) => `${r.media_historica_km_l.toFixed(2)} km/l` },
       { chave: 'desvio_pct', titulo: 'Desvio', render: (r) => `<span class="${r.divergente ? 'badge-critico' : 'badge-neutro'}">${r.desvio_pct > 0 ? '+' : ''}${r.desvio_pct.toFixed(1)}%</span>`, exportar: (r) => `${r.desvio_pct.toFixed(1)}%` },

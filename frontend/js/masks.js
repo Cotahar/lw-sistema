@@ -144,6 +144,11 @@ export function hojeIsoLocal() {
   return `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-${String(agora.getDate()).padStart(2, '0')}`;
 }
 
+// Dia 1 do mes corrente (periodo padrao das telas de DRE/ranking: mes atual ate hoje).
+export function primeiroDiaMesAtualIso() {
+  return `${hojeIsoLocal().slice(0, 8)}01`;
+}
+
 // Soma dias a uma data ISO ("AAAA-MM-DD"), devolvendo outra data ISO. Usa UTC
 // so como calendario (sem efeito de fuso/horario de verao).
 export function somarDiasIso(iso, dias) {

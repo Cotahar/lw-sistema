@@ -2,6 +2,7 @@ import { get, post, put, del, ehAdmin } from '../../api.js';
 import { renderizarAcessoNegado } from '../../components/acessoNegado.js';
 import { mostrarToast, mostrarErro } from '../../components/toast.js';
 import { attachUppercaseInput } from '../../masks.js';
+import { esc } from '../../html.js';
 
 // Tela de linhas editaveis (nao o CRUD generico em modal) - o cadastro de
 // faixas e feito em sequencia (uma faixa emenda na outra), entao editar uma
@@ -20,7 +21,7 @@ function linhaHtml(faixa, idx) {
   const id = faixa.id ?? '';
   return `
     <tr class="border-b border-slate-100" data-linha data-id="${id}">
-      <td class="table-td"><input type="text" class="input" data-campo="marca" list="lista-marcas" placeholder="Qualquer marca" value="${faixa.marca || ''}" /></td>
+      <td class="table-td"><input type="text" class="input" data-campo="marca" list="lista-marcas" placeholder="Qualquer marca" value="${esc(faixa.marca || '')}" /></td>
       <td class="table-td"><input type="number" step="0.01" min="0" class="input" data-campo="km_l_de" value="${faixa.km_l_de ?? ''}" /></td>
       <td class="table-td"><input type="number" step="0.01" min="0" class="input" data-campo="km_l_ate" value="${faixa.km_l_ate ?? ''}" /></td>
       <td class="table-td"><input type="number" step="0.01" min="0" class="input max-w-[7rem]" data-campo="percentual_comissao" value="${faixa.percentual_comissao ?? ''}" /></td>

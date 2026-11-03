@@ -81,6 +81,7 @@ export const ITEM_ADMIN = { label: 'Usuarios e Permissoes', rota: '/usuarios' };
 export const ITEM_AUDITORIA = { label: 'Auditoria e Reversao', rota: '/auditoria' };
 export const ITEM_ATIVIDADE_USUARIOS = { label: 'Atividade por Usuario', rota: '/relatorios/atividade-usuarios' };
 export const ITEM_IMPORTAR_SEM_PARAR = { label: 'Importar Fatura Sem Parar', rota: '/importar/sem-parar' };
+export const ITEM_BACKUPS = { label: 'Backups', rota: '/backups' };
 
 // Telas de configuracao/taxonomia do sistema: restritas ao Admin, fora da
 // matriz de permissoes por modulo (ver crudGenerico.js: somenteAdmin).

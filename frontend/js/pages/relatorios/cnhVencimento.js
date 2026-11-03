@@ -3,6 +3,7 @@ import { criarDataTable } from '../../components/dataTable.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarDataBr } from '../../masks.js';
+import { esc } from '../../html.js';
 
 function textoDias(dias) {
   if (dias < 0) return `Vencida ha ${Math.abs(dias)} dia(s)`;
@@ -45,8 +46,8 @@ export async function render(container) {
 
   const tabela = criarDataTable({
     colunas: [
-      { chave: 'nome', titulo: 'Motorista', render: (r) => r.nome },
-      { chave: 'cnh', titulo: 'CNH', render: (r) => r.cnh },
+      { chave: 'nome', titulo: 'Motorista', render: (r) => esc(r.nome) },
+      { chave: 'cnh', titulo: 'CNH', render: (r) => esc(r.cnh) },
       { chave: 'cnh_validade', titulo: 'Validade', render: (r) => formatarDataBr(r.cnh_validade) },
       { chave: 'dias_restantes', titulo: 'Situacao', render: (r) => `<span class="${corDias(r.dias_restantes)}">${textoDias(r.dias_restantes)}</span>`, exportar: (r) => textoDias(r.dias_restantes) },
     ],

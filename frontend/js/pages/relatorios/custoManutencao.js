@@ -6,6 +6,7 @@ import { buscarConjuntos } from '../../components/conjuntoOpcoes.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
+import { esc } from '../../html.js';
 
 const OPCOES_AGRUPAR = [
   { value: '', label: 'Nenhum' },
@@ -118,9 +119,9 @@ export async function render(container) {
     colunas: [
       { chave: 'data', titulo: 'Data', render: (r) => formatarDataBr(r.data) },
       { chave: 'conjunto', titulo: 'Conjunto', render: (r) => r.conjunto || '-' },
-      { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => r.veiculo_placa },
-      { chave: 'tipo', titulo: 'Tipo', render: (r) => r.tipo },
-      { chave: 'fornecedor_nome', titulo: 'Oficina', render: (r) => r.fornecedor_nome || '-' },
+      { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => esc(r.veiculo_placa) },
+      { chave: 'tipo', titulo: 'Tipo', render: (r) => esc(r.tipo) },
+      { chave: 'fornecedor_nome', titulo: 'Oficina', render: (r) => esc(r.fornecedor_nome || '-') },
       { chave: 'valor_pecas', titulo: 'Pecas', render: (r) => formatarMoeda(r.valor_pecas), exportar: (r) => r.valor_pecas / 100 },
       { chave: 'valor_mao_obra', titulo: 'Mao de obra', render: (r) => formatarMoeda(r.valor_mao_obra), exportar: (r) => r.valor_mao_obra / 100 },
       { chave: 'valor_total', titulo: 'Total', render: (r) => `<span class="font-semibold">${formatarMoeda(r.valor_total)}</span>`, exportar: (r) => r.valor_total / 100 },

@@ -1,5 +1,11 @@
 const app = require('./app');
 
+// Sem segredo o login quebraria so na primeira tentativa (500); melhor nem subir.
+if (!process.env.JWT_SECRET) {
+  console.error('JWT_SECRET nao configurado - defina no .env (local) ou nas variaveis do Railway.');
+  process.exit(1);
+}
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`API do Sistema Frottex rodando em http://localhost:${PORT}`);
@@ -14,18 +20,13 @@ app.listen(PORT, () => {
 const { iniciarAgendadorOnixsat } = require('./utils/onixsatScheduler');
 iniciarAgendadorOnixsat(process.env.ONIXSAT_POLL_MINUTOS !== undefined ? Number(process.env.ONIXSAT_POLL_MINUTOS) : 1);
 
-// Backup diario do banco (uma copia por dia, mantendo as 2 mais recentes - ver utils/backupDiario.js).
+// Backup diario do banco + copia externa (ver utils/backupDiario.js e utils/backupExterno.js).
 // BACKUP_DIARIO=0 desativa; BACKUP_DIR muda a pasta (padrao: <pasta do banco>/backups);
-// BACKUP_HORA (padrao 3, horario de Brasilia) e BACKUP_MANTER (padrao 2) ajustam o resto.
-if (process.env.BACKUP_DIARIO !== '0') {
+// BACKUP_HORA (padrao 3, horario de Brasilia), BACKUP_MANTER (padrao 7 diarios) e
+// BACKUP_MANTER_MENSAL (padrao 3 mensais) ajustam o resto; BACKUP_S3_* liga a copia externa.
+{
   const db = require('./config/db');
-  const path = require('node:path');
-  const { iniciarBackupDiario } = require('./utils/backupDiario');
-  const arquivoDoBanco = db.prepare('PRAGMA database_list').get().file;
-  iniciarBackupDiario({
-    db,
-    dir: process.env.BACKUP_DIR || path.join(path.dirname(arquivoDoBanco), 'backups'),
-    hora: process.env.BACKUP_HORA !== undefined ? Number(process.env.BACKUP_HORA) : 3,
-    manter: process.env.BACKUP_MANTER !== undefined ? Number(process.env.BACKUP_MANTER) : 2,
-  });
+  const { iniciarBackupDiario, configDoAmbiente } = require('./utils/backupDiario');
+  const cfg = configDoAmbiente(db);
+  if (cfg.ativo) iniciarBackupDiario({ db, cfg });
 }

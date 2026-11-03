@@ -7,6 +7,7 @@ import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js'
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { periodoAnteriorEquivalente, renderComparativoPeriodo } from '../../components/comparativoPeriodo.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso, formatarLitros } from '../../masks.js';
+import { esc } from '../../html.js';
 
 const CHAVE_COLUNAS = 'frottex-colunas-relatorio-despesas';
 
@@ -17,13 +18,13 @@ const CHAVE_COLUNAS = 'frottex-colunas-relatorio-despesas';
 // nao faz sentido.
 const CATALOGO_COLUNAS = [
   { chave: 'data', titulo: 'Data', padrao: true, render: (r) => formatarDataBr(r.data) },
-  { chave: 'categoria_nome', titulo: 'Categoria', padrao: true, render: (r) => r.categoria_nome || '-' },
+  { chave: 'categoria_nome', titulo: 'Categoria', padrao: true, render: (r) => esc(r.categoria_nome || '-') },
   { chave: 'conjunto', titulo: 'Conjunto', padrao: true, render: (r) => r.conjunto || '-' },
-  { chave: 'veiculo_placa', titulo: 'Veiculo', padrao: true, render: (r) => r.veiculo_placa || '-' },
-  { chave: 'motorista_nome', titulo: 'Motorista', padrao: true, render: (r) => r.motorista_nome || '-' },
-  { chave: 'fornecedor_nome', titulo: 'Fornecedor', padrao: true, render: (r) => r.fornecedor_nome || '-' },
-  { chave: 'pago_por', titulo: 'Pago por', padrao: true, render: (r) => r.pago_por },
-  { chave: 'descricao', titulo: 'Descricao', padrao: false, render: (r) => r.descricao || '-', truncar: true },
+  { chave: 'veiculo_placa', titulo: 'Veiculo', padrao: true, render: (r) => esc(r.veiculo_placa || '-') },
+  { chave: 'motorista_nome', titulo: 'Motorista', padrao: true, render: (r) => esc(r.motorista_nome || '-') },
+  { chave: 'fornecedor_nome', titulo: 'Fornecedor', padrao: true, render: (r) => esc(r.fornecedor_nome || '-') },
+  { chave: 'pago_por', titulo: 'Pago por', padrao: true, render: (r) => esc(r.pago_por) },
+  { chave: 'descricao', titulo: 'Descricao', padrao: false, render: (r) => esc(r.descricao || '-'), truncar: true },
   { chave: 'litragem', titulo: 'Litros', padrao: false, render: (r) => (r.litragem ? `${formatarLitros(r.litragem)} L` : '-') },
   { chave: 'preco_litro', titulo: 'R$/Litro', padrao: false, render: (r) => (r.preco_litro !== null ? formatarMoeda(r.preco_litro) : '-') },
   { chave: 'km_abastecimento', titulo: 'KM', padrao: false, render: (r) => (r.km_abastecimento !== null ? r.km_abastecimento.toLocaleString('pt-BR') : '-') },
@@ -94,7 +95,7 @@ export async function render(container) {
         <label class="label">Categoria</label>
         <select class="input" data-filtro-categoria>
           <option value="">Todas</option>
-          ${categorias.map((c) => `<option value="${c.id}">${c.nome}</option>`).join('')}
+          ${categorias.map((c) => `<option value="${c.id}">${esc(c.nome)}</option>`).join('')}
         </select>
       </div>
       <div><label class="label">Conjunto</label><div data-filtro-conjunto></div></div>

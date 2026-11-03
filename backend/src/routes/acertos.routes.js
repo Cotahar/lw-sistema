@@ -10,20 +10,11 @@ const { withTransaction } = require('../utils/transaction');
 const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
 const { SELECT_STATUS_PAGAMENTO, comStatusPagamento } = require('../utils/acertoPagamentoHelper');
-const { somar, listarItensManuais, montarDetalhamentoAcerto } = require('../utils/acertoDetalhamentoHelper');
+const { listarItensManuais, montarDetalhamentoAcerto } = require('../utils/acertoDetalhamentoHelper');
+const { somar, formatarMoeda, formatarDataBr } = require('../utils/formatacao');
+const { percentualComissaoPorMedia } = require('../utils/comissaoHelper');
 
 const router = express.Router();
-
-function formatarMoeda(centavos) {
-  return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
-function formatarData(iso) {
-  if (!iso) return '-';
-  const [data] = iso.split(' ');
-  const [ano, mes, dia] = data.split('-');
-  return `${dia}/${mes}/${ano}`;
-}
 
 // Calcula os valores do acerto (usado tanto na previa quanto no fechamento).
 // "overrides" permite ao operador sobrescrever o percentual sugerido antes de
@@ -33,6 +24,11 @@ function formatarData(iso) {
 // por conta do motorista + a soma dos itens "Desconto". O pedagio e so
 // informativo (viagens.valor_pedagio) e nunca entra na formula do saldo.
 function calcularAcerto(viagemId, empresaId, overrides = {}) {
+  const percentualInformado = overrides.percentual_comissao_aplicado;
+  if (percentualInformado !== undefined && percentualInformado !== null
+    && (typeof percentualInformado !== 'number' || !Number.isFinite(percentualInformado) || percentualInformado < 0 || percentualInformado > 100)) {
+    throw new ApiError(400, 'Percentual de comissao invalido (de 0 a 100).');
+  }
   const viagem = db.prepare('SELECT * FROM viagens WHERE id = ? AND empresa_id = ?').get(viagemId, empresaId);
   if (!viagem) throw new ApiError(404, 'Viagem nao encontrada.');
   if (viagem.km_final === null) throw new ApiError(400, 'A viagem ainda nao foi finalizada (falta o km final).');
@@ -77,20 +73,8 @@ function calcularAcerto(viagemId, empresaId, overrides = {}) {
     despesas.filter((d) => d.categoria_id === categoriaAbastecimentoId).map((d) => d.litragem)
   );
 
-  // A faixa de comissao varia por marca do cavalo/truck/toco da composicao
-  // (ex.: Scania e VW tem medias tipicas bem diferentes). marca = NULL na
-  // faixa funciona como fallback generico; uma faixa com marca especifica
-  // tem prioridade quando ambas cobririam a mesma media de consumo.
-  let percentualSugerido = null;
-  if (mediaConsumoKmL !== null) {
-    const marcaTratora = tratoraAcerto ? tratoraAcerto.marca : null;
-    const faixa = db.prepare(`
-      SELECT * FROM comissao_faixas
-      WHERE ativo = 1 AND km_l_de <= ? AND km_l_ate >= ? AND (marca = ? OR marca IS NULL)
-      ORDER BY (marca IS NULL) ASC, km_l_de LIMIT 1
-    `).get(mediaConsumoKmL, mediaConsumoKmL, marcaTratora);
-    percentualSugerido = faixa ? faixa.percentual_comissao : null;
-  }
+  // Faixa de comissao por media de consumo e marca da tratora (ver comissaoHelper.js).
+  const percentualSugerido = percentualComissaoPorMedia(mediaConsumoKmL, tratoraAcerto ? tratoraAcerto.marca : null);
 
   const percentualAplicado = overrides.percentual_comissao_aplicado ?? percentualSugerido ?? 0;
   const valorComissao = Math.round(baseCalculoComissao * (percentualAplicado / 100));
@@ -353,7 +337,7 @@ router.get('/:id/whatsapp', requerAcessoModulo('acertos', 'Visualizar'), exigirE
   const linhas = [
     `🚛 *Acerto de Viagem #${viagem.id}*`,
     `👤 Motorista: ${motorista.nome}`,
-    `📅 Periodo: ${formatarData(viagem.data_inicio)} a ${formatarData(viagem.data_fim)}`,
+    `📅 Periodo: ${formatarDataBr(viagem.data_inicio, '-')} a ${formatarDataBr(viagem.data_fim, '-')}`,
     `🛣️ KM rodado: ${(viagem.km_final - viagem.km_inicial).toLocaleString('pt-BR')} km`,
     acerto.media_consumo_km_l ? `⛽ Media de consumo: ${acerto.media_consumo_km_l.toFixed(2)} km/l` : null,
     '',

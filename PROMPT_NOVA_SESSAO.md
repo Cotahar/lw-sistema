@@ -1,97 +1,90 @@
 # Prompt para iniciar uma nova sessão do Claude Code neste projeto
 
-Copie e cole o texto abaixo como a primeira mensagem, já dentro da pasta do
-projeto clonado (`cd lw-sistema && claude`). Atualizado em 22/07/2026 (fim
-da sessão que fez multi-empresa + Onixsat real + Multas + melhorias do dia).
+Copie e cole o texto abaixo como primeira mensagem, já dentro da pasta do
+projeto (`cd lw-sistema && claude`). Atualizado em 03/11/2026.
 
 ---
 
-Você está assumindo o desenvolvimento do sistema Frottex (gestão de frota
-e transporte rodoviário). Não é um projeto novo — já está em produção no
-Railway (`frotista-production.up.railway.app`) e sendo usado de verdade.
+Você está assumindo o desenvolvimento do Frottex (gestão de frota e
+transporte rodoviário). Não é um projeto novo: está em produção no Railway
+(domínio `frottex.com.br`), em uso diário pela empresa, com dados reais.
 
 Antes de fazer qualquer coisa, leia nesta ordem:
-1. `README.md` — como instalar e rodar o projeto localmente
-2. `CONTEXTO_PROJETO.md` — decisões de arquitetura, regras de negócio não
-   óbvias, seção "Estado atual" (multi-empresa, Onixsat, Multas, deploy) e
-   os gotchas de "Como validar mudanças" (especialmente o do `node:sqlite`
-   e o de rebuild do Tailwind)
-3. `database/schema.sql` — os comentários explicam o porquê de cada tabela
+1. `README.md` — como rodar, variáveis de ambiente, produção, backups e restauração.
+2. `CONTEXTO_PROJETO.md` — regras de negócio não óbvias (DRE, baixas,
+   acerto, multi-empresa) e os cuidados de "Como validar mudanças".
+3. `database/schema.sql` — os comentários explicam o porquê de cada tabela.
+4. `docs/REVISAO_TECNICA_2026-11-03.md` — achados da última revisão técnica
+   e as melhorias sugeridas que ainda não foram feitas.
 
-## O que foi feito na última sessão (22/07/2026)
+## Regras de trabalho com este usuário
 
-Depois de colocar multi-empresa + Onixsat + Multas em produção, o usuário
-pediu uma rodada de ajustes/correções, revisando o sistema tela por tela.
-Todos os itens abaixo foram implementados, testados ao vivo no navegador
-(dados reais, não só leitura de código) e já estão **em produção**:
+- Mudança feita em outra sessão/máquina é para ser **mantida**: corrija só
+  o erro, nunca reverta funcionalidade.
+- Regra de negócio ambígua: **pergunte** (2-3 opções concretas, uma
+  recomendada). O usuário dá exemplos numéricos reais e espera que o
+  sistema reproduza exatamente aqueles números.
+- Teste de verdade antes de dizer que terminou: `npm test` no backend e o
+  navegador para qualquer tela mexida.
+- Push na `main` = deploy em produção. Só faça commit/push quando o
+  usuário pedir. Coluna/tabela nova = migração automática nova em
+  `database/migrations/` + o mesmo no `schema.sql` (ver `LEIAME.md` lá).
+- Nada de alterar variáveis do Railway nem dados de produção sem
+  confirmação explícita.
 
-1. **Bug sistêmico corrigido**: `errorHandler.js` checava
-   `err.code === 'SQLITE_CONSTRAINT_*'`, que nunca bate no `node:sqlite`
-   (sempre `'ERR_SQLITE_ERROR'`) — toda violação de FK/UNIQUE/NOT NULL caía
-   no 500 genérico. Corrigido checando `err.message`. Foi isso que causava
-   o erro ao excluir um Fornecedor referenciado em outro lugar.
-2. **Onixsat a cada 5 minutos**: antes era 10 min por segurança. Agora o
-   mapeamento veículo↔placa (limite real de 5 min) fica cacheado 30 min em
-   memória, e só a consulta de mensagens (limite de 30s) roda a cada ciclo
-   — permite os 5 min sem estourar limite. Ver `onixsatSync.js`.
-3. Botão "Atualizar posições (Onixsat)" adicionado no Painel e na tela de
-   Viagem (componente reusável `frontend/js/components/onixsatSync.js`).
-4. **Painel**: cards por veículo em viagem (km rodado, média de consumo —
-   calculada por litros abastecidos, não há dado de consumo via telemetria
-   na integração atual —, faturamento, despesas, localização), linkando
-   pra tela da viagem.
-5. **Ordenação clicável** no cabeçalho de toda tabela (`dataTable.js`,
-   padronizado — clicar em "Valor" ordena por valor, etc.).
-6. **Contas a Pagar**: filtros por categoria/veículo (join por
-   `origem_tipo='DespesaViagem'` → `despesas_viagem.viagem_id` → conjunto →
-   veículo "Cavalo"), link pra viagem de origem, badge de prazo de
-   vencimento, baixa com campo de desconto e confirmação (409 → usuário
-   confirma → `ajustarValorConta: true`) quando o valor baixado é maior que
-   o restante da conta.
-7. **Checklist de Bordo redesenhado**: antes era um estado único mutável
-   por veículo. Agora são vistorias periódicas por **conjunto**
-   (`checklist_vistorias`/`checklist_vistoria_itens`, histórico no tempo,
-   cada vistoria nova herda o último valor conhecido de cada item pra só
-   precisar atualizar o que mudou), mas os itens continuam por **placa**
-   (carretas trocam de conjunto). Alerta de divergência quando o conjunto
-   de hoje é diferente do registrado na vistoria.
-8. Menu lateral corrigido: com muitos grupos abertos ele esticava a página
-   inteira. Agora tem `lg:sticky` + `lg:h-screen` + scroll próprio.
-9. **Tela de Viagem**: removida a edição manual de hodômetro/localização
-   (só Onixsat + botão manual agora). No formulário de nova despesa: o
-   campo "Posto" saiu do bloco de abastecimento e virou "Fornecedor" no
-   bloco principal (filtrado só a Postos quando categoria = Abastecimento;
-   os campos específicos de abastecimento ficam desabilitados nas outras
-   categorias); novo campo "Observação" que, se preenchido, vira a primeira
-   ocorrência da despesa.
-10. Todas as migrações novas (`005_contas_pagar_desconto.js`,
-    `006_checklist_vistorias.js`) já rodaram tanto no banco de dev quanto em
-    **produção** (via `railway ssh`) — o deploy foi verificado ao vivo em
-    `frotista-production.up.railway.app` sem erros de console em nenhuma
-    tela mexida.
+## Linha do tempo resumida
 
-## Onde a revisão parou
+- **Jul/2026** — Sistema base (PRD em 3 passos), multi-empresa, Onixsat
+  real, Multas, app do motorista, domínio próprio.
+- **Set/2026** — Limpeza dos dados de teste e importação retroativa das
+  viagens reais; lotes de ajustes tela a tela; anexos; reversão de
+  auditoria com cascata; postos favoritos; relatórios salvos,
+  multi-seleção e comparativo de período; status de pagamento do acerto.
+- **Out/2026** — Acerto com reembolsos/descontos em lista e pedágio
+  informativo; DRE por conjunto (com histórico de composição); previsão de
+  recebimento; transferência entre contas; rateio de despesas fixas por
+  centro de custo; baixa "sem pagamento"; comissão do motorista no DRE;
+  recibos; importação da fatura do Sem Parar rateada por placa (pedágio no
+  DRE pelo líquido); desconto de frete como despesa da placa; menu
+  colorido por grupo; alertas de KM.
+- **03/11/2026** — Auditoria completa dos dados (histórico × produção):
+  27 achados, a maioria já corrigida, relatório em
+  `C:\LW-DIA-DIA\AUDITORIA FROTTEX - 03-11-2026.xlsx` (fora do repositório).
+  Depois, **revisão técnica do código**:
+  - backup diário com retenção maior, cópia externa (S3/R2), tela de
+    Backups e restauração;
+  - aviso automático de versão nova (fim do "dá F5 depois do deploy");
+  - correção de vazamento de dados entre empresas no Painel/DRE geral;
+  - anexos seguros, escape de HTML no frontend, limite de tentativas de login;
+  - valores em centavos validados na API e travas de viagem finalizada;
+  - segunda etapa: migrações automáticas na subida, escape de HTML em
+    todas as telas, conferência de saldo bancário × extrato,
+    monitoramento (`/api/health`, `/api/health/backup`, workflow
+    agendado no GitHub) e limpeza de funções duplicadas.
 
-O usuário estava passando pelo sistema módulo a módulo pedindo ajustes.
-**Parou em "Viagens e Fretes"** — ou seja, os itens acima (que incluem
-mudanças na própria tela de Viagem) foram o último lote. Pergunte ao
-usuário qual é a próxima tela/módulo a revisar.
+  Detalhes em `docs/REVISAO_TECNICA_2026-11-03.md`.
 
-## Pendências explicitamente adiadas pelo usuário
+## Pendências conhecidas (confirme com o usuário antes de mexer)
 
-- **TWT4B11 / TWG9J05** (carreta): dados de financiamento/seguro — o
-  usuário disse que vai levantar com mais precisão e passar depois. **Não
-  lance nada aí até ele mandar os dados.**
+- **Ligar a cópia externa dos backups** (Cloudflare R2): o código está
+  pronto, falta criar o bucket e as 4 variáveis `BACKUP_S3_*` no Railway
+  (passo a passo no README). Até lá os backups ficam só no volume.
+- **Rotação de segredos** após o incidente de segurança da Railway
+  (out/2026): `JWT_SECRET` e a senha do admin. O usuário já autorizou;
+  confirme se foi feita.
+- **Auditoria de 03/11**, itens que dependem de decisão do usuário:
+  - F06: data real de pagamento dos acertos 1 a 3;
+  - F07: prazo dos financiamentos (conferir contratos);
+  - F20: seguros e despesas recorrentes que não existem no sistema.
 
-## Coisas para ficar de olho
-
-- O catálogo de checklist (`checklist_itens_catalogo`) só tinha 4 itens de
-  teste (Estepe, Macaco, Triângulo, Extintor) cadastrados nesta sessão pra
-  poder testar o fluxo de vistoria — confirme com o usuário se é isso
-  mesmo que ele quer no catálogo real ou se vai cadastrar a lista completa
-  (Defletores, Geladeira, Rádio PX, Rastreador etc., como já estava
-  comentado no schema).
-- Não presuma nada sobre regra de negócio ambígua — pergunte antes.
+  Ver a planilha da auditoria.
+- **Virada para transportadora** (CT-e, MDF-e, CIOT, vale-pedágio,
+  averbação): pesquisa feita, decisão em aberto. Documento em `C:\LW-DIA-DIA`.
+- **Monitor de 5 em 5 minutos** (UptimeRobot, gratuito): o usuário precisa
+  criar a conta; passo a passo no README ("Monitoramento"). O monitor de
+  hora em hora do GitHub já funciona sozinho depois do push.
+- Sugestões técnicas que continuam abertas (CSP, backups nativos do volume,
+  validação sistemática de entrada): seção 7 do documento da revisão.
 
 Depois de ler tudo isso, me dê um resumo curto confirmando que entendeu o
-estado atual, e pergunte ao usuário o que ele quer fazer a seguir.
+estado atual e pergunte o que eu quero fazer a seguir.

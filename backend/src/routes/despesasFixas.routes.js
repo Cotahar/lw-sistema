@@ -7,17 +7,12 @@ const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { condicaoEmpresa } = require('../utils/empresaScope');
 const { registrarAuditoria } = require('../utils/audit');
 const { withTransaction } = require('../utils/transaction');
-const { hojeIsoBrasilia } = require('../utils/dataHora');
+const { hojeIsoBrasilia, somarMesesIso } = require('../utils/dataHora');
 const { criarDespesaRateada } = require('../utils/despesaRateioHelper');
 const { desvincularReferencias } = require('../utils/custoVinculadoHelper');
 
 const router = express.Router();
 
-function somarMeses(dataIso, meses) {
-  const data = new Date(`${dataIso}T00:00:00Z`);
-  data.setUTCMonth(data.getUTCMonth() + meses);
-  return data.toISOString().slice(0, 10);
-}
 
 function buscarDespesaFixaCompleta(id, empresaId) {
   const despesa = db.prepare('SELECT * FROM despesas_fixas WHERE id = ? AND empresa_id = ?').get(id, empresaId);
@@ -99,7 +94,7 @@ router.post('/', requerAcessoModulo('despesas_fixas', 'Gerenciar'), exigirEmpres
       const resto = valor - valorBase * qtd_parcelas;
       for (let numero = 1; numero <= qtd_parcelas; numero += 1) {
         const valorParcela = numero === qtd_parcelas ? valorBase + resto : valorBase;
-        const vencimento = somarMeses(primeiroVencimento, numero - 1);
+        const vencimento = somarMesesIso(primeiroVencimento, numero - 1);
         const parcelaInfo = db.prepare(`
           INSERT INTO despesa_fixa_parcelas (empresa_id, despesa_fixa_id, numero_parcela, data_vencimento, valor_parcela)
           VALUES (?, ?, ?, ?, ?)

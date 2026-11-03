@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('node:path');
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const multer = require('multer');
 const db = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
@@ -17,7 +18,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 const upload = multer({
   storage: multer.diskStorage({
     destination: UPLOAD_DIR,
-    filename: (req, file, cb) => cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}.jpg`),
+    filename: (req, file, cb) => cb(null, `${Date.now()}-${crypto.randomUUID()}.jpg`),
   }),
   limits: { fileSize: 5 * 1024 * 1024 }, // o frontend ja comprime antes de enviar; isto e so um limite de seguranca
   fileFilter: (req, file, cb) => cb(null, /^image\//.test(file.mimetype)),

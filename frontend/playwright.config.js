@@ -27,6 +27,7 @@ module.exports = {
       ADMIN_USERNAME: 'admin',
       ADMIN_SENHA: 'admin123',
       ONIXSAT_POLL_MINUTOS: '0',
+      BACKUP_DIARIO: '0',
     },
   },
 };

@@ -6,7 +6,7 @@
 // administrativa, que muda o tempo todo e nao deve arriscar cache/staleness.
 import { tentarSincronizarTodos } from './js/pages/motorista/offlineQueue.js';
 
-const CACHE_VERSION = 'frottex-motorista-v2';
+const CACHE_VERSION = 'frottex-motorista-v3';
 const ARQUIVOS_SHELL = [
   '/',
   '/index.html',
@@ -16,6 +16,8 @@ const ARQUIVOS_SHELL = [
   '/js/main.js',
   '/js/api.js',
   '/js/router.js',
+  '/js/versao.js',
+  '/js/html.js',
   '/js/masks.js',
   '/js/imageCompress.js',
   '/js/modulosConfig.js',
@@ -58,8 +60,11 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(event.request)
       .then((resposta) => {
-        const copia = resposta.clone();
-        caches.open(CACHE_VERSION).then((cache) => cache.put(event.request, copia));
+        // So guarda resposta boa: um 404/500 em cache seria servido depois como se fosse o arquivo.
+        if (resposta.ok) {
+          const copia = resposta.clone();
+          caches.open(CACHE_VERSION).then((cache) => cache.put(event.request, copia));
+        }
         return resposta;
       })
       .catch(() => caches.match(event.request))

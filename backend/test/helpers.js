@@ -76,7 +76,7 @@ function criarFornecedor(empresaId, {
 }
 
 function criarContaBancaria(empresaId, { nome = 'Conta Teste', saldo_atual = 100000000 } = {}) {
-  return db.prepare('INSERT INTO contas_bancarias (empresa_id, nome, saldo_atual) VALUES (?, ?, ?)').run(empresaId, nome, saldo_atual).lastInsertRowid;
+  return db.prepare('INSERT INTO contas_bancarias (empresa_id, nome, saldo_atual, saldo_inicial) VALUES (?, ?, ?, ?)').run(empresaId, nome, saldo_atual, saldo_atual).lastInsertRowid;
 }
 
 function saldoContaBancaria(id) {

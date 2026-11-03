@@ -6,6 +6,8 @@ import { abrirModal, fecharModal, confirmarAcao } from '../../components/modal.j
 import { mostrarToast, mostrarErro } from '../../components/toast.js';
 import { criarOcorrencias } from '../../components/ocorrencias.js';
 import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr, hojeIsoLocal, attachUppercaseInput } from '../../masks.js';
+import { esc } from '../../html.js';
+import { badgePrazoVencimento } from '../../components/statusIcons.js';
 
 const STATUS_BADGE = { Pendente: 'badge-atencao', Parcial: 'badge-atencao', Pago: 'badge-sucesso', Atrasado: 'badge-critico' };
 const STATUS_OPCOES = [
@@ -31,19 +33,6 @@ async function buscarVeiculos(termo) {
   return (await get(`/veiculos${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((v) => ({ value: v.id, label: v.placa }));
 }
 
-function esc(texto) {
-  return String(texto === null || texto === undefined ? '' : texto).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
-function badgePrazo(conta) {
-  if (conta.status === 'Pago') return '';
-  const hoje = new Date(`${hojeIsoLocal()}T00:00:00Z`);
-  const venc = new Date(`${conta.data_vencimento}T00:00:00Z`);
-  const dias = Math.round((venc - hoje) / 86400000);
-  const cor = dias < 0 ? 'badge-critico' : dias <= 5 ? 'badge-atencao' : 'badge-neutro';
-  const texto = dias < 0 ? `${Math.abs(dias)} dia(s) vencido` : dias === 0 ? 'vence hoje' : `${dias} dia(s)`;
-  return `<span class="${cor} ml-1">${texto}</span>`;
-}
 
 // Reagenda o vencimento (qualquer conta nao paga - inclusive com pagamento
 // parcial). O backend mantem a data da origem (parcela, despesa de viagem)
@@ -52,7 +41,7 @@ function abrirEditarVencimento(conta, recarregar) {
   const form = document.createElement('form');
   form.className = 'space-y-4';
   form.innerHTML = `
-    <p class="text-sm text-slate-500">${conta.descricao}</p>
+    <p class="text-sm text-slate-500">${esc(conta.descricao)}</p>
     <div class="max-w-[12rem]"><label class="label">Vencimento *</label><input type="text" name="data_vencimento" class="input" required /></div>
     <p class="hidden text-sm text-red-600" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Salvar vencimento</button></div>
@@ -92,7 +81,7 @@ async function abrirBaixaLote(contas, recarregar) {
     return;
   }
   const restanteDe = (c) => c.valor - c.valor_pago - c.valor_descontado;
-  const opcoesConta = contasBancarias.map((c) => `<option value="${c.id}">${c.nome} (saldo ${formatarMoeda(c.saldo_atual)})</option>`).join('');
+  const opcoesConta = contasBancarias.map((c) => `<option value="${c.id}">${esc(c.nome)} (saldo ${formatarMoeda(c.saldo_atual)})</option>`).join('');
   const corpo = document.createElement('form');
   corpo.className = 'space-y-4';
   corpo.innerHTML = `
@@ -108,7 +97,7 @@ async function abrirBaixaLote(contas, recarregar) {
         <tbody data-linhas>
           ${contas.map((c) => `
             <tr class="border-t border-slate-100" data-linha data-id="${c.id}" data-restante="${restanteDe(c)}">
-              <td class="px-2 py-1.5"><p class="font-medium">${c.descricao}</p><p class="text-xs text-slate-400">${c.fornecedor_nome || 'Sem fornecedor'}${restanteDe(c) === 0 ? ' &middot; conta zerada: so marcar como paga' : ''}</p></td>
+              <td class="px-2 py-1.5"><p class="font-medium">${esc(c.descricao)}</p><p class="text-xs text-slate-400">${esc(c.fornecedor_nome || 'Sem fornecedor')}${restanteDe(c) === 0 ? ' &middot; conta zerada: so marcar como paga' : ''}</p></td>
               <td class="px-2 py-1.5 text-center"><input type="checkbox" class="h-4 w-4" data-sem-pagamento title="Baixar sem pagamento (nada sai do caixa)" /></td>
               <td class="px-2 py-1.5 whitespace-nowrap">${formatarDataBr(c.data_vencimento)}</td>
               <td class="px-2 py-1.5 text-right whitespace-nowrap">${formatarMoeda(restanteDe(c))}</td>
@@ -202,7 +191,7 @@ async function abrirBaixaLote(contas, recarregar) {
     if (zeradas.length) {
       const ok = await confirmarAcao({
         titulo: 'Baixar sem pagamento?',
-        mensagem: `${zeradas.length === 1 ? 'Esta conta esta' : `Estas ${zeradas.length} contas estao`} com valor a pagar zerado:<br />${zeradas.map((z) => `- ${contas.find((c) => c.id === z.id).descricao}`).join('<br />')}<br /><br />Serao baixadas SEM PAGAMENTO: quitam o restante e nada sai do caixa. Continuar?`,
+        mensagem: `${zeradas.length === 1 ? 'Esta conta esta' : `Estas ${zeradas.length} contas estao`} com valor a pagar zerado:<br />${zeradas.map((z) => `- ${esc(contas.find((c) => c.id === z.id).descricao)}`).join('<br />')}<br /><br />Serao baixadas SEM PAGAMENTO: quitam o restante e nada sai do caixa. Continuar?`,
         textoConfirmar: 'Baixar sem pagamento',
         perigo: false,
       });
@@ -225,7 +214,7 @@ async function abrirBaixaLote(contas, recarregar) {
     if (negativas.length) {
       const ok = await confirmarAcao({
         titulo: 'Saldo insuficiente',
-        mensagem: negativas.map(({ conta, saida }) => `${conta.nome} tem ${formatarMoeda(conta.saldo_atual)} e vai pagar ${formatarMoeda(saida)}.`).join('<br />') + '<br />Continuar mesmo assim?',
+        mensagem: negativas.map(({ conta, saida }) => `${esc(conta.nome)} tem ${formatarMoeda(conta.saldo_atual)} e vai pagar ${formatarMoeda(saida)}.`).join('<br />') + '<br />Continuar mesmo assim?',
         textoConfirmar: 'Pagar mesmo assim',
         perigo: false,
       });
@@ -299,7 +288,7 @@ async function abrirNovaConta(recarregar) {
     <div class="grid grid-cols-2 gap-3">
       <div>
         <label class="label">Categoria *</label>
-        <select name="categoria_id" class="input" required><option value="">Selecione...</option>${categorias.filter((c) => !c.oculta_na_busca).map((c) => `<option value="${c.id}">${c.nome}</option>`).join('')}</select>
+        <select name="categoria_id" class="input" required><option value="">Selecione...</option>${categorias.filter((c) => !c.oculta_na_busca).map((c) => `<option value="${c.id}">${esc(c.nome)}</option>`).join('')}</select>
       </div>
       <div><label class="label">Centro de custo *</label><div data-centro></div></div>
     </div>
@@ -517,12 +506,12 @@ async function abrirDetalhes(conta, recarregar, gerenciar) {
       <div class="mb-4 grid grid-cols-2 gap-2 text-sm">
         <p><span class="font-medium">Tipo:</span> ${tipoDaConta(contaAtual)}</p>
         <p><span class="font-medium">Codigo da despesa:</span> ${codigoDaDespesa(contaAtual) || '-'}</p>
-        <p><span class="font-medium">Categoria:</span> ${contaAtual.categoria_nome || '-'}</p>
+        <p><span class="font-medium">Categoria:</span> ${esc(contaAtual.categoria_nome || '-')}</p>
         <p><span class="font-medium">Centro de custo:</span> ${contaAtual.centro_custo_nome || (contaAtual.rateio_qtd ? `Rateio (${contaAtual.rateio_qtd} centros)` : '-')}</p>
-        <p><span class="font-medium">Fornecedor:</span> ${contaAtual.fornecedor_nome || '-'}</p>
+        <p><span class="font-medium">Fornecedor:</span> ${esc(contaAtual.fornecedor_nome || '-')}</p>
         <p><span class="font-medium">Documento:</span> ${esc(contaAtual.documento) || '-'}</p>
         <p><span class="font-medium">Cadastrada em:</span> ${formatarDataBr(contaAtual.criado_em)}</p>
-        <p><span class="font-medium">Status:</span> <span class="${STATUS_BADGE[contaAtual.status]}">${contaAtual.status}</span></p>
+        <p><span class="font-medium">Status:</span> <span class="${STATUS_BADGE[contaAtual.status]}">${esc(contaAtual.status)}</span></p>
         <p><span class="font-medium">Vencimento:</span> ${formatarDataBr(contaAtual.data_vencimento)}</p>
         <p><span class="font-medium">Valor:</span> ${formatarMoeda(contaAtual.valor)}</p>
         <p><span class="font-medium">Pago + desconto:</span> ${formatarMoeda(contaAtual.valor_pago + contaAtual.valor_descontado)}</p>
@@ -540,14 +529,14 @@ async function abrirDetalhes(conta, recarregar, gerenciar) {
       ${contaAtual.rateio ? `
         <div class="mb-4 rounded-lg border border-slate-200 p-3 text-sm">
           <p class="mb-1 font-medium text-slate-900">Despesa rateada entre ${contaAtual.rateio.length} centros de custo</p>
-          ${contaAtual.rateio.map((r) => `<div class="flex justify-between py-0.5 text-slate-600"><span>${r.centro_custo_nome}</span><span class="font-medium text-slate-900">${formatarMoeda(r.valor)}</span></div>`).join('')}
+          ${contaAtual.rateio.map((r) => `<div class="flex justify-between py-0.5 text-slate-600"><span>${esc(r.centro_custo_nome)}</span><span class="font-medium text-slate-900">${formatarMoeda(r.valor)}</span></div>`).join('')}
         </div>
       ` : ''}
       <p class="mb-2 text-sm font-semibold text-slate-900">Historico de baixas</p>
       <table class="w-full text-sm">
         <thead><tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500"><th class="py-1">Data</th><th class="py-1">Conta bancaria</th><th class="py-1 text-right">Valor</th></tr></thead>
         <tbody>
-          ${movimentacoes.map((m) => `<tr class="border-b border-slate-100"><td class="py-1">${formatarDataBr(m.data)}</td><td class="py-1">${m.conta_bancaria_nome || '-'}</td><td class="py-1 text-right">${formatarMoeda(m.valor)}</td></tr>`).join('') || '<tr><td colspan="3" class="py-3 text-center text-slate-400">Nenhuma baixa em dinheiro lancada.</td></tr>'}
+          ${movimentacoes.map((m) => `<tr class="border-b border-slate-100"><td class="py-1">${formatarDataBr(m.data)}</td><td class="py-1">${esc(m.conta_bancaria_nome || '-')}</td><td class="py-1 text-right">${formatarMoeda(m.valor)}</td></tr>`).join('') || '<tr><td colspan="3" class="py-3 text-center text-slate-400">Nenhuma baixa em dinheiro lancada.</td></tr>'}
         </tbody>
       </table>
       ${contaAtual.valor_descontado > 0 ? `<p class="mt-2 text-xs text-slate-500">+ ${formatarMoeda(contaAtual.valor_descontado)} em desconto ou baixa sem pagamento (nao movimenta caixa; veja as Ocorrencias).</p>` : ''}
@@ -637,7 +626,7 @@ async function abrirConsolidarFatura(recarregar) {
         ? contas.map((c) => `
           <label class="flex items-center gap-2 rounded p-1 text-sm hover:bg-slate-50">
             <input type="checkbox" checked data-valor="${c.valor}" value="${c.id}" />
-            <span class="flex-1">${formatarDataBr(c.data_vencimento)} - ${c.descricao}${c.veiculo_placa ? ` (${c.veiculo_placa})` : ''}</span>
+            <span class="flex-1">${formatarDataBr(c.data_vencimento)} - ${esc(c.descricao)}${c.veiculo_placa ? ` (${esc(c.veiculo_placa)})` : ''}</span>
             <span class="font-medium">${formatarMoeda(c.valor)}</span>
           </label>
         `).join('')
@@ -778,7 +767,7 @@ export async function render(container, params, query) {
   const selectCategoria = container.querySelector('[data-filtro-categoria]');
   try {
     const categorias = await get('/categorias-despesa');
-    selectCategoria.innerHTML += categorias.map((c) => `<option value="${c.id}">${c.nome}</option>`).join('');
+    selectCategoria.innerHTML += categorias.map((c) => `<option value="${c.id}">${esc(c.nome)}</option>`).join('');
   } catch (err) { mostrarErro(err); }
   const veiculoSelect = criarSearchableSelect({ buscar: buscarVeiculos, placeholder: 'Todos os veiculos...', onChange: () => tabela.recarregar() });
   container.querySelector('[data-filtro-veiculo]').appendChild(veiculoSelect.el);
@@ -805,7 +794,7 @@ export async function render(container, params, query) {
 
   const tabela = criarDataTable({
     colunas: [
-      { chave: 'descricao', titulo: 'Descricao', truncar: true, render: (r) => `${r.viagem_id ? `${r.descricao} <a href="#/viagens/${r.viagem_id}" class="ml-1 text-xs text-gray-900 hover:underline">(viagem #${r.viagem_id})</a>` : r.descricao}${r.documento ? `<span class="ml-1 text-xs text-slate-400">&middot; doc. ${esc(r.documento)}</span>` : ''}` },
+      { chave: 'descricao', titulo: 'Descricao', truncar: true, render: (r) => `${r.viagem_id ? `${esc(r.descricao)} <a href="#/viagens/${r.viagem_id}" class="ml-1 text-xs text-gray-900 hover:underline">(viagem #${r.viagem_id})</a>` : esc(r.descricao)}${r.documento ? `<span class="ml-1 text-xs text-slate-400">&middot; doc. ${esc(r.documento)}</span>` : ''}` },
       // Codigo da despesa de origem (quando a conta veio de um abastecimento/
       // despesa de viagem) - por pedido do usuario, pra bater com o mesmo
       // numero ja mostrado na lista de despesas da viagem (viagemDetalhe.js)
@@ -816,16 +805,16 @@ export async function render(container, params, query) {
         render: (r) => (r.origem_tipo === 'DespesaViagem' ? `<a href="#/viagens/${r.viagem_id}" class="text-gray-900 hover:underline">#${r.origem_id}</a>` : (codigoDaDespesa(r) || '-')),
         exportar: (r) => codigoDaDespesa(r) || '-',
       },
-      { chave: 'categoria_nome', titulo: 'Categoria', render: (r) => r.categoria_nome || '-' },
+      { chave: 'categoria_nome', titulo: 'Categoria', render: (r) => esc(r.categoria_nome || '-') },
       { chave: 'tipo', titulo: 'Tipo', render: (r) => tipoDaConta(r), exportar: (r) => tipoDaConta(r) },
       { chave: 'centro_custo_nome', titulo: 'Centro de custo', render: (r) => r.centro_custo_nome || (r.rateio_qtd ? `Rateio (${r.rateio_qtd} centros)` : '-'), exportar: (r) => r.centro_custo_nome || (r.rateio_qtd ? `Rateio (${r.rateio_qtd} centros)` : '') },
-      { chave: 'fornecedor_nome', titulo: 'Fornecedor', render: (r) => r.fornecedor_nome || '-' },
-      { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => r.veiculo_placa || '-' },
+      { chave: 'fornecedor_nome', titulo: 'Fornecedor', render: (r) => esc(r.fornecedor_nome || '-') },
+      { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => esc(r.veiculo_placa || '-') },
       { chave: 'valor', titulo: 'Valor', render: (r) => formatarMoeda(r.valor), exportar: (r) => r.valor / 100 },
       { chave: 'valor_pago', titulo: 'Pago', render: (r) => formatarMoeda(r.valor_pago + r.valor_descontado), exportar: (r) => (r.valor_pago + r.valor_descontado) / 100 },
       { chave: 'criado_em', titulo: 'Cadastro', render: (r) => formatarDataBr(r.criado_em) },
-      { chave: 'data_vencimento', titulo: 'Vencimento', render: (r) => `${formatarDataBr(r.data_vencimento)}${badgePrazo(r)}`, exportar: (r) => formatarDataBr(r.data_vencimento) },
-      { chave: 'status', titulo: 'Status', render: (r) => `<span class="${STATUS_BADGE[r.status]}">${r.status}</span>`, exportar: (r) => r.status },
+      { chave: 'data_vencimento', titulo: 'Vencimento', render: (r) => `${formatarDataBr(r.data_vencimento)}${badgePrazoVencimento(r.data_vencimento, r.status === 'Pago')}`, exportar: (r) => formatarDataBr(r.data_vencimento) },
+      { chave: 'status', titulo: 'Status', render: (r) => `<span class="${STATUS_BADGE[r.status]}">${esc(r.status)}</span>`, exportar: (r) => r.status },
     ],
     ordenacaoInicial: { chave: 'data_vencimento', direcao: 'asc' },
     corLinha: (r) => (r.status !== 'Pago' && r.data_vencimento < hojeIsoLocal() ? 'bg-red-950/40' : ''),

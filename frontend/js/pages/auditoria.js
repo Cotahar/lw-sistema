@@ -5,11 +5,12 @@ import { formatarDataHoraBr } from '../masks.js';
 import { renderizarAcessoNegado } from '../components/acessoNegado.js';
 import { esqueletoLinhasTabela } from '../components/skeleton.js';
 import { verDetalhesAuditoria, ACAO_LABEL } from '../components/auditoriaTimeline.js';
+import { esc } from '../html.js';
 
 async function reverter(log, recarregar) {
   const ok = await confirmarAcao({
     titulo: 'Reverter acao',
-    mensagem: `Reverter ${(ACAO_LABEL[log.acao] || log.acao).toLowerCase()} em "${log.tabela_afetada}" (registro #${log.registro_id})? O sistema tenta desfazer o efeito original, incluindo lancamentos financeiros ligados a ela.`,
+    mensagem: `Reverter ${(ACAO_LABEL[log.acao] || log.acao).toLowerCase()} em "${esc(log.tabela_afetada)}" (registro #${log.registro_id})? O sistema tenta desfazer o efeito original, incluindo lancamentos financeiros ligados a ela.`,
     textoConfirmar: 'Reverter',
   });
   if (!ok) return;
@@ -53,11 +54,11 @@ export async function render(container) {
       tbody.innerHTML = logs.length ? logs.map((l) => `
         <tr class="border-b border-slate-100">
           <td class="table-td">${formatarDataHoraBr(l.criado_em)}</td>
-          <td class="table-td">${l.tabela_afetada}</td>
+          <td class="table-td">${esc(l.tabela_afetada)}</td>
           <td class="table-td">#${l.registro_id}</td>
           <td class="table-td">${ACAO_LABEL[l.acao] || l.acao}</td>
-          <td class="table-td">${l.usuario_nome || '-'}</td>
-          <td class="table-td">${l.revertido_em ? `Revertido (${l.revertido_por_nome || ''} &middot; ${formatarDataHoraBr(l.revertido_em)})` : '-'}</td>
+          <td class="table-td">${esc(l.usuario_nome || '-')}</td>
+          <td class="table-td">${l.revertido_em ? `Revertido (${esc(l.revertido_por_nome || '')} &middot; ${formatarDataHoraBr(l.revertido_em)})` : '-'}</td>
           <td class="table-td text-right whitespace-nowrap">
             <button type="button" class="text-xs text-gray-900 hover:underline" data-detalhes="${l.id}">Detalhes</button>
             ${l.revertido_em ? '' : `<button type="button" class="ml-2 text-xs text-red-600 hover:underline" data-reverter="${l.id}">Reverter</button>`}

@@ -7,6 +7,7 @@ import { formatarDataBr, formatarDataHoraBr, attachUppercaseInput } from '../mas
 import { comCopiar } from '../components/copiar.js';
 import { criarBotaoSincronizarOnixsat } from '../components/onixsatSync.js';
 import { criarCidadeUfInput } from '../components/cidadeUfSelect.js';
+import { esc } from '../html.js';
 
 const TIPOS = ['Cavalo', 'Carreta', 'Dolly', 'Truck', 'Toco'];
 
@@ -164,7 +165,7 @@ export async function abrirHodometro(veiculo, recarregar) {
         <table class="w-full text-sm">
           <thead><tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500"><th class="py-1">Data</th><th class="py-1">KM</th><th class="py-1">Origem</th></tr></thead>
           <tbody>
-            ${eventos.map((e) => `<tr class="border-b border-slate-100"><td class="py-1">${formatarDataBr(e.data_hora)}</td><td class="py-1">${e.km.toLocaleString('pt-BR')}</td><td class="py-1">${e.origem}</td></tr>`).join('') || '<tr><td colspan="3" class="py-3 text-center text-slate-400">Sem historico.</td></tr>'}
+            ${eventos.map((e) => `<tr class="border-b border-slate-100"><td class="py-1">${formatarDataBr(e.data_hora)}</td><td class="py-1">${e.km.toLocaleString('pt-BR')}</td><td class="py-1">${esc(e.origem)}</td></tr>`).join('') || '<tr><td colspan="3" class="py-3 text-center text-slate-400">Sem historico.</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -204,7 +205,7 @@ export async function abrirLocalizacao(veiculo, recarregar) {
         <table class="w-full text-sm">
           <thead><tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500"><th class="py-1">Data</th><th class="py-1">Cidade/UF</th><th class="py-1">Origem</th></tr></thead>
           <tbody>
-            ${eventos.map((e) => `<tr class="border-b border-slate-100"><td class="py-1">${formatarDataBr(e.data_hora)}</td><td class="py-1">${e.cidade}/${e.uf}</td><td class="py-1">${e.origem}</td></tr>`).join('') || '<tr><td colspan="3" class="py-3 text-center text-slate-400">Sem historico.</td></tr>'}
+            ${eventos.map((e) => `<tr class="border-b border-slate-100"><td class="py-1">${formatarDataBr(e.data_hora)}</td><td class="py-1">${esc(e.cidade)}/${esc(e.uf)}</td><td class="py-1">${esc(e.origem)}</td></tr>`).join('') || '<tr><td colspan="3" class="py-3 text-center text-slate-400">Sem historico.</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -257,7 +258,7 @@ export async function render(container) {
         chave: 'localizacao', titulo: 'Localizacao',
         render: (r) => (r.localizacao_cidade ? `
           <details>
-            <summary class="inline cursor-pointer">${r.localizacao_cidade}/${r.localizacao_uf}</summary>
+            <summary class="inline cursor-pointer">${esc(r.localizacao_cidade)}/${esc(r.localizacao_uf)}</summary>
             <div class="mt-1 text-xs text-slate-500">Atualizado em ${formatarDataHoraBr(r.localizacao_atualizado_em)}</div>
           </details>
         ` : '-'),

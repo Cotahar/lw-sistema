@@ -1,6 +1,7 @@
 import { get, ehAdmin } from '../api.js';
 import { abrirModal } from './modal.js';
 import { formatarDataHoraBr } from '../masks.js';
+import { esc } from '../html.js';
 
 export const ACAO_LABEL = { INSERT: 'Criacao', UPDATE: 'Alteracao', DELETE: 'Exclusao' };
 const ACAO_COR = { INSERT: 'bg-emerald-600', UPDATE: 'bg-brand-yellow', DELETE: 'bg-red-600' };
@@ -49,7 +50,7 @@ export function criarTimelineAuditoria({ tabela, registroId }) {
                   <p class="text-sm font-medium text-slate-900">${ACAO_LABEL[l.acao] || l.acao}${l.revertido_em ? ' <span class="text-xs font-normal text-amber-600">(revertido)</span>' : ''}</p>
                   <button type="button" class="shrink-0 text-xs text-gray-900 hover:underline" data-ver-log="${l.id}">Detalhes</button>
                 </div>
-                <p class="text-xs text-slate-500">${formatarDataHoraBr(l.criado_em)} · ${l.usuario_nome || 'sistema'}</p>
+                <p class="text-xs text-slate-500">${formatarDataHoraBr(l.criado_em)} · ${esc(l.usuario_nome || 'sistema')}</p>
               </div>
             </div>
           `).join('')}

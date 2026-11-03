@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('node:path');
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const multer = require('multer');
 const db = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
@@ -41,13 +42,20 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 // nome salvo em disco pra abrir/pre-visualizar certo (o navegador decide
 // pelo Content-Type do multer/express.static, mas alguns leitores de PDF
 // externos ainda olham a extensao).
+// A extensao salva vem do TIPO aceito, nunca do nome enviado: com a extensao original, um "foto.html"
+// declarado como image/png era servido em /uploads como pagina HTML do proprio dominio (rodando script
+// com acesso a sessao de quem abrisse o link). Nome aleatorio de verdade (crypto), nao adivinhavel.
+const EXTENSAO_POR_TIPO = {
+  'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif',
+  'image/heic': '.heic', 'image/heif': '.heif', 'image/bmp': '.bmp', 'image/tiff': '.tif', 'application/pdf': '.pdf',
+};
 const upload = multer({
   storage: multer.diskStorage({
     destination: UPLOAD_DIR,
-    filename: (req, file, cb) => cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname).slice(0, 10)}`),
+    filename: (req, file, cb) => cb(null, `${Date.now()}-${crypto.randomUUID()}${EXTENSAO_POR_TIPO[file.mimetype]}`),
   }),
   limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => cb(null, /^image\//.test(file.mimetype) || file.mimetype === 'application/pdf'),
+  fileFilter: (req, file, cb) => cb(null, Boolean(EXTENSAO_POR_TIPO[file.mimetype])),
 });
 
 router.get('/', asyncHandler(async (req, res) => {

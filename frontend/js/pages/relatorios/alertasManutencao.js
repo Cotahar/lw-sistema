@@ -6,6 +6,7 @@ import { buscarConjuntos } from '../../components/conjuntoOpcoes.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarDataHoraBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
+import { esc } from '../../html.js';
 
 async function buscarVeiculos(termo) {
   return (await get(`/veiculos${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((v) => ({ value: v.id, label: v.placa }));
@@ -55,11 +56,11 @@ export async function render(container) {
     colunas: [
       { chave: 'data_disparo', titulo: 'Disparado em', render: (r) => formatarDataHoraBr(r.data_disparo) },
       { chave: 'conjunto', titulo: 'Conjunto', render: (r) => r.conjunto || '-' },
-      { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => r.veiculo_placa },
-      { chave: 'regra_descricao', titulo: 'Regra', render: (r) => r.regra_descricao },
+      { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => esc(r.veiculo_placa) },
+      { chave: 'regra_descricao', titulo: 'Regra', render: (r) => esc(r.regra_descricao) },
       { chave: 'intervalo_km', titulo: 'Intervalo (km)', render: (r) => r.intervalo_km.toLocaleString('pt-BR') },
       { chave: 'km_atual_no_disparo', titulo: 'KM no disparo', render: (r) => r.km_atual_no_disparo.toLocaleString('pt-BR') },
-      { chave: 'status', titulo: 'Status', render: (r) => `<span class="${r.status === 'Pendente' ? 'badge-atencao' : 'badge-sucesso'}">${r.status}</span>`, exportar: (r) => r.status },
+      { chave: 'status', titulo: 'Status', render: (r) => `<span class="${r.status === 'Pendente' ? 'badge-atencao' : 'badge-sucesso'}">${esc(r.status)}</span>`, exportar: (r) => r.status },
       { chave: 'resolvido_em', titulo: 'Resolvido em', render: (r) => (r.resolvido_em ? formatarDataHoraBr(r.resolvido_em) : '-') },
     ],
     ordenacaoInicial: { chave: 'data_disparo', direcao: 'desc' },

@@ -2,6 +2,7 @@ import { getUsuario } from '../../api.js';
 import { formatarDataBr, hojeIsoLocal } from '../../masks.js';
 import { navegar } from '../../router.js';
 import { lerRelatorioImpressao } from '../../components/relatorioImpressao.js';
+import { esc as escapeHtml } from '../../html.js';
 
 // Pagina generica de impressao/PDF pra relatorios filtraveis (Saldos em
 // Aberto, Relatorio de Despesas, e o que vier depois) - mesma linguagem
@@ -12,9 +13,6 @@ import { lerRelatorioImpressao } from '../../components/relatorioImpressao.js';
 // em vez de saber de onde os dados vieram - assim um relatorio novo so
 // precisa montar o payload, nao reimplementar a pagina de impressao.
 
-function escapeHtml(valor) {
-  return String(valor ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
 
 const COR_CARD = {
   emerald: 'bg-emerald-50 border-emerald-200 text-emerald-700',

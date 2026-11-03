@@ -1,6 +1,7 @@
 import { confirmarAcao } from './modal.js';
 import { mostrarErro, mostrarToast, mostrarToastAcao } from './toast.js';
 import { esqueletoLinhasTabela } from './skeleton.js';
+import { esc } from '../html.js';
 
 const ITENS_POR_PAGINA = 25;
 const SETA_ASC = '<svg class="inline h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5l7 9H5l7-9z"/></svg>';
@@ -258,7 +259,9 @@ export function criarDataTable({
       }
       for (const c of colunas) {
         const td = document.createElement('td');
-        const valor = c.render ? c.render(linha) : (linha[c.chave] ?? '');
+        // Sem render() o valor e dado cru do banco: escapado (texto, nunca HTML). Quem usa render()
+        // monta o proprio HTML e escapa o que interpola (ver html.js).
+        const valor = c.render ? c.render(linha) : esc(linha[c.chave]);
         // truncar:true - "..." com tooltip estilizado no hover (ver
         // input.css .celula-truncar), pra descricao/observacao longas nao
         // estourarem a linha nem ficarem ilegveis cortadas sem aviso.

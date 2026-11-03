@@ -45,4 +45,13 @@ function exigirEmpresaEspecifica(req, res, next) {
   next();
 }
 
-module.exports = { resolverEmpresa, exigirEmpresaEspecifica, possuiTodasAsEmpresasAtivas };
+// Para as rotas que tem modo consolidado (Painel, DRE geral/comparativo): aceita uma empresa
+// especifica OU o "todas" ja validado acima. Sem isto, chamar sem o cabecalho X-Empresa-Id
+// (req.empresaId null, mas sem passar pela checagem do 'todas') devolvia os dados de TODAS as
+// empresas para qualquer usuario, inclusive quem so tem acesso a uma.
+function exigirEmpresaOuTodas(req, res, next) {
+  if (req.empresaId === null && !req.empresaTodas) return res.status(400).json({ erro: 'Selecione uma empresa.' });
+  next();
+}
+
+module.exports = { resolverEmpresa, exigirEmpresaEspecifica, exigirEmpresaOuTodas, possuiTodasAsEmpresasAtivas };

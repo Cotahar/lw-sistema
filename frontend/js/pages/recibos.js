@@ -2,14 +2,12 @@ import { get, getUsuario } from '../api.js';
 import { formatarMoeda, formatarDataBr, formatarCpfCnpj, hojeIsoLocal } from '../masks.js';
 import { navegar } from '../router.js';
 import { esqueletoPagina } from '../components/skeleton.js';
+import { esc } from '../html.js';
 
 // RECIBOS de valores pagos ao motorista (adiantamentos da viagem e saldo do acerto), para
 // impressao e assinatura. Usa a paleta zinc (nao remapeada) porque e uma pagina impressa em
 // fundo branco - mesmo motivo do relatorio do acerto (ver acertoRelatorio.js).
 
-function esc(texto) {
-  return String(texto ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
 
 const MESES = ['janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 

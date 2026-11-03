@@ -1,6 +1,7 @@
 import { attachMoedaMask, getMoedaValue, setMoedaValue, attachPesoMask, getPesoValue, attachDataMask, parseDataBrParaIso, attachCpfCnpjMask, apenasDigitos, validarCpfOuCnpj, attachUppercaseInput } from '../masks.js';
 import { criarSearchableSelect } from './searchableSelect.js';
 import { fecharModal } from './modal.js';
+import { esc } from '../html.js';
 
 // Mensagem de erro pro campo `campo` a partir do valor atual (string, ou o
 // valor ja resolvido de um searchable) - usada tanto no blur (feedback cedo)
@@ -43,8 +44,8 @@ export function criarFormulario({ campos, valoresIniciais = {}, aoSalvar, textoS
     if (campo.tipo === 'checkbox') {
       bloco.className = 'flex items-center gap-2';
       bloco.innerHTML = `
-        <input type="checkbox" id="campo-${campo.nome}" class="h-4 w-4 rounded border-slate-300" ${valoresIniciais[campo.nome] ? 'checked' : ''} />
-        <label for="campo-${campo.nome}" class="text-sm text-slate-700">${campo.label}</label>
+        <input type="checkbox" id="campo-${esc(campo.nome)}" class="h-4 w-4 rounded border-slate-300" ${valoresIniciais[campo.nome] ? 'checked' : ''} />
+        <label for="campo-${esc(campo.nome)}" class="text-sm text-slate-700">${campo.label}</label>
       `;
       form.appendChild(bloco);
       continue;

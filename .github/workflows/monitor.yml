@@ -1,0 +1,35 @@
+name: Monitor de producao
+
+# Confere de hora em hora se o Frottex esta no ar (banco respondendo) e se o backup diario esta em dia.
+# Quando falha, o GitHub manda e-mail para quem fez o ultimo commit neste arquivo - sem precisar criar
+# conta em servico de monitoramento. Para checar de 5 em 5 minutos, ver README ("Monitoramento").
+# A URL vem da variavel do repositorio FROTTEX_URL (Settings > Secrets and variables > Actions > Variables);
+# sem ela, usa o dominio de producao.
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+jobs:
+  checar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      URL: ${{ vars.FROTTEX_URL || 'https://frottex.com.br' }}
+    steps:
+      - name: Sistema no ar e banco respondendo
+        run: |
+          # 3 tentativas: um deploy em andamento derruba o servico por alguns segundos
+          for tentativa in 1 2 3; do
+            if curl -fsS --max-time 30 "$URL/api/health"; then exit 0; fi
+            echo "Tentativa $tentativa falhou"; sleep 30
+          done
+          echo "::error::$URL/api/health nao respondeu ok em 3 tentativas"
+          exit 1
+      - name: Backup diario em dia
+        run: |
+          if ! curl -fsS --max-time 30 "$URL/api/health/backup"; then
+            curl -sS --max-time 30 "$URL/api/health/backup" || true
+            echo "::error::Backup atrasado ou copia externa falhando - veja Administracao > Backups"
+            exit 1
+          fi

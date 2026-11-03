@@ -2,12 +2,13 @@ const express = require('express');
 const db = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
-const { requerAcessoModulo } = require('../middleware/auth');
+const { requerAcessoModulo, requerAdmin } = require('../middleware/auth');
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { condicaoEmpresa } = require('../utils/empresaScope');
 const { registrarAuditoria } = require('../utils/audit');
 const { withTransaction } = require('../utils/transaction');
 const { desfazerTransferencia } = require('../utils/transferenciaHelper');
+const { exigirCentavos, exigirCentavosOpcional } = require('../utils/validacao');
 
 const router = express.Router();
 
@@ -15,6 +16,63 @@ router.get('/', requerAcessoModulo('contas_bancarias', 'Visualizar'), exigirEmpr
   const condicoes = []; const params = [];
   condicaoEmpresa(condicoes, params, req);
   res.json(db.prepare(`SELECT * FROM contas_bancarias WHERE ${condicoes.join(' AND ')} ORDER BY nome`).all(...params));
+}));
+
+// ---- Conferencia do saldo x extrato ----
+// saldo_atual e um acumulado atualizado junto com cada movimentacao. Se algum caminho mexer num sem o
+// outro (bug, script, reversao incompleta), ele deixa de bater com o extrato e ninguem percebia. Aqui:
+// saldo calculado = saldo_inicial + entradas - saidas; diferenca = saldo_atual - calculado (deve ser 0).
+const SQL_CONFERENCIA = `
+  SELECT cb.id, cb.nome, cb.banco, cb.ativo, cb.saldo_inicial, cb.saldo_atual,
+         COALESCE(SUM(CASE WHEN mc.tipo = 'Entrada' THEN mc.valor END), 0) AS entradas,
+         COALESCE(SUM(CASE WHEN mc.tipo = 'Saida' THEN mc.valor END), 0) AS saidas,
+         COUNT(mc.id) AS lancamentos,
+         MAX(mc.data) AS ultimo_lancamento
+  FROM contas_bancarias cb
+  LEFT JOIN movimentacoes_caixa mc ON mc.conta_bancaria_id = cb.id
+`;
+
+function comConferencia(linha) {
+  const saldoCalculado = linha.saldo_inicial + linha.entradas - linha.saidas;
+  return { ...linha, saldo_calculado: saldoCalculado, diferenca: linha.saldo_atual - saldoCalculado };
+}
+
+function conferirConta(id, empresaId) {
+  const linha = db.prepare(`${SQL_CONFERENCIA} WHERE cb.id = ? AND cb.empresa_id = ? GROUP BY cb.id`).get(id, empresaId);
+  return linha ? comConferencia(linha) : null;
+}
+
+router.get('/conferencia', requerAcessoModulo('contas_bancarias', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const contas = db.prepare(`${SQL_CONFERENCIA} WHERE cb.empresa_id = ? GROUP BY cb.id ORDER BY cb.nome`).all(req.empresaId).map(comConferencia);
+  res.json({ contas, divergentes: contas.filter((c) => c.diferenca !== 0).length });
+}));
+
+// Acerta uma conta divergente (Admin). Dois jeitos, porque so quem conhece o banco sabe qual lado esta certo:
+//  - 'recalcular': o EXTRATO esta certo -> saldo_atual passa a ser o calculado;
+//  - 'registrar_ajuste': o SALDO esta certo (bate com o banco) -> lanca no extrato um Ajuste com a
+//    diferenca, sem mexer no saldo (o lancamento que faltava).
+router.post('/:id/conferencia/acertar', requerAdmin, exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
+  const { modo } = req.body;
+  if (!['recalcular', 'registrar_ajuste'].includes(modo)) throw new ApiError(400, "Informe o modo: 'recalcular' ou 'registrar_ajuste'.");
+  const antes = db.prepare('SELECT * FROM contas_bancarias WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
+  if (!antes) throw new ApiError(404, 'Conta bancaria nao encontrada.');
+  const conferencia = conferirConta(antes.id, req.empresaId);
+  if (conferencia.diferenca === 0) throw new ApiError(400, 'O saldo desta conta ja bate com o extrato.');
+
+  withTransaction(db, () => {
+    if (modo === 'recalcular') {
+      db.prepare('UPDATE contas_bancarias SET saldo_atual = ? WHERE id = ?').run(conferencia.saldo_calculado, antes.id);
+      registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'contas_bancarias', registroId: antes.id, acao: 'UPDATE', antes, depois: db.prepare('SELECT * FROM contas_bancarias WHERE id = ?').get(antes.id) });
+    } else {
+      const info = db.prepare(`
+        INSERT INTO movimentacoes_caixa (empresa_id, conta_bancaria_id, tipo, valor, data, descricao, origem_tipo, criado_por)
+        VALUES (?, ?, ?, ?, date('now', '-3 hours'), 'CONFERENCIA DE SALDO: LANCAMENTO QUE FALTAVA NO EXTRATO', 'Ajuste', ?)
+      `).run(req.empresaId, antes.id, conferencia.diferenca > 0 ? 'Entrada' : 'Saida', Math.abs(conferencia.diferenca), req.usuario.id);
+      const mov = db.prepare('SELECT * FROM movimentacoes_caixa WHERE id = ?').get(info.lastInsertRowid);
+      registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'movimentacoes_caixa', registroId: mov.id, acao: 'INSERT', depois: mov });
+    }
+  });
+  res.json(conferirConta(antes.id, req.empresaId));
 }));
 
 // ---- Transferencias entre contas ----
@@ -106,8 +164,10 @@ router.get('/:id', requerAcessoModulo('contas_bancarias', 'Visualizar'), exigirE
 router.post('/', requerAcessoModulo('contas_bancarias', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const { nome, banco, agencia, conta, saldo_atual } = req.body;
   if (!nome) throw new ApiError(400, 'Informe o nome da conta.');
-  const info = db.prepare('INSERT INTO contas_bancarias (empresa_id, nome, banco, agencia, conta, saldo_atual) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(req.empresaId, nome.toUpperCase(), banco ? banco.toUpperCase() : null, agencia || null, conta || null, saldo_atual || 0);
+  exigirCentavosOpcional(saldo_atual, { campo: 'saldo_atual', permitirZero: true, permitirNegativo: true });
+  // O saldo informado no cadastro e o ponto de partida da conferencia (saldo_inicial) - nao vira movimentacao.
+  const info = db.prepare('INSERT INTO contas_bancarias (empresa_id, nome, banco, agencia, conta, saldo_atual, saldo_inicial) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(req.empresaId, nome.toUpperCase(), banco ? banco.toUpperCase() : null, agencia || null, conta || null, saldo_atual || 0, saldo_atual || 0);
   const nova = db.prepare('SELECT * FROM contas_bancarias WHERE id = ?').get(info.lastInsertRowid);
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'contas_bancarias', registroId: nova.id, acao: 'INSERT', depois: nova });
   res.status(201).json(nova);
@@ -148,6 +208,7 @@ router.post('/:id/movimentacoes', requerAcessoModulo('contas_bancarias', 'Gerenc
   const { tipo, valor, data, descricao } = req.body;
   if (!tipo || !valor) throw new ApiError(400, 'Preencha tipo e valor.');
   if (!['Entrada', 'Saida'].includes(tipo)) throw new ApiError(400, "Tipo deve ser 'Entrada' ou 'Saida'.");
+  exigirCentavos(valor); // o sentido vem do tipo: valor negativo inverteria o ajuste sem ninguem perceber
 
   const movimentacao = withTransaction(db, () => {
     const info = db.prepare(`

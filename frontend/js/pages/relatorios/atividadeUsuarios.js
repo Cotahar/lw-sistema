@@ -4,6 +4,7 @@ import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarDataHoraBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
+import { esc } from '../../html.js';
 
 const OPCOES_AGRUPAR = [
   { value: '', label: 'Nenhum' },
@@ -94,10 +95,10 @@ export async function render(container) {
   const tabela = criarDataTable({
     colunas: [
       { chave: 'criado_em', titulo: 'Data', render: (r) => formatarDataHoraBr(r.criado_em) },
-      { chave: 'usuario_nome', titulo: 'Usuario', render: (r) => r.usuario_nome || '-' },
-      { chave: 'tabela_afetada', titulo: 'Tabela', render: (r) => r.tabela_afetada },
+      { chave: 'usuario_nome', titulo: 'Usuario', render: (r) => esc(r.usuario_nome || '-') },
+      { chave: 'tabela_afetada', titulo: 'Tabela', render: (r) => esc(r.tabela_afetada) },
       { chave: 'registro_id', titulo: 'Registro', render: (r) => `#${r.registro_id}` },
-      { chave: 'acao', titulo: 'Acao', render: (r) => r.acao },
+      { chave: 'acao', titulo: 'Acao', render: (r) => esc(r.acao) },
     ],
     ordenacaoInicial: { chave: 'criado_em', direcao: 'desc' },
     exportar: { nomeArquivo: 'atividade-usuarios' },

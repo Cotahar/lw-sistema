@@ -1,4 +1,5 @@
 import { notificarMudanca } from './components/syncAbas.js';
+import { registrarVersaoDoServidor } from './versao.js';
 
 const TOKEN_KEY = 'frotista_token';
 const USUARIO_KEY = 'frotista_usuario';
@@ -89,6 +90,7 @@ export async function api(method, path, body) {
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
+  registrarVersaoDoServidor(res.headers.get('x-app-versao'));
 
   // So trata 401 como "sessao expirada" para chamadas ja autenticadas. O
   // proprio /auth/login devolve 401 para credenciais erradas - interceptar

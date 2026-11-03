@@ -4,6 +4,7 @@ import { abrirModal, confirmarAcao } from '../components/modal.js';
 import { mostrarToast, mostrarErro } from '../components/toast.js';
 import { formatarDataBr, hojeIsoLocal, attachUppercaseInput } from '../masks.js';
 import { comprimirImagem } from '../imageCompress.js';
+import { esc } from '../html.js';
 
 async function buscarConjuntos(termo) {
   const conjuntos = await get('/conjuntos');
@@ -39,8 +40,8 @@ function montarLinhaTabela(item, gerenciar) {
   return `
     <tr class="border-b border-slate-100" data-item-id="${item.item_id}">
       <td class="table-td"><input type="checkbox" data-presente ${item.presente ? 'checked' : ''} ${gerenciar ? '' : 'disabled'} /></td>
-      <td class="table-td">${item.item_nome}</td>
-      <td class="table-td"><input type="text" class="input" data-observacao value="${item.observacao || ''}" ${gerenciar ? '' : 'disabled'} /></td>
+      <td class="table-td">${esc(item.item_nome)}</td>
+      <td class="table-td"><input type="text" class="input" data-observacao value="${esc(item.observacao || '')}" ${gerenciar ? '' : 'disabled'} /></td>
     </tr>
   `;
 }
@@ -48,12 +49,12 @@ function montarLinhaTabela(item, gerenciar) {
 function montarCartaoMobile(item) {
   return `
     <div class="card p-3" data-item-id="${item.item_id}">
-      <p class="mb-2 text-sm font-medium text-slate-900">${item.item_nome}</p>
+      <p class="mb-2 text-sm font-medium text-slate-900">${esc(item.item_nome)}</p>
       <div class="flex gap-2">
         <button type="button" data-ok class="flex-1 rounded-lg py-3 text-sm font-bold uppercase tracking-wide text-white ${item.presente ? 'bg-emerald-600' : 'bg-emerald-900/40 text-emerald-500'}">OK</button>
         <button type="button" data-avaria class="flex-1 rounded-lg py-3 text-sm font-bold uppercase tracking-wide text-white ${item.presente === false ? 'bg-red-600' : 'bg-red-900/40 text-red-500'}">Avaria</button>
       </div>
-      ${item.observacao ? `<p class="mt-2 text-xs text-slate-500">Obs.: ${item.observacao}</p>` : ''}
+      ${item.observacao ? `<p class="mt-2 text-xs text-slate-500">Obs.: ${esc(item.observacao)}</p>` : ''}
     </div>
   `;
 }
@@ -79,7 +80,7 @@ async function carregarItensVistoria(vistoriaId, container, gerenciar, recarrega
     for (const [veiculoId, grupo] of porVeiculo) {
       const bloco = document.createElement('div');
       bloco.innerHTML = `
-        <h3 class="mb-2 text-sm font-semibold text-slate-900">${grupo.placa} <span class="font-normal text-slate-400">(${grupo.tipo})</span></h3>
+        <h3 class="mb-2 text-sm font-semibold text-slate-900">${esc(grupo.placa)} <span class="font-normal text-slate-400">(${esc(grupo.tipo)})</span></h3>
         ${mobile
           ? `<div class="space-y-2">${grupo.itens.map(montarCartaoMobile).join('')}</div>`
           : `<table class="w-full text-sm">
@@ -205,7 +206,7 @@ function montarColunaFotos(momento, fotos, veiculoId, gerenciar, recarregar) {
     <div class="grid grid-cols-3 gap-2" data-galeria>
       ${fotos.map((f) => `
         <div class="group relative" data-foto-id="${f.id}">
-          <img src="/uploads/checklist/${f.arquivo}" class="h-20 w-full cursor-pointer rounded-lg object-cover" data-ver-foto />
+          <img src="/uploads/checklist/${esc(f.arquivo)}" class="h-20 w-full cursor-pointer rounded-lg object-cover" data-ver-foto />
           ${gerenciar ? '<button type="button" class="absolute right-1 top-1 hidden h-5 w-5 rounded-full bg-red-600 text-xs text-white group-hover:block" data-remover-foto>&times;</button>' : ''}
         </div>
       `).join('') || '<p class="col-span-3 text-xs text-slate-400">Nenhuma foto.</p>'}
@@ -271,7 +272,7 @@ function carregarFotosConjunto(conjunto, container, gerenciar) {
   for (const veiculo of conjunto.itens) {
     const bloco = document.createElement('div');
     bloco.className = 'mb-6 last:mb-0';
-    bloco.innerHTML = `<h3 class="mb-2 text-sm font-semibold text-slate-900">${veiculo.placa}</h3><div data-fotos-veiculo></div>`;
+    bloco.innerHTML = `<h3 class="mb-2 text-sm font-semibold text-slate-900">${esc(veiculo.placa)}</h3><div data-fotos-veiculo></div>`;
     container.appendChild(bloco);
     carregarFotosVeiculo(veiculo, bloco.querySelector('[data-fotos-veiculo]'), gerenciar);
   }

@@ -5,6 +5,7 @@ import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js'
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { periodoAnteriorEquivalente, renderComparativoPeriodo } from '../../components/comparativoPeriodo.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
+import { esc } from '../../html.js';
 
 const ORIGEM_LABEL = {
   ContaPagar: 'Conta a Pagar', ContaReceber: 'Conta a Receber', ViagemAdiantamento: 'Adiantamento de Viagem', Ajuste: 'Ajuste Manual', Transferencia: 'Transferencia entre contas',
@@ -103,9 +104,9 @@ export async function render(container) {
   const tabela = criarDataTable({
     colunas: [
       { chave: 'data', titulo: 'Data', render: (r) => formatarDataBr(r.data) },
-      { chave: 'conta_bancaria_nome', titulo: 'Conta', render: (r) => r.conta_bancaria_nome },
-      { chave: 'tipo', titulo: 'Tipo', render: (r) => `<span class="${r.tipo === 'Entrada' ? 'badge-sucesso' : 'badge-critico'}">${r.tipo}</span>`, exportar: (r) => r.tipo },
-      { chave: 'descricao', titulo: 'Descricao', render: (r) => r.descricao || '-', truncar: true },
+      { chave: 'conta_bancaria_nome', titulo: 'Conta', render: (r) => esc(r.conta_bancaria_nome) },
+      { chave: 'tipo', titulo: 'Tipo', render: (r) => `<span class="${r.tipo === 'Entrada' ? 'badge-sucesso' : 'badge-critico'}">${esc(r.tipo)}</span>`, exportar: (r) => r.tipo },
+      { chave: 'descricao', titulo: 'Descricao', render: (r) => esc(r.descricao || '-'), truncar: true },
       { chave: 'origem_tipo', titulo: 'Origem', render: (r) => ORIGEM_LABEL[r.origem_tipo] || r.origem_tipo || '-' },
       { chave: 'valor', titulo: 'Valor', render: (r) => `<span class="${r.tipo === 'Entrada' ? 'text-emerald-500' : 'text-red-500'} font-semibold">${r.tipo === 'Entrada' ? '+' : '-'}${formatarMoeda(r.valor)}</span>`, exportar: (r) => (r.tipo === 'Entrada' ? r.valor / 100 : -r.valor / 100) },
     ],

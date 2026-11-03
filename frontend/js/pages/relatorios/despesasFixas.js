@@ -6,13 +6,14 @@ import { buscarConjuntos } from '../../components/conjuntoOpcoes.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
+import { esc } from '../../html.js';
 
 const CATALOGO_COLUNAS = [
   { chave: 'data', titulo: 'Data', padrao: true, render: (r) => formatarDataBr(r.data) },
-  { chave: 'categoria_nome', titulo: 'Categoria', padrao: true, render: (r) => r.categoria_nome || '-' },
+  { chave: 'categoria_nome', titulo: 'Categoria', padrao: true, render: (r) => esc(r.categoria_nome || '-') },
   { chave: 'conjunto', titulo: 'Conjunto', padrao: true, render: (r) => r.conjunto || '-' },
-  { chave: 'veiculo_placa', titulo: 'Veiculo/Centro de custo', padrao: true, render: (r) => r.veiculo_placa || '-' },
-  { chave: 'descricao', titulo: 'Descricao', padrao: true, render: (r) => r.descricao || '-', truncar: true },
+  { chave: 'veiculo_placa', titulo: 'Veiculo/Centro de custo', padrao: true, render: (r) => esc(r.veiculo_placa || '-') },
+  { chave: 'descricao', titulo: 'Descricao', padrao: true, render: (r) => esc(r.descricao || '-'), truncar: true },
   { chave: 'recorrente', titulo: 'Recorrente', padrao: false, render: (r) => (r.recorrente ? 'Sim' : 'Nao') },
   { chave: 'qtd_parcelas', titulo: 'Parcelas', padrao: false, render: (r) => (r.qtd_parcelas ? `${r.qtd_parcelas}x` : '-') },
 ];
@@ -43,7 +44,7 @@ export async function render(container) {
         <label class="label">Categoria</label>
         <select class="input" data-filtro-categoria>
           <option value="">Todas</option>
-          ${categorias.map((c) => `<option value="${c.id}">${c.nome}</option>`).join('')}
+          ${categorias.map((c) => `<option value="${c.id}">${esc(c.nome)}</option>`).join('')}
         </select>
       </div>
       <div><label class="label">Conjunto</label><div data-filtro-conjunto></div></div>

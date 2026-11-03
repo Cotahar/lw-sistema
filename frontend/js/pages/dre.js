@@ -2,16 +2,12 @@ import { get } from '../api.js';
 import { criarSearchableSelect } from '../components/searchableSelect.js';
 import { mostrarErro } from '../components/toast.js';
 import { criarRelatoriosSalvos } from '../components/relatoriosSalvos.js';
-import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso, hojeIsoLocal } from '../masks.js';
+import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso, hojeIsoLocal, primeiroDiaMesAtualIso } from '../masks.js';
+import { esc } from '../html.js';
 
 // Periodo padrao ao abrir a tela: mes corrente (dia 1 ate hoje) - antes
 // abria sem filtro nenhum (todo o historico), forcando o usuario a
 // preencher a data toda vez so pra ver o mes atual, o caso mais comum.
-function primeiroDiaMesAtualIso() {
-  const hoje = new Date(`${hojeIsoLocal()}T00:00:00`);
-  return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-01`;
-}
-
 function isoDe(data) {
   return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`;
 }
@@ -152,7 +148,7 @@ async function renderGeral(resultadoEl, inicio, fim, selecionarConjunto) {
               <td class="table-td">
                 <p class="font-medium">${c.nome || `Conjunto #${c.conjunto_id}`}${c.ativo === 0 ? ' <span class="badge-neutro">Inativo</span>' : ''}</p>
                 <p class="text-xs text-slate-500">${[
-                  ...c.custoPorVeiculo.map((v) => `${v.placa} (${TIPO_ROTULO[v.tipo] || v.tipo}): ${formatarMoeda(v.custoTotal)}${v.comissaoMotorista > 0 ? ` (inclui comissao ${formatarMoeda(v.comissaoMotorista)})` : ''}`),
+                  ...c.custoPorVeiculo.map((v) => `${esc(v.placa)} (${TIPO_ROTULO[v.tipo] || v.tipo}): ${formatarMoeda(v.custoTotal)}${v.comissaoMotorista > 0 ? ` (inclui comissao ${formatarMoeda(v.comissaoMotorista)})` : ''}`),
                 ].join(' &middot; ') || '-'}</p>
               </td>
               <td class="table-td text-right">${formatarMoeda(c.receita)}</td>
@@ -189,7 +185,7 @@ function linhaDetalheDre(item) {
     || item.categoria_nome || item.item_nome || item.numero_fogo || item.descricao
     || (item.origem_cidade ? `Frete #${item.id} - ${item.origem_cidade}/${item.origem_uf} &rarr; ${item.destino_cidade}/${item.destino_uf}` : null)
     || (item.viagem_id ? `Viagem #${item.viagem_id}` : item.numero_parcela ? `Parcela ${item.numero_parcela}` : '-');
-  const placa = item.placa ? `<span class="badge-neutro mr-1">${item.placa}</span>` : '';
+  const placa = item.placa ? `<span class="badge-neutro mr-1">${esc(item.placa)}</span>` : '';
   const viagem = item.origem_cidade && item.viagem_id ? ` <span class="text-slate-400">(viagem #${item.viagem_id})</span>` : '';
   return `<div class="flex justify-between gap-3 border-b border-slate-100 py-1 last:border-0"><span class="text-slate-600">${formatarDataBr(item.data)} - ${placa}${label}${viagem}</span><span class="shrink-0 font-medium text-slate-900">${formatarMoeda(item.valor || 0)}</span></div>`;
 }
@@ -227,7 +223,7 @@ async function renderConjunto(resultadoEl, conjuntoId, inicio, fim) {
   const nomeConjunto = dre.conjunto.nome || `Conjunto #${dre.conjunto.id}`;
   const unidades = dre.porVeiculo;
   resultadoEl.innerHTML = `
-    <p class="mb-3 text-sm text-slate-500"><span class="font-medium text-slate-700">${nomeConjunto}</span> &middot; ${unidades.map((v) => `${v.placa} (${TIPO_ROTULO[v.tipo] || v.tipo})`).join(' + ')}</p>
+    <p class="mb-3 text-sm text-slate-500"><span class="font-medium text-slate-700">${nomeConjunto}</span> &middot; ${unidades.map((v) => `${esc(v.placa)} (${TIPO_ROTULO[v.tipo] || v.tipo})`).join(' + ')}</p>
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       ${cartao('Receita do conjunto', formatarMoeda(dre.receita))}
       ${cartao('Custo Total do conjunto', formatarMoeda(dre.custos.total))}
@@ -241,7 +237,7 @@ async function renderConjunto(resultadoEl, conjuntoId, inicio, fim) {
       <table class="mt-2 w-full min-w-max border-collapse">
         <thead class="bg-brand-black"><tr>
           <th class="table-th">Categoria</th>
-          ${unidades.map((v) => `<th class="table-th text-right">${v.placa}<br /><span class="font-normal normal-case opacity-70">${TIPO_ROTULO[v.tipo] || v.tipo}${v.contabilizadoEmOutroConjunto ? ' (custo em outro conjunto)' : ''}</span></th>`).join('')}
+          ${unidades.map((v) => `<th class="table-th text-right">${esc(v.placa)}<br /><span class="font-normal normal-case opacity-70">${TIPO_ROTULO[v.tipo] || v.tipo}${v.contabilizadoEmOutroConjunto ? ' (custo em outro conjunto)' : ''}</span></th>`).join('')}
           <th class="table-th text-right">Total do conjunto</th>
         </tr></thead>
         <tbody>

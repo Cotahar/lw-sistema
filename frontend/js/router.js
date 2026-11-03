@@ -1,5 +1,7 @@
 // Router simples baseado em hash (#/modulo/acao/:id). Suficiente para uma
 // SPA local sem build de bundler: o servidor so precisa servir index.html.
+import { haNovaVersao } from './versao.js';
+
 const rotas = [];
 let rotaAtual = null;
 
@@ -23,6 +25,8 @@ export function registrar(padrao, render) {
 }
 
 async function despachar() {
+  // Versao nova no servidor (ver versao.js): a troca de tela vira um reload de verdade, ja na tela nova.
+  if (haNovaVersao()) { window.location.reload(); return; }
   const hash = window.location.hash.slice(1) || '/';
   const [caminho, queryString] = hash.split('?');
   const query = Object.fromEntries(new URLSearchParams(queryString || ''));

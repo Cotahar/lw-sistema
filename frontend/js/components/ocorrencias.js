@@ -2,6 +2,7 @@ import { get, post } from '../api.js';
 import { formatarDataHoraBr, attachUppercaseInput } from '../masks.js';
 import { mostrarErro } from './toast.js';
 import { esqueletoLinhas } from './skeleton.js';
+import { esc } from '../html.js';
 
 // Linha do tempo de ocorrencias reutilizavel, anexada a um registro
 // (entidadeTipo + entidadeId precisam bater com MODULO_POR_ENTIDADE no
@@ -26,8 +27,8 @@ export function criarOcorrencias({ entidadeTipo, entidadeId, podeGerenciar, resu
   function renderItem(o) {
     return `
       <div class="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-        <p class="whitespace-pre-wrap text-slate-700">${o.texto}</p>
-        <p class="mt-1 text-xs text-slate-400">${o.criado_por_nome || 'Usuario'} &middot; ${formatarDataHoraBr(o.criado_em)}</p>
+        <p class="whitespace-pre-wrap text-slate-700">${esc(o.texto)}</p>
+        <p class="mt-1 text-xs text-slate-400">${esc(o.criado_por_nome || 'Usuario')} &middot; ${formatarDataHoraBr(o.criado_em)}</p>
       </div>
     `;
   }

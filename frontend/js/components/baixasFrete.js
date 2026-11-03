@@ -5,6 +5,7 @@ import { criarSearchableSelect } from './searchableSelect.js';
 import { criarOcorrencias } from './ocorrencias.js';
 import { criarAnexos } from './anexos.js';
 import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, formatarDataBr, attachDataMask, parseDataBrParaIso, attachUppercaseInput } from '../masks.js';
+import { esc } from '../html.js';
 
 const TIPOS_BAIXA = ['Adiantamento', 'Pedagio', 'Saldo', 'Desconto', 'Outro'];
 
@@ -69,9 +70,6 @@ async function abrirLancarComoCusto(baixa, aoConcluir) {
   abrirModal({ titulo: 'Lancar baixa como custo', conteudo: form, largura: 'max-w-lg' });
 }
 
-function esc(texto) {
-  return String(texto === null || texto === undefined ? '' : texto).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
 
 // Modal de gestao do recebivel de um frete (ver saldo, lancar/remover baixas,
 // anexos, ocorrencias) - extraido de viagemDetalhe.js pra ser reaproveitado
@@ -98,7 +96,7 @@ export async function abrirBaixasFrete(frete, recarregar, gerenciar) {
       wrapper.innerHTML = `
         <div class="mb-4 grid grid-cols-2 gap-2 rounded-lg bg-slate-50 p-3 text-sm">
           <p><span class="font-medium">Valor do frete:</span> ${formatarMoeda(cr.valor)}</p>
-          <p><span class="font-medium">Status:</span> ${cr.status}</p>
+          <p><span class="font-medium">Status:</span> ${esc(cr.status)}</p>
           <p><span class="font-medium">Recebido (dinheiro):</span> ${formatarMoeda(cr.valor_recebido)}</p>
           <p><span class="font-medium">Descontado:</span> ${formatarMoeda(cr.valor_descontado)}</p>
           <p class="col-span-2"><span class="font-medium">Saldo em aberto:</span> ${formatarMoeda(saldoEmAberto)}</p>
@@ -116,9 +114,9 @@ export async function abrirBaixasFrete(frete, recarregar, gerenciar) {
             ${listaBaixas.map((b) => `
               <tr class="border-b border-slate-100" data-baixa-id="${b.id}">
                 <td class="py-1">${formatarDataBr(b.data)}</td>
-                <td class="py-1">${b.tipo}${b.conta_bancaria_id ? '' : ' (sem caixa)'}</td>
+                <td class="py-1">${esc(b.tipo)}${b.conta_bancaria_id ? '' : ' (sem caixa)'}</td>
                 <td class="py-1 text-right">${formatarMoeda(b.valor)}</td>
-                <td class="py-1">${b.descricao || '-'}</td>
+                <td class="py-1">${esc(b.descricao || '-')}</td>
                 ${gerenciar ? `<td class="py-1 text-xs">${b.custo_id
                   ? `<span class="badge-neutro" title="Custo lancado no DRE">${esc(b.custo_centro_nome)} &middot; ${esc(b.custo_categoria_nome)}</span> <button type="button" class="text-red-600 hover:underline" data-desfazer-custo="${b.id}">Desfazer</button>`
                   : (TIPOS_QUE_VIRAM_CUSTO.includes(b.tipo) ? `<button type="button" class="text-brand-yellow hover:underline" data-lancar-custo="${b.id}">Lancar como custo</button>` : '')}</td>

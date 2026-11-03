@@ -3,6 +3,7 @@ import { formatarMoeda, formatarDataBr, formatarPeso, hojeIsoLocal, formatarLitr
 import { navegar } from '../router.js';
 import { esqueletoPagina } from '../components/skeleton.js';
 import { htmlRecibosDaViagem } from './recibos.js';
+import { esc } from '../html.js';
 
 const STATUS_LABEL = { EmAndamento: 'Em Andamento', AguardandoAcerto: 'Aguardando Acerto', Finalizada: 'Finalizada' };
 const STATUS_CHIP = {
@@ -32,10 +33,6 @@ function estatistica(label, valor, { destaque = false, corValor = 'text-zinc-900
   `;
 }
 
-// Descricoes de reembolso/desconto sao texto livre digitado pelo usuario.
-function esc(texto) {
-  return String(texto ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
 
 function linha(label, valor, destaque = false) {
   return `<div class="flex items-center justify-between py-1 ${destaque ? 'text-base font-bold text-zinc-900' : 'text-sm text-zinc-600'}"><span>${label}</span><span class="${destaque ? '' : 'font-medium text-zinc-900'}">${valor}</span></div>`;
@@ -318,13 +315,13 @@ export async function renderRelatorio(root, params, query) {
         <div class="mb-5 flex items-start justify-between border-b-4 border-brand-yellow pb-4">
           <div>
             <h1 class="text-2xl font-extrabold text-zinc-900">Relatorio de Acerto <span class="text-zinc-400">&middot; Viagem #${viagem.id}</span></h1>
-            <p class="mt-1 text-sm font-medium text-zinc-500">${tipo === 'detalhado' ? 'Detalhado' : 'Resumido'} &middot; Gerado em ${formatarDataBr(hojeIsoLocal())}${usuario ? ` por ${usuario.nome}` : ''}</p>
+            <p class="mt-1 text-sm font-medium text-zinc-500">${tipo === 'detalhado' ? 'Detalhado' : 'Resumido'} &middot; Gerado em ${formatarDataBr(hojeIsoLocal())}${usuario ? ` por ${esc(usuario.nome)}` : ''}</p>
           </div>
           ${chip(STATUS_LABEL[viagem.status], STATUS_CHIP[viagem.status] || 'bg-zinc-100 text-zinc-500 border border-zinc-200')}
         </div>
 
         <div class="mb-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-          <p><span class="font-semibold text-zinc-500">Motorista:</span> <span class="text-zinc-900">${motorista ? motorista.nome : '-'}</span></p>
+          <p><span class="font-semibold text-zinc-500">Motorista:</span> <span class="text-zinc-900">${motorista ? esc(motorista.nome) : '-'}</span></p>
           <p><span class="font-semibold text-zinc-500">Composicao:</span> <span class="text-zinc-900">${conjunto.itens.map((i) => i.placa).join(' + ')}</span></p>
           <p><span class="font-semibold text-zinc-500">Periodo:</span> <span class="text-zinc-900">${formatarDataBr(viagem.data_inicio)}${viagem.data_fim ? ` a ${formatarDataBr(viagem.data_fim)}` : ' (em andamento)'}</span></p>
           <p><span class="font-semibold text-zinc-500">KM rodado:</span> <span class="text-zinc-900">${kmRodado !== null ? `${kmRodado.toLocaleString('pt-BR')} km` : '-'}</span></p>

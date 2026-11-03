@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { formatarMoeda, formatarDataBr } = require('./formatacao');
 const ApiError = require('./ApiError');
 const { registrarAuditoria } = require('./audit');
 const { criarDespesaRateada } = require('./despesaRateioHelper');
@@ -9,13 +10,7 @@ const { analisarFatura, ratearDiferenca, norm, normPlaca } = require('./semParar
 // creditos de vale-pedagio) - o mesmo "lancamento rateado" das Despesas Fixas. Usado pela rota da
 // administracao e por scripts de importacao em lote.
 
-function formatarMoeda(centavos) {
-  return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
 
-function formatarDataBr(iso) {
-  return iso ? iso.split('-').reverse().join('/') : '';
-}
 
 // Chave que identifica a fatura nas despesas ja lancadas (evita importar duas vezes).
 function descricaoDaFatura(fatura) {

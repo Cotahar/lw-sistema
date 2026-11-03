@@ -10,13 +10,10 @@ import {
   abrirNovoFrete, abrirEditarFrete, abrirNovaDespesa, abrirEditarDespesa, abrirValidarDespesa,
   abrirNovoAdiantamento, abrirEditarAdiantamento, removerAdiantamento,
 } from './viagemDetalhe.js';
+import { esc } from '../html.js';
 
 const TIPOS_TRATORA = ['Cavalo', 'Truck', 'Toco'];
 
-// Descricoes de reembolso/desconto sao texto livre digitado pelo usuario.
-function esc(texto) {
-  return String(texto ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
 
 function linha(label, valor, destaque = false, chave = null) {
   return `<div class="flex items-center justify-between py-1.5 ${destaque ? 'text-base font-semibold text-slate-900' : 'text-sm text-slate-600'}"${chave ? ` data-linha="${chave}"` : ''}><span>${label}</span><span>${valor}</span></div>`;
@@ -82,7 +79,7 @@ function linhaTotal(colspan, rotulo, valor) {
 }
 
 function botoesAcao(acoes, id) {
-  return acoes.map((a) => `<button type="button" class="mr-3 text-xs ${a.perigo ? 'text-red-600' : 'text-gray-900'} hover:underline" data-acao="${a.acao}" data-id="${id}">${a.rotulo}</button>`).join('');
+  return acoes.map((a) => `<button type="button" class="mr-3 text-xs ${a.perigo ? 'text-red-600' : 'text-gray-900'} hover:underline" data-acao="${esc(a.acao)}" data-id="${id}">${a.rotulo}</button>`).join('');
 }
 
 // Modal de reembolso/desconto ("caixinha: 50,00", "avaria na lona: 20,00").
@@ -125,7 +122,7 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
 
   container.innerHTML = `
     <h1 class="mb-1 text-xl font-bold text-slate-900">Acerto - Viagem #${viagem.id}</h1>
-    <p class="mb-4 text-sm text-slate-500">${motorista.nome} · ${formatarDataBr(viagem.data_inicio)} a ${formatarDataBr(viagem.data_fim)} · ${(viagem.km_final - viagem.km_inicial).toLocaleString('pt-BR')} km</p>
+    <p class="mb-4 text-sm text-slate-500">${esc(motorista.nome)} · ${formatarDataBr(viagem.data_inicio)} a ${formatarDataBr(viagem.data_fim)} · ${(viagem.km_final - viagem.km_inicial).toLocaleString('pt-BR')} km</p>
     <div class="mb-4 hidden rounded-lg border border-amber-800 bg-amber-950/40 p-3 text-sm text-amber-400" data-aviso-pendentes></div>
     <div class="mb-4 hidden rounded-lg border border-amber-800 bg-amber-950/40 p-3 text-sm text-amber-400" data-aviso-comissao></div>
     <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -580,10 +577,10 @@ async function renderSituacaoPagamento(el, acerto) {
       <div class="space-y-2">
         ${contas.map((c) => `
           <div class="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
-            <span>${c.descricao}</span>
+            <span>${esc(c.descricao)}</span>
             <span class="flex items-center gap-2">
               <span class="font-medium">${formatarMoeda(c.valor)}</span>
-              <span class="${STATUS_BADGE_PAGAMENTO[c.status] || 'badge-neutro'}">${c.status}</span>
+              <span class="${STATUS_BADGE_PAGAMENTO[c.status] || 'badge-neutro'}">${esc(c.status)}</span>
             </span>
           </div>
         `).join('')}
@@ -607,7 +604,7 @@ async function renderFechado(container, viagem, motorista, acerto, gerenciar) {
     <div class="mb-4 flex items-center justify-between">
       <div>
         <h1 class="text-xl font-bold text-slate-900">Acerto - Viagem #${viagem.id}</h1>
-        <p class="text-sm text-slate-500">${motorista.nome} · Fechado em ${formatarDataBr(acerto.data_acerto)}</p>
+        <p class="text-sm text-slate-500">${esc(motorista.nome)} · Fechado em ${formatarDataBr(acerto.data_acerto)}</p>
       </div>
       <div class="flex gap-2">
         <button type="button" class="btn-secondary" data-relatorio="resumido">Relatorio resumido (PDF)</button>

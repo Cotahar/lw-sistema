@@ -5,6 +5,7 @@ import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js'
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { periodoAnteriorEquivalente, renderComparativoPeriodo } from '../../components/comparativoPeriodo.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
+import { esc } from '../../html.js';
 
 const STATUS_LABEL = { EmAndamento: 'Em Andamento', AguardandoAcerto: 'Aguardando Acerto', Finalizada: 'Finalizada' };
 
@@ -96,8 +97,8 @@ export async function render(container) {
     colunas: [
       { chave: 'viagem_id', titulo: 'Viagem', render: (r) => `<a href="#/viagens/${r.viagem_id}" class="text-gray-900 hover:underline">#${r.viagem_id}</a>`, exportar: (r) => `#${r.viagem_id}` },
       { chave: 'data_inicio', titulo: 'Inicio', render: (r) => formatarDataBr(r.data_inicio) },
-      { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => r.veiculo_placa || '-' },
-      { chave: 'motorista_nome', titulo: 'Motorista', render: (r) => r.motorista_nome || '-' },
+      { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => esc(r.veiculo_placa || '-') },
+      { chave: 'motorista_nome', titulo: 'Motorista', render: (r) => esc(r.motorista_nome || '-') },
       { chave: 'status', titulo: 'Status', render: (r) => STATUS_LABEL[r.status] || r.status, exportar: (r) => STATUS_LABEL[r.status] || r.status },
       { chave: 'duracao_dias', titulo: 'Duracao', render: (r) => (r.duracao_dias !== null ? `${r.duracao_dias} dia(s)` : '-') },
       { chave: 'km_rodado', titulo: 'KM rodado', render: (r) => (r.km_rodado !== null ? r.km_rodado.toLocaleString('pt-BR') : '-') },

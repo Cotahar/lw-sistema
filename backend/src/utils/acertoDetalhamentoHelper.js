@@ -1,8 +1,5 @@
 const db = require('../config/db');
-
-function somar(lista) {
-  return lista.reduce((total, valor) => total + (valor || 0), 0);
-}
+const { somar } = require('./formatacao');
 
 // Itens manuais (reembolso/desconto) de uma viagem, na ordem de lancamento.
 function listarItensManuais(viagemId) {
@@ -70,4 +67,4 @@ function montarDetalhamentoAcerto(viagemId, acerto = null) {
   };
 }
 
-module.exports = { somar, listarItensManuais, listarDespesasPorContaDoMotorista, montarDetalhamentoAcerto };
+module.exports = { listarItensManuais, listarDespesasPorContaDoMotorista, montarDetalhamentoAcerto };

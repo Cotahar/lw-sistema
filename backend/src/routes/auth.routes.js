@@ -23,14 +23,49 @@ function empresasDoUsuario(usuario) {
   `).all(usuario.id);
 }
 
+// Freio contra tentativa de senha em massa: no maximo LIMITE_FALHAS erros por IP+usuario a cada
+// JANELA_MS; acertar a senha zera o contador. Em memoria (um processo so), o que basta aqui.
+const LIMITE_FALHAS = 10;
+const JANELA_MS = 15 * 60 * 1000;
+const falhasLogin = new Map();
+
+function chaveLogin(req, username) {
+  return `${req.ip}|${String(username).toLowerCase()}`;
+}
+
+function falhasRecentes(chave) {
+  const registro = falhasLogin.get(chave);
+  if (!registro || Date.now() - registro.inicio > JANELA_MS) return 0;
+  return registro.total;
+}
+
+function registrarFalha(chave) {
+  const registro = falhasLogin.get(chave);
+  if (!registro || Date.now() - registro.inicio > JANELA_MS) falhasLogin.set(chave, { inicio: Date.now(), total: 1 });
+  else registro.total += 1;
+  if (falhasLogin.size > 10000) falhasLogin.clear(); // nunca cresce sem limite
+}
+
+// Hash de uma senha qualquer: usuario inexistente tambem paga o custo do bcrypt, senao o tempo de
+// resposta denunciaria quais usuarios existem.
+const HASH_FICTICIO = bcrypt.hashSync('usuario-inexistente', 10);
+
 router.post('/login', asyncHandler(async (req, res) => {
   const { username, senha } = req.body;
   if (!username || !senha) throw new ApiError(400, 'Informe usuario e senha.');
 
+  const chave = chaveLogin(req, username);
+  if (falhasRecentes(chave) >= LIMITE_FALHAS) {
+    throw new ApiError(429, 'Muitas tentativas de login erradas. Aguarde 15 minutos e tente de novo.');
+  }
+
   const usuario = db.prepare('SELECT * FROM usuarios WHERE username = ? AND ativo = 1').get(username);
-  if (!usuario || !bcrypt.compareSync(senha, usuario.senha_hash)) {
+  const senhaConfere = bcrypt.compareSync(String(senha), usuario ? usuario.senha_hash : HASH_FICTICIO);
+  if (!usuario || !senhaConfere) {
+    registrarFalha(chave);
     throw new ApiError(401, 'Usuario ou senha invalidos.');
   }
+  falhasLogin.delete(chave);
 
   const token = gerarToken(usuario);
   res.json({

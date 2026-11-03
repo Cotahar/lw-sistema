@@ -3,12 +3,8 @@ import { criarDataTable } from '../../components/dataTable.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { periodoAnteriorEquivalente, renderComparativoPeriodo } from '../../components/comparativoPeriodo.js';
-import { formatarMoeda, formatarDataBr, hojeIsoLocal, attachDataMask, parseDataBrParaIso } from '../../masks.js';
-
-function primeiroDiaMesAtualIso() {
-  const hoje = new Date(`${hojeIsoLocal()}T00:00:00`);
-  return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-01`;
-}
+import { formatarMoeda, formatarDataBr, hojeIsoLocal, attachDataMask, parseDataBrParaIso, primeiroDiaMesAtualIso } from '../../masks.js';
+import { esc } from '../../html.js';
 
 export async function render(container) {
   container.innerHTML = `
@@ -63,7 +59,7 @@ export async function render(container) {
 
   const tabela = criarDataTable({
     colunas: [
-      { chave: 'nome', titulo: 'Conjunto', render: (r) => `<span class="font-medium">${r.nome}</span><br /><span class="text-xs text-slate-500">${r.placas}</span>`, exportar: (r) => r.conjunto },
+      { chave: 'nome', titulo: 'Conjunto', render: (r) => `<span class="font-medium">${esc(r.nome)}</span><br /><span class="text-xs text-slate-500">${esc(r.placas)}</span>`, exportar: (r) => r.conjunto },
       { chave: 'receita', titulo: 'Receita', render: (r) => formatarMoeda(r.receita), exportar: (r) => r.receita / 100 },
       { chave: 'custo', titulo: 'Custo', render: (r) => formatarMoeda(r.custo), exportar: (r) => r.custo / 100 },
       { chave: 'custo_tratora', titulo: 'Custo do cavalo', render: (r) => formatarMoeda(r.custo_tratora), exportar: (r) => r.custo_tratora / 100 },

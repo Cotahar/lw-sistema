@@ -2,6 +2,7 @@ import { get, getUsuario } from '../api.js';
 import { formatarMoeda, formatarDataBr, hojeIsoLocal } from '../masks.js';
 import { navegar } from '../router.js';
 import { esqueletoPagina } from '../components/skeleton.js';
+import { esc } from '../html.js';
 
 // zinc, nao slate/gray: essas duas escalas sao invertidas no
 // tailwind.config.js pro dark mode fixo do app (slate-900 vira quase
@@ -50,7 +51,7 @@ export async function renderDreRelatorio(root, params, query) {
       <div class="rounded-xl border border-zinc-200 bg-white p-8 text-zinc-900 print:border-0 print:p-0">
         <div class="mb-6 border-b-4 border-brand-yellow pb-4">
           <h1 class="text-2xl font-extrabold text-zinc-900">DRE Detalhado ${conjunto_id ? '- Conjunto' : '- Geral'}</h1>
-          <p class="mt-1 text-sm font-medium text-zinc-500">${periodoTexto(data_inicio, data_fim)} &middot; Gerado em ${formatarDataBr(hojeIsoLocal())}${usuario ? ` por ${usuario.nome}` : ''}</p>
+          <p class="mt-1 text-sm font-medium text-zinc-500">${periodoTexto(data_inicio, data_fim)} &middot; Gerado em ${formatarDataBr(hojeIsoLocal())}${usuario ? ` por ${esc(usuario.nome)}` : ''}</p>
         </div>
         ${corpo}
       </div>
@@ -93,7 +94,7 @@ async function renderizarGeral(dre) {
             <td class="px-2 py-1.5 text-zinc-700">
               <p class="font-medium text-zinc-900">${c.nome || `Conjunto #${c.conjunto_id}`}</p>
               <p class="text-xs text-zinc-500">${[
-                ...c.custoPorVeiculo.map((v) => `${v.placa} (${TIPO_ROTULO[v.tipo] || v.tipo}): ${formatarMoeda(v.custoTotal)}${v.comissaoMotorista > 0 ? ` (inclui comissao ${formatarMoeda(v.comissaoMotorista)})` : ''}`),
+                ...c.custoPorVeiculo.map((v) => `${esc(v.placa)} (${TIPO_ROTULO[v.tipo] || v.tipo}): ${formatarMoeda(v.custoTotal)}${v.comissaoMotorista > 0 ? ` (inclui comissao ${formatarMoeda(v.comissaoMotorista)})` : ''}`),
               ].join(' &middot; ') || '-'}</p>
             </td>
             <td class="px-2 py-1.5 text-right text-zinc-700">${formatarMoeda(c.receita)}</td>
@@ -111,7 +112,7 @@ async function renderizarConjunto(dre) {
   const unidades = dre.porVeiculo;
   return `
     <div class="mb-4 grid grid-cols-2 gap-2">
-      <p class="col-span-2 text-sm"><span class="font-medium text-zinc-500">Conjunto:</span> <span class="text-zinc-900">${dre.conjunto.nome || `#${dre.conjunto.id}`} (${unidades.map((v) => `${v.placa} - ${TIPO_ROTULO[v.tipo] || v.tipo}`).join(' + ')})</span></p>
+      <p class="col-span-2 text-sm"><span class="font-medium text-zinc-500">Conjunto:</span> <span class="text-zinc-900">${dre.conjunto.nome || `#${dre.conjunto.id}`} (${unidades.map((v) => `${esc(v.placa)} - ${TIPO_ROTULO[v.tipo] || v.tipo}`).join(' + ')})</span></p>
       ${linha('Receita do conjunto', formatarMoeda(dre.receita))}
       ${linha('Custo total do conjunto', formatarMoeda(dre.custos.total))}
       ${linha('Lucro', formatarMoeda(dre.lucro), true)}
@@ -120,7 +121,7 @@ async function renderizarConjunto(dre) {
     <table class="w-full border-collapse overflow-hidden rounded-lg text-sm">
       <thead><tr class="bg-zinc-100 text-left text-[11px] uppercase tracking-wide text-zinc-600">
         <th class="px-2 py-1.5">Categoria</th>
-        ${unidades.map((v) => `<th class="px-2 py-1.5 text-right">${v.placa} (${TIPO_ROTULO[v.tipo] || v.tipo})</th>`).join('')}
+        ${unidades.map((v) => `<th class="px-2 py-1.5 text-right">${esc(v.placa)} (${TIPO_ROTULO[v.tipo] || v.tipo})</th>`).join('')}
         <th class="px-2 py-1.5 text-right">Total</th>
       </tr></thead>
       <tbody>

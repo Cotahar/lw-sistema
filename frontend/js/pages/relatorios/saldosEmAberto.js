@@ -4,24 +4,12 @@ import { criarMultiSearchableSelect } from '../../components/multiSearchableSele
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda, formatarDataBr, hojeIsoLocal, attachDataMask, parseDataBrParaIso } from '../../masks.js';
-
-// Mesmo criterio de "vencido" usado em financeiro/contasReceber.js
-// (badgePrazo) - duplicado aqui de proposito (poucas linhas, evita acoplar
-// as duas telas por import): nao existe status 'Atrasado' de verdade
-// gravado no banco, e sempre a comparacao data_prevista x hoje.
-function badgePrazo(r) {
-  if (r.status === 'Recebido') return '';
-  const hoje = new Date(`${hojeIsoLocal()}T00:00:00Z`);
-  const previsto = new Date(`${r.data_prevista}T00:00:00Z`);
-  const dias = Math.round((previsto - hoje) / 86400000);
-  const cor = dias < 0 ? 'badge-critico' : dias <= 5 ? 'badge-atencao' : 'badge-neutro';
-  const texto = dias < 0 ? `${Math.abs(dias)} dia(s) vencido` : dias === 0 ? 'vence hoje' : `${dias} dia(s)`;
-  return `<span class="${cor} ml-1">${texto}</span>`;
-}
+import { badgePrazoVencimento } from '../../components/statusIcons.js';
+import { esc } from '../../html.js';
 
 function celulaUltimaBaixa(r) {
   if (!r.ultima_baixa) return '<span class="text-slate-400">Nenhuma baixa</span>';
-  return `${formatarDataBr(r.ultima_baixa.data)} <span class="text-slate-400">(${r.ultima_baixa.tipo})</span>`;
+  return `${formatarDataBr(r.ultima_baixa.data)} <span class="text-slate-400">(${esc(r.ultima_baixa.tipo)})</span>`;
 }
 
 async function buscarVeiculos(termo) {
@@ -85,13 +73,13 @@ export async function render(container) {
     colunas: [
       { chave: 'frete_id', titulo: 'Frete', render: (r) => `<a href="#/viagens/${r.viagem_id}" class="text-gray-900 hover:underline">#${r.frete_id} (viagem #${r.viagem_id})</a>`, exportar: (r) => `#${r.frete_id} (viagem #${r.viagem_id})` },
       { chave: 'conjunto', titulo: 'Conjunto', render: (r) => r.conjunto || '-' },
-      { chave: 'motorista_nome', titulo: 'Motorista', render: (r) => r.motorista_nome || '-' },
+      { chave: 'motorista_nome', titulo: 'Motorista', render: (r) => esc(r.motorista_nome || '-') },
       { chave: 'data_carregamento', titulo: 'Carregamento', render: (r) => (r.data_carregamento ? formatarDataBr(r.data_carregamento) : '-') },
-      { chave: 'rota', titulo: 'Origem/Destino', render: (r) => `${r.origem_cidade}/${r.origem_uf} &rarr; ${r.destino_cidade}/${r.destino_uf}`, exportar: (r) => `${r.origem_cidade}/${r.origem_uf} -> ${r.destino_cidade}/${r.destino_uf}` },
-      { chave: 'transportadora_nome', titulo: 'Transportadora', render: (r) => r.transportadora_nome || '-' },
+      { chave: 'rota', titulo: 'Origem/Destino', render: (r) => `${esc(r.origem_cidade)}/${esc(r.origem_uf)} &rarr; ${esc(r.destino_cidade)}/${esc(r.destino_uf)}`, exportar: (r) => `${r.origem_cidade}/${r.origem_uf} -> ${r.destino_cidade}/${r.destino_uf}` },
+      { chave: 'transportadora_nome', titulo: 'Transportadora', render: (r) => esc(r.transportadora_nome || '-') },
       { chave: 'data_descarga', titulo: 'Entrega', render: (r) => (r.data_descarga ? formatarDataBr(r.data_descarga) : '-') },
       { chave: 'ultima_baixa', titulo: 'Ultima baixa', render: celulaUltimaBaixa, exportar: (r) => (r.ultima_baixa ? `${formatarDataBr(r.ultima_baixa.data)} (${r.ultima_baixa.tipo})` : '-') },
-      { chave: 'data_prevista', titulo: 'Vencimento', render: (r) => `${formatarDataBr(r.data_prevista)}${badgePrazo(r)}`, exportar: (r) => formatarDataBr(r.data_prevista) },
+      { chave: 'data_prevista', titulo: 'Vencimento', render: (r) => `${formatarDataBr(r.data_prevista)}${badgePrazoVencimento(r.data_prevista, r.status === 'Recebido')}`, exportar: (r) => formatarDataBr(r.data_prevista) },
       { chave: 'saldo_pendente', titulo: 'Valor Pendente', render: (r) => `<span class="font-semibold text-amber-500">${formatarMoeda(r.saldo_pendente)}</span>`, exportar: (r) => r.saldo_pendente / 100 },
     ],
     ordenacaoInicial: { chave: 'data_prevista', direcao: 'asc' },

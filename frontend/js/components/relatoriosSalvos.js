@@ -1,6 +1,7 @@
 import { get, post, del } from '../api.js';
 import { mostrarToast } from './toast.js';
 import { abrirModal, fecharModal, confirmarAcao } from './modal.js';
+import { esc } from '../html.js';
 
 // Widget reutilizavel "Relatorios Salvos" (Lote 6 - "melhorias transversais"):
 // permite salvar o estado atual dos filtros de um relatorio com um nome e
@@ -37,7 +38,7 @@ export function criarRelatoriosSalvos({ rota, obterFiltros, aplicarFiltros }) {
     }
     const valorAtual = select.value;
     select.innerHTML = '<option value="">Relatorios salvos...</option>'
-      + salvos.map((s) => `<option value="${s.id}">${s.nome}</option>`).join('');
+      + salvos.map((s) => `<option value="${s.id}">${esc(s.nome)}</option>`).join('');
     select.value = salvos.some((s) => String(s.id) === valorAtual) ? valorAtual : '';
     btnExcluir.disabled = !select.value;
   }
@@ -52,7 +53,7 @@ export function criarRelatoriosSalvos({ rota, obterFiltros, aplicarFiltros }) {
   btnExcluir.addEventListener('click', async () => {
     const salvo = salvos.find((s) => String(s.id) === select.value);
     if (!salvo) return;
-    const ok = await confirmarAcao({ titulo: 'Excluir relatorio salvo', mensagem: `Excluir "${salvo.nome}"?`, textoConfirmar: 'Excluir' });
+    const ok = await confirmarAcao({ titulo: 'Excluir relatorio salvo', mensagem: `Excluir "${esc(salvo.nome)}"?`, textoConfirmar: 'Excluir' });
     if (!ok) return;
     await del(`/relatorios-salvos/${salvo.id}`);
     mostrarToast('Relatorio salvo excluido.');

@@ -5,6 +5,7 @@ import { abrirModal, fecharModal } from '../components/modal.js';
 import { mostrarToast } from '../components/toast.js';
 import { attachDataMask, parseDataBrParaIso, formatarDataBr, formatarDataHoraBr } from '../masks.js';
 import { navegar } from '../router.js';
+import { esc } from '../html.js';
 
 const STATUS_BADGE = {
   EmAndamento: 'badge-sucesso',
@@ -140,7 +141,7 @@ export async function render(container) {
             : encodeURIComponent(`${r.localizacao_cidade}, ${r.localizacao_uf}`);
           return `
             <details>
-              <summary class="inline cursor-pointer text-gray-900 hover:underline">${r.localizacao_cidade}/${r.localizacao_uf}</summary>
+              <summary class="inline cursor-pointer text-gray-900 hover:underline">${esc(r.localizacao_cidade)}/${esc(r.localizacao_uf)}</summary>
               <div class="mt-1 text-xs text-slate-500">
                 Atualizado em ${formatarDataHoraBr(r.localizacao_atualizado_em)}<br />
                 <a href="https://www.google.com/maps/search/?api=1&query=${consulta}" target="_blank" rel="noopener" class="text-gray-900 hover:underline">Abrir no Google Maps</a>

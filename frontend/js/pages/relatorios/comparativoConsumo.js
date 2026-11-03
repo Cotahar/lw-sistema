@@ -4,6 +4,7 @@ import { criarSearchableSelect } from '../../components/searchableSelect.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarLitros } from '../../masks.js';
+import { esc } from '../../html.js';
 
 async function buscarVeiculos(termo) {
   return (await get(`/veiculos${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((v) => ({ value: v.id, label: v.placa }));
@@ -29,7 +30,7 @@ export async function render(container) {
 
   const tabela = criarDataTable({
     colunas: [
-      { chave: 'placa', titulo: 'Veiculo', render: (r) => r.placa },
+      { chave: 'placa', titulo: 'Veiculo', render: (r) => esc(r.placa) },
       { chave: 'motorista_atual', titulo: 'Motorista atual', render: (r) => r.motorista_atual || '-' },
       { chave: 'media_consumo_km_l', titulo: 'Media (janela completa)', render: (r) => (r.media_consumo_km_l !== null ? `${r.media_consumo_km_l.toFixed(2)} km/l` : '-'), exportar: (r) => (r.media_consumo_km_l !== null ? r.media_consumo_km_l.toFixed(2) : '') },
       { chave: 'media_ultima_abastecida_km_l', titulo: 'Media (ultima abastecida)', render: (r) => (r.media_ultima_abastecida_km_l !== null ? `${r.media_ultima_abastecida_km_l.toFixed(2)} km/l` : '-'), exportar: (r) => (r.media_ultima_abastecida_km_l !== null ? r.media_ultima_abastecida_km_l.toFixed(2) : '') },

@@ -1,11 +1,9 @@
 const db = require('../config/db');
+const { formatarMoeda } = require('./formatacao');
 const ApiError = require('./ApiError');
 const { withTransaction } = require('./transaction');
 const { baixarContaPagar } = require('./contaPagarBaixaHelper');
 
-function formatarMoeda(centavos) {
-  return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
 
 // Lancamento RATEADO: um valor total (ex.: Sem Parar R$ 10.000) dividido entre
 // varios centros de custo (placas / Base). Gera UMA conta a pagar com o total e

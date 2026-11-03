@@ -15,6 +15,8 @@ const {
 const { criarDespesaViagem, criarContaPagarCombinada, resolverContaPagarAposEdicao, exigirKmAbastecimento } = require('../utils/despesaViagemHelper');
 const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
 const { criarDespesaVinculada, removerDespesaVinculada, categoriaPorNome, CATEGORIA_DESCONTO_FRETE } = require('../utils/custoVinculadoHelper');
+const { exigirCentavos } = require('../utils/validacao');
+const { exigirIdDaCategoria } = require('../utils/categoriasHelper');
 
 const router = express.Router();
 
@@ -144,6 +146,14 @@ router.put('/:id', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmpresaEspe
     throw new ApiError(403, 'Alterar o KM inicial e restrito ao perfil Admin.');
   }
 
+  // Mesma checagem do POST: sem ela, a edicao aceitava conjunto/motorista de OUTRA empresa.
+  if (req.body.conjunto_id !== undefined && !db.prepare('SELECT id FROM conjuntos WHERE id = ? AND empresa_id = ?').get(req.body.conjunto_id, req.empresaId)) {
+    throw new ApiError(400, 'Conjunto nao encontrado nesta empresa.');
+  }
+  if (req.body.motorista_id !== undefined && !db.prepare('SELECT id FROM motoristas WHERE id = ? AND empresa_id = ?').get(req.body.motorista_id, req.empresaId)) {
+    throw new ApiError(400, 'Motorista nao encontrado nesta empresa.');
+  }
+
   const campos = ['data_inicio', 'conjunto_id', 'motorista_id', 'km_inicial'];
   const sets = [];
   const valores = [];
@@ -210,7 +220,8 @@ router.post('/:id/reabrir', requerAdmin, exigirEmpresaEspecifica, asyncHandler(a
   if (!acerto) throw new ApiError(400, 'Nao foi encontrado um acerto fechado para esta viagem - estado inconsistente, fale com o suporte.');
 
   const contasPagarAcerto = db.prepare("SELECT * FROM contas_pagar WHERE origem_tipo = 'AcertoViagem' AND origem_id = ?").all(acerto.id);
-  if (contasPagarAcerto.some((c) => c.valor_pago > 0)) {
+  // Baixa "sem pagamento" quita a conta sem valor_pago (vai em valor_descontado) - tambem conta como baixada.
+  if (contasPagarAcerto.some((c) => c.valor_pago > 0 || c.valor_descontado > 0 || c.status !== 'Pendente')) {
     throw new ApiError(400, 'O acerto desta viagem gerou uma conta a pagar que ja teve pagamento lancado. Estorne o pagamento antes de reabrir a viagem.');
   }
   const lancamento = db.prepare('SELECT * FROM motorista_conta_corrente_lancamentos WHERE acerto_id = ?').get(acerto.id);
@@ -275,6 +286,7 @@ router.post('/:id/fretes', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmp
   if (!origem_cidade || !origem_uf || !destino_cidade || !destino_uf || frete_bruto === undefined) {
     throw new ApiError(400, 'Preencha origem, destino e frete_bruto.');
   }
+  exigirCentavos(frete_bruto, { campo: 'frete_bruto', permitirZero: true });
 
   const tratora = buscarUnidadeTratora(viagem.conjunto_id);
   const centroCusto = tratora ? buscarCentroCustoDoVeiculo(tratora.id) : null;
@@ -332,6 +344,7 @@ router.put('/fretes/:freteId', requerAcessoModulo('viagens', 'Gerenciar'), exigi
   // mesmo repetindo o valor atual, bloqueava ate corrigir origem/destino num
   // frete que ja tinha baixa. So bloqueia quando o valor de fato MUDOU.
   const freteBrutoMudou = req.body.frete_bruto !== undefined && req.body.frete_bruto !== antes.frete_bruto;
+  if (freteBrutoMudou) exigirCentavos(req.body.frete_bruto, { campo: 'frete_bruto', permitirZero: true });
 
   const depois = withTransaction(db, () => {
     if (freteBrutoMudou) {
@@ -468,6 +481,7 @@ router.post('/fretes/:freteId/baixas', requerAcessoModulo('viagens', 'Gerenciar'
   if (!tipo || !valor) throw new ApiError(400, 'Preencha tipo e valor.');
   if (!TIPOS_BAIXA.includes(tipo)) throw new ApiError(400, `Tipo invalido. Use um de: ${TIPOS_BAIXA.join(', ')}`);
   if (tipo === 'Desconto' && conta_bancaria_id) throw new ApiError(400, 'Baixa do tipo Desconto nao movimenta conta bancaria.');
+  exigirCentavos(valor);
 
   const resultado = withTransaction(db, () => {
     const frete = db.prepare('SELECT id FROM fretes WHERE id = ? AND empresa_id = ?').get(req.params.freteId, req.empresaId);
@@ -568,6 +582,7 @@ router.get('/:id/adiantamentos', requerAcessoModulo('viagens', 'Visualizar'), ex
 router.post('/:id/adiantamentos', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const { valor, data, conta_bancaria_id, descricao } = req.body;
   if (!valor || valor <= 0) throw new ApiError(400, 'Informe um valor de adiantamento maior que zero.');
+  exigirCentavos(valor);
 
   const resultado = withTransaction(db, () => {
     const viagem = db.prepare('SELECT * FROM viagens WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
@@ -650,6 +665,10 @@ router.delete('/adiantamentos/:adiantamentoId', requerAcessoModulo('viagens', 'G
   const resultado = withTransaction(db, () => {
     const adiantamento = db.prepare('SELECT * FROM viagem_adiantamentos WHERE id = ? AND empresa_id = ?').get(req.params.adiantamentoId, req.empresaId);
     if (!adiantamento) throw new ApiError(404, 'Adiantamento nao encontrado.');
+    // Mesma trava do lancar/editar: acerto fechado = valores congelados (o recibo e o relatorio do
+    // acerto passariam a divergir do que foi fechado). Reabra a viagem antes.
+    const viagem = db.prepare('SELECT status FROM viagens WHERE id = ?').get(adiantamento.viagem_id);
+    if (viagem && viagem.status === 'Finalizada') throw new ApiError(400, 'Viagem ja finalizada nao aceita exclusao de adiantamentos.');
 
     if (adiantamento.conta_bancaria_id) {
       db.prepare("DELETE FROM movimentacoes_caixa WHERE origem_tipo = 'ViagemAdiantamento' AND origem_id = ?").run(adiantamento.id);
@@ -701,8 +720,8 @@ router.post('/:id/despesas', requerAcessoModulo('viagens', 'Gerenciar'), exigirE
   // - nesse caso a Arla vira a despesa principal (propria categoria, sem
   // despesa_arla_id) em vez de sempre depender de um diesel companheiro.
   // Qualquer outra categoria continua exigindo valor normalmente.
-  const categoriaAbastecimento = db.prepare("SELECT id FROM categorias_despesa WHERE lower(trim(nome)) = 'abastecimento'").get();
-  const ehAbastecimento = categoriaAbastecimento && Number(categoria_id) === categoriaAbastecimento.id;
+  const categoriaAbastecimentoId = buscarCategoriaAbastecimentoId();
+  const ehAbastecimento = categoriaAbastecimentoId !== null && Number(categoria_id) === categoriaAbastecimentoId;
   const dieselValor = valor !== undefined && Number(valor) > 0 ? Number(valor) : 0;
   const arlaValor = arla && arla.valor > 0 ? Number(arla.valor) : 0;
   if (ehAbastecimento) {
@@ -743,11 +762,9 @@ router.post('/:id/despesas', requerAcessoModulo('viagens', 'Gerenciar'), exigirE
 
   let despesa;
   if (ehAbastecimento && dieselValor <= 0 && arlaValor > 0) {
-    const categoriaArla = db.prepare("SELECT id FROM categorias_despesa WHERE lower(trim(nome)) = 'arla'").get();
-    if (!categoriaArla) throw new ApiError(400, 'Categoria "Arla" nao encontrada no cadastro.');
     despesa = criarDespesaViagem({
       empresaId: req.empresaId, viagem, freteId, centroCustoId,
-      categoriaId: categoriaArla.id, valor: arlaValor, data,
+      categoriaId: exigirIdDaCategoria('arla'), valor: arlaValor, data,
       pagoPor: pago_por, pagoPorUsuarioId: pago_por_usuario_id, postoFornecedorId: posto_fornecedor_id,
       precoLitro: arla.preco_litro, litragem: arla.litragem, kmAbastecimento: km_abastecimento, dataVencimento: data_vencimento,
       descricao, usuarioId: req.usuario.id, arla: null, valorPagoDinheiro,
@@ -834,8 +851,16 @@ router.put('/despesas/:despesaId', requerAcessoModulo('viagens', 'Gerenciar'), e
 router.delete('/despesas/:despesaId', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const antes = db.prepare('SELECT * FROM despesas_viagem WHERE id = ? AND empresa_id = ?').get(req.params.despesaId, req.empresaId);
   if (!antes) throw new ApiError(404, 'Despesa nao encontrada.');
+  const viagemDaDespesa = db.prepare('SELECT status FROM viagens WHERE id = ?').get(antes.viagem_id);
+  if (viagemDaDespesa && viagemDaDespesa.status === 'Finalizada') throw new ApiError(400, 'Viagem ja finalizada nao aceita exclusao de despesas.');
   const contaPagar = db.prepare("SELECT * FROM contas_pagar WHERE origem_tipo = 'DespesaViagem' AND origem_id = ?").get(antes.id);
   if (contaPagar && contaPagar.status !== 'Pendente') throw new ApiError(400, 'Esta despesa ja possui pagamento lancado e nao pode ser excluida.');
+  // Despesa que entrou numa fatura consolidada aponta para a conta da fatura (origem 'Outro', nao achada
+  // acima): se a fatura ja foi paga, apagar a despesa tiraria do DRE um custo que saiu do caixa.
+  const contaDaFatura = antes.contas_pagar_id && (!contaPagar || contaPagar.id !== antes.contas_pagar_id)
+    ? db.prepare('SELECT status FROM contas_pagar WHERE id = ?').get(antes.contas_pagar_id)
+    : null;
+  if (contaDaFatura && contaDaFatura.status !== 'Pendente') throw new ApiError(400, 'Esta despesa esta numa fatura que ja tem pagamento lancado e nao pode ser excluida.');
 
   // Despesa "combo" (diesel + Arla vinculada via despesa_arla_id): exclui a
   // Arla junto, senao ela vira orfa (sem elo, sem conta a pagar propria).

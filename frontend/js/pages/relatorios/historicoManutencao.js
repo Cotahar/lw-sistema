@@ -6,6 +6,7 @@ import { buscarConjuntos } from '../../components/conjuntoOpcoes.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
+import { esc } from '../../html.js';
 
 function textoItens(itens) {
   if (!itens || !itens.length) return '-';
@@ -60,12 +61,12 @@ export async function render(container) {
     colunas: [
       { chave: 'data', titulo: 'Data', render: (r) => formatarDataBr(r.data) },
       { chave: 'conjunto', titulo: 'Conjunto', render: (r) => r.conjunto || '-' },
-      { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => r.veiculo_placa },
+      { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => esc(r.veiculo_placa) },
       { chave: 'hodometro', titulo: 'Hodometro', render: (r) => (r.hodometro != null ? r.hodometro.toLocaleString('pt-BR') : '-') },
-      { chave: 'tipo', titulo: 'Tipo', render: (r) => r.tipo },
-      { chave: 'descricao', titulo: 'Descricao', render: (r) => r.descricao || '-', truncar: true },
+      { chave: 'tipo', titulo: 'Tipo', render: (r) => esc(r.tipo) },
+      { chave: 'descricao', titulo: 'Descricao', render: (r) => esc(r.descricao || '-'), truncar: true },
       { chave: 'itens', titulo: 'Itens', render: (r) => textoItens(r.itens), truncar: true },
-      { chave: 'fornecedor_nome', titulo: 'Oficina', render: (r) => r.fornecedor_nome || '-' },
+      { chave: 'fornecedor_nome', titulo: 'Oficina', render: (r) => esc(r.fornecedor_nome || '-') },
       { chave: 'valor_total', titulo: 'Total', render: (r) => formatarMoeda(r.valor_total), exportar: (r) => r.valor_total / 100 },
     ],
     ordenacaoInicial: { chave: 'data', direcao: 'asc' },

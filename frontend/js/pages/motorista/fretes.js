@@ -3,6 +3,7 @@ import { navegar } from '../../router.js';
 import { formatarMoeda } from '../../masks.js';
 import { esqueletoLinhas } from '../../components/skeleton.js';
 import { iconeFilaHtml, atualizarIndicadorFila } from './offlineQueue.js';
+import { esc } from '../../html.js';
 
 export async function render(appEl) {
   appEl.innerHTML = `
@@ -31,9 +32,9 @@ export async function render(appEl) {
     }
     conteudo.innerHTML = fretes.map((f) => `
       <div class="card p-4">
-        <p class="font-semibold text-gray-900">${f.origem_cidade}/${f.origem_uf} &rarr; ${f.destino_cidade}/${f.destino_uf}</p>
+        <p class="font-semibold text-gray-900">${esc(f.origem_cidade)}/${esc(f.origem_uf)} &rarr; ${esc(f.destino_cidade)}/${esc(f.destino_uf)}</p>
         <dl class="mt-2 grid grid-cols-2 gap-3 text-sm">
-          <div><dt class="text-slate-500">Transportadora</dt><dd class="font-medium text-slate-900">${f.transportadora_nome || '-'}</dd></div>
+          <div><dt class="text-slate-500">Transportadora</dt><dd class="font-medium text-slate-900">${esc(f.transportadora_nome || '-')}</dd></div>
           <div><dt class="text-slate-500">Peso</dt><dd class="font-medium text-slate-900">${f.peso_carga_kg != null ? `${f.peso_carga_kg.toLocaleString('pt-BR')} kg` : '-'}</dd></div>
           <div><dt class="text-slate-500">Frete bruto</dt><dd class="font-medium text-slate-900">${formatarMoeda(f.frete_bruto)}</dd></div>
           <div><dt class="text-slate-500">Frete liquido</dt><dd class="font-semibold text-gray-900">${formatarMoeda(f.frete_liquido)}</dd></div>

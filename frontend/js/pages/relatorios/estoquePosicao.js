@@ -3,6 +3,7 @@ import { criarDataTable } from '../../components/dataTable.js';
 import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js';
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda, attachDataMask, parseDataBrParaIso } from '../../masks.js';
+import { esc } from '../../html.js';
 
 const CATEGORIAS = ['Peca', 'Acessorio', 'EPI', 'Utensilio'];
 
@@ -47,14 +48,14 @@ export async function render(container) {
 
   const tabela = criarDataTable({
     colunas: [
-      { chave: 'nome', titulo: 'Item', render: (r) => `${r.nome}${r.abaixo_minimo ? ' <span class="badge-critico ml-1">Abaixo do minimo</span>' : ''}`, exportar: (r) => r.nome },
-      { chave: 'categoria', titulo: 'Categoria', render: (r) => r.categoria },
-      { chave: 'quantidade_atual', titulo: 'Qtd atual', render: (r) => `${r.quantidade_atual} ${r.unidade_medida}` },
-      { chave: 'estoque_minimo', titulo: 'Minimo', render: (r) => `${r.estoque_minimo} ${r.unidade_medida}` },
+      { chave: 'nome', titulo: 'Item', render: (r) => `${esc(r.nome)}${r.abaixo_minimo ? ' <span class="badge-critico ml-1">Abaixo do minimo</span>' : ''}`, exportar: (r) => r.nome },
+      { chave: 'categoria', titulo: 'Categoria', render: (r) => esc(r.categoria) },
+      { chave: 'quantidade_atual', titulo: 'Qtd atual', render: (r) => `${r.quantidade_atual} ${esc(r.unidade_medida)}` },
+      { chave: 'estoque_minimo', titulo: 'Minimo', render: (r) => `${r.estoque_minimo} ${esc(r.unidade_medida)}` },
       { chave: 'custo_medio', titulo: 'Custo medio', render: (r) => formatarMoeda(r.custo_medio), exportar: (r) => r.custo_medio / 100 },
       { chave: 'valor_em_estoque', titulo: 'Valor em estoque', render: (r) => `<span class="font-semibold">${formatarMoeda(r.valor_em_estoque)}</span>`, exportar: (r) => r.valor_em_estoque / 100 },
-      { chave: 'entrada_periodo', titulo: 'Entrada no periodo', render: (r) => `${r.entrada_periodo} ${r.unidade_medida}` },
-      { chave: 'saida_periodo', titulo: 'Saida no periodo', render: (r) => `${r.saida_periodo} ${r.unidade_medida}` },
+      { chave: 'entrada_periodo', titulo: 'Entrada no periodo', render: (r) => `${r.entrada_periodo} ${esc(r.unidade_medida)}` },
+      { chave: 'saida_periodo', titulo: 'Saida no periodo', render: (r) => `${r.saida_periodo} ${esc(r.unidade_medida)}` },
     ],
     ordenacaoInicial: { chave: 'valor_em_estoque', direcao: 'desc' },
     corLinha: (r) => (r.abaixo_minimo ? 'bg-red-950/40' : ''),

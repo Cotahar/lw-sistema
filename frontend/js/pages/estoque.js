@@ -5,6 +5,7 @@ import { criarNovoFornecedor } from '../components/fornecedorQuickCreate.js';
 import { abrirModal, fecharModal } from '../components/modal.js';
 import { mostrarToast } from '../components/toast.js';
 import { formatarMoeda, attachMoedaMask, getMoedaValue, formatarDataBr, attachUppercaseInput } from '../masks.js';
+import { esc } from '../html.js';
 
 const CATEGORIAS = ['Peca', 'Acessorio', 'EPI', 'Utensilio'];
 
@@ -147,7 +148,7 @@ export async function render(container) {
     colunas: [
       { chave: 'nome', titulo: 'Item' },
       { chave: 'categoria', titulo: 'Categoria' },
-      { chave: 'quantidade_atual', titulo: 'Qtd. Atual', render: (r) => `${r.quantidade_atual} ${r.unidade_medida}` },
+      { chave: 'quantidade_atual', titulo: 'Qtd. Atual', render: (r) => `${r.quantidade_atual} ${esc(r.unidade_medida)}` },
       { chave: 'custo_medio', titulo: 'Custo Medio', render: (r) => formatarMoeda(r.custo_medio) },
       { chave: 'ativo', titulo: 'Status', render: (r) => (r.ativo ? '<span class="badge-sucesso">Ativo</span>' : '<span class="badge-neutro">Inativo</span>') },
     ],
@@ -166,7 +167,7 @@ export async function render(container) {
       { chave: 'tipo', titulo: 'Tipo', render: (r) => (r.tipo === 'Entrada' ? '<span class="badge-sucesso">Entrada</span>' : '<span class="badge-atencao">Saida</span>') },
       { chave: 'quantidade', titulo: 'Quantidade' },
       { chave: 'custo_unitario', titulo: 'Custo Unit.', render: (r) => formatarMoeda(r.custo_unitario) },
-      { chave: 'observacao', titulo: 'Observacao', render: (r) => r.observacao || '-' },
+      { chave: 'observacao', titulo: 'Observacao', render: (r) => esc(r.observacao || '-') },
     ],
     buscarDados: () => get('/estoque/movimentacoes'),
     vazio: 'Nenhuma movimentacao registrada.',

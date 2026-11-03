@@ -1,5 +1,7 @@
 const db = require('../config/db');
+const { formatarMoeda } = require('./formatacao');
 const ApiError = require('./ApiError');
+const { exigirCentavosOpcional } = require('./validacao');
 
 // Parcela de origem cujo status precisa ficar em sincronia com a conta a
 // pagar (financiamento/despesa fixa/OS parcelados) - usado tanto ao baixar
@@ -10,9 +12,6 @@ const TABELA_PARCELA_POR_ORIGEM = {
   OrdemServicoParcela: 'os_parcelas',
 };
 
-function formatarMoeda(centavos) {
-  return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
 
 // Baixa (pagamento) de UMA conta a pagar: efetiva a saida de caixa e, quando a
 // origem for uma parcela de financiamento/despesa fixa/OS, sincroniza o status
@@ -56,6 +55,9 @@ function baixarContaPagar({ empresaId, usuarioId, contaId, contaBancariaId, valo
     const contaBancaria = db.prepare('SELECT * FROM contas_bancarias WHERE id = ? AND empresa_id = ?').get(contaBancariaId, empresaId);
     if (!contaBancaria) throw new ApiError(400, 'Conta bancaria nao encontrada.');
   }
+
+  exigirCentavosOpcional(valorPago, { campo: 'valor_pago', permitirZero: true });
+  exigirCentavosOpcional(desconto, { campo: 'desconto', permitirZero: true });
 
   const restante = contaPagar.valor - contaPagar.valor_pago - contaPagar.valor_descontado;
   if (semPagamento) {

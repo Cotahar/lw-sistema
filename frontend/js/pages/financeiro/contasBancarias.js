@@ -1,8 +1,9 @@
-import { get, post, put, del, podeGerenciar } from '../../api.js';
+import { get, post, put, del, podeGerenciar, ehAdmin } from '../../api.js';
 import { criarDataTable } from '../../components/dataTable.js';
 import { abrirModal, fecharModal, confirmarAcao } from '../../components/modal.js';
 import { mostrarToast, mostrarErro } from '../../components/toast.js';
 import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, formatarDataBr, attachUppercaseInput, attachDataMask, parseDataBrParaIso, hojeIsoLocal } from '../../masks.js';
+import { esc } from '../../html.js';
 
 function montarFormulario(registro, aoSalvar) {
   const form = document.createElement('form');
@@ -61,7 +62,7 @@ async function abrirExtrato(conta, gerenciar, recarregar) {
       <table class="mb-4 w-full text-sm">
         <thead><tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500"><th class="py-1">Data</th><th class="py-1">Tipo</th><th class="py-1 text-right">Valor</th><th class="py-1">Descricao</th></tr></thead>
         <tbody>
-          ${movimentacoes.map((m) => `<tr class="border-b border-slate-100"><td class="py-1">${formatarDataBr(m.data)}</td><td class="py-1">${m.tipo}</td><td class="py-1 text-right">${formatarMoeda(m.valor)}</td><td class="py-1">${m.descricao || '-'}</td></tr>`).join('') || '<tr><td colspan="4" class="py-3 text-center text-slate-400">Sem movimentacoes.</td></tr>'}
+          ${movimentacoes.map((m) => `<tr class="border-b border-slate-100"><td class="py-1">${formatarDataBr(m.data)}</td><td class="py-1">${esc(m.tipo)}</td><td class="py-1 text-right">${formatarMoeda(m.valor)}</td><td class="py-1">${esc(m.descricao || '-')}</td></tr>`).join('') || '<tr><td colspan="4" class="py-3 text-center text-slate-400">Sem movimentacoes.</td></tr>'}
         </tbody>
       </table>
       ${gerenciar ? `
@@ -109,7 +110,7 @@ async function abrirTransferencia(recarregar) {
     mostrarErro(new Error('Cadastre ao menos duas contas bancarias ativas para transferir saldo entre elas.'));
     return;
   }
-  const opcoes = contas.map((c) => `<option value="${c.id}">${c.nome} (saldo ${formatarMoeda(c.saldo_atual)})</option>`).join('');
+  const opcoes = contas.map((c) => `<option value="${c.id}">${esc(c.nome)} (saldo ${formatarMoeda(c.saldo_atual)})</option>`).join('');
   const form = document.createElement('form');
   form.className = 'space-y-4';
   form.innerHTML = `
@@ -141,7 +142,7 @@ async function abrirTransferencia(recarregar) {
     if (valor > origem.saldo_atual) {
       const ok = await confirmarAcao({
         titulo: 'Saldo insuficiente',
-        mensagem: `A conta ${origem.nome} tem ${formatarMoeda(origem.saldo_atual)} e ficara com ${formatarMoeda(origem.saldo_atual - valor)} depois da transferencia. Continuar mesmo assim?`,
+        mensagem: `A conta ${esc(origem.nome)} tem ${formatarMoeda(origem.saldo_atual)} e ficara com ${formatarMoeda(origem.saldo_atual - valor)} depois da transferencia. Continuar mesmo assim?`,
         textoConfirmar: 'Transferir',
         perigo: false,
       });
@@ -181,11 +182,11 @@ async function abrirHistoricoTransferencias(gerenciar, recarregar) {
             ${transferencias.map((t) => `
               <tr class="border-b border-slate-100">
                 <td class="py-1 pr-3">${formatarDataBr(t.data)}</td>
-                <td class="py-1 pr-3">${t.conta_origem_nome}</td>
-                <td class="py-1 pr-3">${t.conta_destino_nome}</td>
+                <td class="py-1 pr-3">${esc(t.conta_origem_nome)}</td>
+                <td class="py-1 pr-3">${esc(t.conta_destino_nome)}</td>
                 <td class="py-1 pr-3 text-right font-medium">${formatarMoeda(t.valor)}</td>
-                <td class="py-1 pr-3">${t.descricao || '-'}</td>
-                <td class="py-1 pr-3">${t.criado_por_nome || '-'}</td>
+                <td class="py-1 pr-3">${esc(t.descricao || '-')}</td>
+                <td class="py-1 pr-3">${esc(t.criado_por_nome || '-')}</td>
                 ${gerenciar ? `<td class="py-1 text-right"><button type="button" class="text-xs text-red-600 hover:underline" data-desfazer="${t.id}">Desfazer</button></td>` : ''}
               </tr>
             `).join('') || `<tr><td colspan="${gerenciar ? 7 : 6}" class="py-4 text-center text-slate-400">Nenhuma transferencia registrada.</td></tr>`}
@@ -199,7 +200,7 @@ async function abrirHistoricoTransferencias(gerenciar, recarregar) {
         const t = transferencias.find((x) => x.id === Number(btn.dataset.desfazer));
         const ok = await confirmarAcao({
           titulo: 'Desfazer transferencia',
-          mensagem: `Desfazer a transferencia de ${formatarMoeda(t.valor)} de ${t.conta_origem_nome} para ${t.conta_destino_nome}? Os dois saldos voltam ao que eram e o lancamento some dos extratos.`,
+          mensagem: `Desfazer a transferencia de ${formatarMoeda(t.valor)} de ${esc(t.conta_origem_nome)} para ${esc(t.conta_destino_nome)}? Os dois saldos voltam ao que eram e o lancamento some dos extratos.`,
           textoConfirmar: 'Desfazer',
         });
         if (!ok) return;
@@ -218,15 +219,99 @@ async function abrirHistoricoTransferencias(gerenciar, recarregar) {
   }
 }
 
+// Conferencia: saldo registrado x extrato (saldo inicial + entradas - saidas). Tem que bater sempre; se
+// nao bate, algum lancamento mexeu num sem o outro. Acertar e so do Admin, e ele escolhe qual lado vale.
+async function abrirConferencia(recarregar) {
+  try {
+    const { contas } = await get('/contas-bancarias/conferencia');
+    const admin = ehAdmin();
+    const corpo = document.createElement('div');
+    corpo.innerHTML = `
+      <p class="mb-3 text-sm text-slate-500">Saldo calculado = saldo inicial + entradas - saidas do extrato. O saldo registrado precisa ser igual a ele.</p>
+      <div class="overflow-x-auto">
+        <table class="w-full min-w-max text-sm">
+          <thead><tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
+            <th class="py-1 pr-3">Conta</th><th class="py-1 pr-3 text-right">Saldo inicial</th><th class="py-1 pr-3 text-right">Entradas</th>
+            <th class="py-1 pr-3 text-right">Saidas</th><th class="py-1 pr-3 text-right">Calculado</th><th class="py-1 pr-3 text-right">Registrado</th>
+            <th class="py-1 pr-3 text-right">Diferenca</th>${admin ? '<th class="py-1"></th>' : ''}
+          </tr></thead>
+          <tbody>
+            ${contas.map((c) => `
+              <tr class="border-b border-slate-100 ${c.diferenca !== 0 ? 'bg-red-950/40' : ''}">
+                <td class="py-1 pr-3">${esc(c.nome)}${c.ativo ? '' : ' <span class="badge-neutro">Inativa</span>'}<br /><span class="text-xs text-slate-500">${c.lancamentos} lancamento(s)${c.ultimo_lancamento ? `, ultimo em ${formatarDataBr(c.ultimo_lancamento)}` : ''}</span></td>
+                <td class="py-1 pr-3 text-right">${formatarMoeda(c.saldo_inicial)}</td>
+                <td class="py-1 pr-3 text-right">${formatarMoeda(c.entradas)}</td>
+                <td class="py-1 pr-3 text-right">${formatarMoeda(c.saidas)}</td>
+                <td class="py-1 pr-3 text-right">${formatarMoeda(c.saldo_calculado)}</td>
+                <td class="py-1 pr-3 text-right">${formatarMoeda(c.saldo_atual)}</td>
+                <td class="py-1 pr-3 text-right font-medium ${c.diferenca !== 0 ? 'text-red-600' : 'text-emerald-600'}">${c.diferenca !== 0 ? formatarMoeda(c.diferenca) : 'ok'}</td>
+                ${admin ? `<td class="py-1 text-right whitespace-nowrap">${c.diferenca !== 0 ? `
+                  <button type="button" class="text-xs hover:underline" data-acertar="recalcular" data-id="${c.id}" title="O extrato esta certo: o saldo passa a ser o calculado">Usar o calculado</button>
+                  <button type="button" class="ml-2 text-xs hover:underline" data-acertar="registrar_ajuste" data-id="${c.id}" title="O saldo registrado esta certo (bate com o banco): lanca a diferenca no extrato">Lancar diferenca</button>` : ''}</td>` : ''}
+              </tr>
+            `).join('') || `<tr><td colspan="${admin ? 8 : 7}" class="py-4 text-center text-slate-400">Nenhuma conta bancaria.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    `;
+    abrirModal({ titulo: 'Conferencia de saldos', conteudo: corpo, largura: 'max-w-5xl' });
+    corpo.querySelectorAll('[data-acertar]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const conta = contas.find((c) => c.id === Number(btn.dataset.id));
+        const recalcular = btn.dataset.acertar === 'recalcular';
+        const ok = await confirmarAcao({
+          titulo: 'Acertar saldo',
+          mensagem: recalcular
+            ? `O saldo registrado de ${esc(conta.nome)} passa de ${formatarMoeda(conta.saldo_atual)} para ${formatarMoeda(conta.saldo_calculado)} (o que o extrato diz). Use isto se o extrato estiver certo.`
+            : `Lanca no extrato de ${esc(conta.nome)} um ajuste de ${formatarMoeda(Math.abs(conta.diferenca))} (${conta.diferenca > 0 ? 'entrada' : 'saida'}), sem mudar o saldo de ${formatarMoeda(conta.saldo_atual)}. Use isto se o saldo registrado bater com o banco.`,
+          textoConfirmar: 'Acertar',
+          perigo: false,
+        });
+        if (!ok) return;
+        try {
+          await post(`/contas-bancarias/${conta.id}/conferencia/acertar`, { modo: btn.dataset.acertar });
+          fecharModal();
+          mostrarToast('Saldo acertado.');
+          recarregar();
+        } catch (err) {
+          mostrarErro(err);
+        }
+      });
+    });
+  } catch (err) {
+    mostrarErro(err);
+  }
+}
+
+// Aviso no topo da tela quando alguma conta nao bate com o extrato.
+async function mostrarAvisoConferencia(container, recarregar) {
+  const aviso = container.querySelector('[data-aviso-conferencia]');
+  try {
+    const { divergentes } = await get('/contas-bancarias/conferencia');
+    aviso.classList.toggle('hidden', !divergentes);
+    aviso.classList.toggle('flex', Boolean(divergentes));
+    aviso.innerHTML = divergentes ? `
+      <span>${divergentes} conta(s) com saldo diferente do extrato.</span>
+      <button type="button" class="font-medium underline" data-ver-conferencia>Ver conferencia</button>
+    ` : '';
+    const btn = aviso.querySelector('[data-ver-conferencia]');
+    if (btn) btn.addEventListener('click', () => abrirConferencia(recarregar));
+  } catch {
+    aviso.classList.add('hidden');
+  }
+}
+
 export async function render(container) {
   container.innerHTML = `
     <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
       <h1 class="text-xl font-bold text-slate-900">Contas Bancarias</h1>
       <div class="flex flex-wrap gap-2">
+        <button type="button" class="btn-secondary btn-sm" data-conferencia>Conferir saldos</button>
         <button type="button" class="btn-secondary btn-sm" data-historico-transferencias>Historico de transferencias</button>
         ${podeGerenciar('contas_bancarias') ? '<button type="button" class="btn-primary btn-sm" data-transferir>Transferir entre contas</button>' : ''}
       </div>
     </div>
+    <div class="mb-3 hidden flex-wrap items-center gap-3 rounded-lg border border-amber-800 bg-amber-950/40 px-4 py-2 text-sm text-amber-400" data-aviso-conferencia></div>
     <div data-tabela></div>
   `;
   const gerenciar = podeGerenciar('contas_bancarias');
@@ -234,11 +319,15 @@ export async function render(container) {
   const tabela = criarDataTable({
     colunas: [
       { chave: 'nome', titulo: 'Nome' },
-      { chave: 'banco', titulo: 'Banco', render: (r) => r.banco || '-' },
+      { chave: 'banco', titulo: 'Banco', render: (r) => esc(r.banco || '-') },
       { chave: 'saldo_atual', titulo: 'Saldo Atual', render: (r) => formatarMoeda(r.saldo_atual) },
       { chave: 'ativo', titulo: 'Status', render: (r) => (r.ativo ? '<span class="badge-sucesso">Ativa</span>' : '<span class="badge-neutro">Inativa</span>') },
     ],
-    buscarDados: () => get('/contas-bancarias'),
+    buscarDados: () => {
+      // a tabela chama buscarDados enquanto ainda esta sendo criada: `tabela` so existe no clique
+      mostrarAvisoConferencia(container, () => tabela.recarregar());
+      return get('/contas-bancarias');
+    },
     onNovo: gerenciar ? () => abrirFormulario(null, tabela.recarregar) : undefined,
     onEditar: gerenciar ? (r) => abrirFormulario(r, tabela.recarregar) : undefined,
     acoesExtras: (r) => [{ label: 'Extrato', onClick: () => abrirExtrato(r, gerenciar, tabela.recarregar) }],
@@ -247,6 +336,7 @@ export async function render(container) {
   });
   container.querySelector('[data-tabela]').appendChild(tabela.el);
   container.querySelector('[data-historico-transferencias]').addEventListener('click', () => abrirHistoricoTransferencias(gerenciar, tabela.recarregar));
+  container.querySelector('[data-conferencia]').addEventListener('click', () => abrirConferencia(tabela.recarregar));
   const btnTransferir = container.querySelector('[data-transferir]');
   if (btnTransferir) btnTransferir.addEventListener('click', () => abrirTransferencia(tabela.recarregar));
 }

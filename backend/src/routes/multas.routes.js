@@ -6,7 +6,7 @@ const { requerAcessoModulo } = require('../middleware/auth');
 const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { registrarAuditoria } = require('../utils/audit');
 const { withTransaction } = require('../utils/transaction');
-const { hojeIsoBrasilia, agoraDataHoraIsoBrasilia } = require('../utils/dataHora');
+const { hojeIsoBrasilia, agoraDataHoraIsoBrasilia, somarDiasIso } = require('../utils/dataHora');
 const { buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 const { criarDespesaVinculada, removerDespesaVinculada } = require('../utils/custoVinculadoHelper');
 
@@ -14,11 +14,6 @@ const router = express.Router();
 
 const PRAZO_INDICACAO_DIAS = 30; // art. 257 par. 8 CTB
 
-function somarDias(dataIso, dias) {
-  const data = new Date(`${dataIso}T00:00:00Z`);
-  data.setUTCDate(data.getUTCDate() + dias);
-  return data.toISOString().slice(0, 10);
-}
 
 function diasRestantes(prazoIso) {
   const hoje = new Date(`${hojeIsoBrasilia()}T00:00:00Z`);
@@ -71,7 +66,7 @@ router.post('/', requerAcessoModulo('multas', 'Gerenciar'), exigirEmpresaEspecif
     if (!motorista) throw new ApiError(400, 'Motorista nao encontrado nesta empresa.');
   }
 
-  const prazoIndicacao = somarDias(data_notificacao, PRAZO_INDICACAO_DIAS);
+  const prazoIndicacao = somarDiasIso(data_notificacao, PRAZO_INDICACAO_DIAS);
   const info = db.prepare(`
     INSERT INTO multas (
       empresa_id, veiculo_id, motorista_id, orgao_autuador, numero_ait, descricao,
@@ -108,7 +103,7 @@ router.put('/:id', requerAcessoModulo('multas', 'Gerenciar'), exigirEmpresaEspec
   }
   if (req.body.data_notificacao !== undefined) {
     sets.push('prazo_indicacao = ?');
-    valores.push(somarDias(req.body.data_notificacao, PRAZO_INDICACAO_DIAS));
+    valores.push(somarDiasIso(req.body.data_notificacao, PRAZO_INDICACAO_DIAS));
   }
   sets.push("atualizado_em = datetime('now', '-3 hours')");
 

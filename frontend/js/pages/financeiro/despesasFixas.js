@@ -6,6 +6,7 @@ import { mostrarToast, mostrarErro } from '../../components/toast.js';
 import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr, attachUppercaseInput } from '../../masks.js';
 import { navegar } from '../../router.js';
 import { criarNovoFornecedor } from '../../components/fornecedorQuickCreate.js';
+import { esc } from '../../html.js';
 
 async function buscarCentrosCusto(termo) {
   return (await get(`/centros-custo${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((c) => ({ value: c.id, label: c.nome }));
@@ -28,7 +29,7 @@ async function abrirFormularioRateio(recarregar) {
     <div class="grid grid-cols-2 gap-3">
       <div>
         <label class="label">Categoria *</label>
-        <select name="categoria_id" class="input" required>${categorias.map((c) => `<option value="${c.id}">${c.nome}</option>`).join('')}</select>
+        <select name="categoria_id" class="input" required>${categorias.map((c) => `<option value="${c.id}">${esc(c.nome)}</option>`).join('')}</select>
       </div>
       <div><label class="label">Valor total *</label><input type="text" name="valor" class="input" required /></div>
     </div>
@@ -167,7 +168,7 @@ async function montarFormulario(registro, aoSalvar) {
     <div class="grid grid-cols-2 gap-3">
       <div>
         <label class="label">Categoria *</label>
-        <select name="categoria_id" class="input" required>${categorias.map((c) => `<option value="${c.id}">${c.nome}</option>`).join('')}</select>
+        <select name="categoria_id" class="input" required>${categorias.map((c) => `<option value="${c.id}">${esc(c.nome)}</option>`).join('')}</select>
         ${!categorias.length ? '<p class="mt-1 text-xs text-amber-500">Nenhuma categoria de despesa cadastrada ainda. <a href="#/config/categorias-despesa" class="font-medium underline" data-ir-categorias>Cadastrar agora</a>.</p>' : ''}
       </div>
       <div><label class="label">Valor *</label><input type="text" name="valor" class="input" required /></div>

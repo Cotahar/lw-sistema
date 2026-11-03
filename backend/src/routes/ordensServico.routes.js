@@ -7,18 +7,13 @@ const { exigirEmpresaEspecifica } = require('../middleware/empresa');
 const { condicaoEmpresa } = require('../utils/empresaScope');
 const { registrarAuditoria } = require('../utils/audit');
 const { withTransaction } = require('../utils/transaction');
-const { hojeIsoBrasilia } = require('../utils/dataHora');
+const { hojeIsoBrasilia, somarMesesIso } = require('../utils/dataHora');
 
 const { veiculoIdsDosConjuntos, comConjuntoDoVeiculo } = require('../utils/conjuntoRelatorioHelper');
 
 const router = express.Router();
 const TIPOS = ['Preventiva', 'Corretiva'];
 
-function somarMeses(dataIso, meses) {
-  const data = new Date(`${dataIso}T00:00:00Z`);
-  data.setUTCMonth(data.getUTCMonth() + meses);
-  return data.toISOString().slice(0, 10);
-}
 
 function buscarOsCompleta(id, empresaId) {
   const os = db.prepare('SELECT * FROM ordens_servico WHERE id = ? AND empresa_id = ?').get(id, empresaId);
@@ -101,7 +96,7 @@ router.post('/', requerAcessoModulo('manutencao', 'Gerenciar'), exigirEmpresaEsp
         const resto = valorTotal - valorBase * qtd_parcelas;
         for (let numero = 1; numero <= qtd_parcelas; numero += 1) {
           const valorParcela = numero === qtd_parcelas ? valorBase + resto : valorBase;
-          const vencimento = somarMeses(primeiroVencimento, numero - 1);
+          const vencimento = somarMesesIso(primeiroVencimento, numero - 1);
           const parcelaInfo = db.prepare(`
             INSERT INTO os_parcelas (empresa_id, os_id, numero_parcela, data_vencimento, valor_parcela)
             VALUES (?, ?, ?, ?, ?)
@@ -175,7 +170,7 @@ router.put('/:id', requerAcessoModulo('manutencao', 'Gerenciar'), exigirEmpresaE
           const resto = valorTotal - valorBase * osAtualizada.qtd_parcelas;
           for (let numero = 1; numero <= osAtualizada.qtd_parcelas; numero += 1) {
             const valorParcela = numero === osAtualizada.qtd_parcelas ? valorBase + resto : valorBase;
-            const vencimento = somarMeses(primeiroVencimento, numero - 1);
+            const vencimento = somarMesesIso(primeiroVencimento, numero - 1);
             const parcelaInfo = db.prepare(`
               INSERT INTO os_parcelas (empresa_id, os_id, numero_parcela, data_vencimento, valor_parcela)
               VALUES (?, ?, ?, ?, ?)

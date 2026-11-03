@@ -3,12 +3,13 @@ const db = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const { requerAcessoModulo } = require('../middleware/auth');
-const { exigirEmpresaEspecifica } = require('../middleware/empresa');
+const { exigirEmpresaEspecifica, exigirEmpresaOuTodas } = require('../middleware/empresa');
 const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 const { hojeIsoBrasilia } = require('../utils/dataHora');
+const { somar } = require('../utils/formatacao');
 const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
 const {
-  somar, periodoRealizado, custosDoCentroCusto, receitaECustosDaViagemPorCentro, custosDiretosDoVeiculo, totaisGeraisDoPeriodo,
+  periodoRealizado, custosDoCentroCusto, receitaECustosDaViagemPorCentro, custosDiretosDoVeiculo, totaisGeraisDoPeriodo,
   DATA_RECEITA_SQL, CATEGORIAS_CUSTO, DATA_VIAGEM_SQL, TRATORA_DA_VIAGEM_SQL, comissaoDaTratora, conjuntoDonoPorVeiculo, resultadoDoConjunto, custosDeVeiculosSemComposicao, periodosDoVeiculoNoConjunto,
 } = require('../utils/dreHelper');
 
@@ -233,7 +234,7 @@ router.get('/conjunto/:conjuntoId/detalhe/:categoria', requerAcessoModulo('dre',
 // A linha de resultado e o CONJUNTO (porConjunto), com o custo de cada placa
 // da composicao dentro dele. Custos de veiculos que nao estao em nenhuma
 // composicao entram na linha "Sem composicao".
-router.get('/geral', requerAcessoModulo('dre', 'Visualizar'), asyncHandler(async (req, res) => {
+router.get('/geral', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaOuTodas, asyncHandler(async (req, res) => {
   const { inicio, fim } = periodoRealizado(req.query.data_inicio, req.query.data_fim);
 
   const empresas = req.empresaId
@@ -342,7 +343,7 @@ function totaisAcertosDoPeriodo(empresaId, inicio, fim) {
   return { quantidade: row.quantidade, somaSaldoFinal: row.somaSaldoFinal };
 }
 
-router.get('/comparativo', requerAcessoModulo('dre', 'Visualizar'), asyncHandler(async (req, res) => {
+router.get('/comparativo', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaOuTodas, asyncHandler(async (req, res) => {
   const { data_inicio: dataInicio, data_fim: dataFim } = req.query;
   if (!dataInicio || !dataFim) throw new ApiError(400, 'Informe data_inicio e data_fim.');
 

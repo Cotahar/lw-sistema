@@ -812,7 +812,10 @@ CREATE TABLE contas_bancarias (
     agencia         TEXT,
     conta           TEXT,
     saldo_atual     INTEGER NOT NULL DEFAULT 0,  -- centavos, cache; ver movimentacoes_caixa p/ razao
-    ativo           INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1))
+    ativo           INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1)),
+    -- Saldo antes do 1o lancamento (migracao 037): a conferencia exige
+    -- saldo_atual = saldo_inicial + entradas - saidas (GET /contas-bancarias/conferencia).
+    saldo_inicial   INTEGER NOT NULL DEFAULT 0
 );
 
 -- Contas a pagar de qualquer origem (compra de estoque, OS, despesa de
@@ -1158,3 +1161,11 @@ CREATE TABLE relatorios_salvos (
     criado_em   TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
 );
 CREATE INDEX idx_relatorios_salvos_usuario_rota ON relatorios_salvos(usuario_id, rota);
+
+-- Controle das migracoes automaticas (backend/src/utils/migracoes.js): uma linha
+-- por arquivo database/migrations/NNN_*.js (037 em diante) ja aplicado. Banco
+-- novo nasce deste schema com todas marcadas como aplicadas.
+CREATE TABLE IF NOT EXISTS schema_migracoes (
+    nome        TEXT PRIMARY KEY,
+    aplicada_em TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
+);

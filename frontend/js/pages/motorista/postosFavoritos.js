@@ -3,6 +3,7 @@ import { navegar } from '../../router.js';
 import { formatarMoeda } from '../../masks.js';
 import { esqueletoLinhas } from '../../components/skeleton.js';
 import { iconeFilaHtml, atualizarIndicadorFila } from './offlineQueue.js';
+import { esc } from '../../html.js';
 
 export async function render(appEl) {
   appEl.innerHTML = `
@@ -33,12 +34,12 @@ export async function render(appEl) {
       <div class="card p-4">
         <div class="flex items-center gap-2">
           <span class="text-amber-500">★</span>
-          <p class="font-semibold text-gray-900">${p.nome}</p>
+          <p class="font-semibold text-gray-900">${esc(p.nome)}</p>
         </div>
-        ${p.localizacao ? `<p class="mt-1 text-sm text-slate-500">${p.localizacao}</p>` : ''}
+        ${p.localizacao ? `<p class="mt-1 text-sm text-slate-500">${esc(p.localizacao)}</p>` : ''}
         <dl class="mt-3 grid grid-cols-2 gap-3 text-sm">
-          <div><dt class="text-slate-500">Pagamento</dt><dd class="font-medium text-slate-900">${p.posto_assina_nota ? `Assina nota (${p.posto_prazo_dias != null ? `${p.posto_prazo_dias} dias` : 'prazo nao informado'})` : (p.posto_forma_pagamento || 'Na hora')}</dd></div>
-          <div><dt class="text-slate-500">Telefone</dt><dd class="font-medium text-slate-900">${p.telefone || '-'}</dd></div>
+          <div><dt class="text-slate-500">Pagamento</dt><dd class="font-medium text-slate-900">${p.posto_assina_nota ? `Assina nota (${p.posto_prazo_dias != null ? `${p.posto_prazo_dias} dias` : 'prazo nao informado'})` : (esc(p.posto_forma_pagamento || 'Na hora'))}</dd></div>
+          <div><dt class="text-slate-500">Telefone</dt><dd class="font-medium text-slate-900">${esc(p.telefone || '-')}</dd></div>
           <div><dt class="text-slate-500">Diesel</dt><dd class="font-medium text-slate-900">${p.posto_preco_diesel != null ? `${formatarMoeda(p.posto_preco_diesel)}/L` : '-'}</dd></div>
           <div><dt class="text-slate-500">Arla</dt><dd class="font-medium text-slate-900">${p.posto_preco_arla != null ? `${formatarMoeda(p.posto_preco_arla)}/L` : '-'}</dd></div>
         </dl>

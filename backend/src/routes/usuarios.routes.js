@@ -33,6 +33,15 @@ function garantirGrantEmpresaDoMotorista(usuarioId, motoristaId) {
   }
 }
 
+// O sistema nunca pode ficar sem nenhum Admin ativo (so o Admin gerencia usuarios e permissoes -
+// sem ele, ninguem mais consegue devolver o acesso). `idsSaindo` = admins que esta acao rebaixa ou
+// desativa. (Excluir nao precisa: quem exclui e um Admin ativo que nao pode excluir a si mesmo.)
+function garantirAdminRestante(idsSaindo) {
+  const ids = idsSaindo.map(Number);
+  const restantes = db.prepare("SELECT id FROM usuarios WHERE perfil = 'Admin' AND ativo = 1").all().filter((u) => !ids.includes(u.id));
+  if (!restantes.length) throw new ApiError(400, 'O sistema precisa de pelo menos um Admin ativo.');
+}
+
 router.get('/', asyncHandler(async (req, res) => {
   res.json(db.prepare(`${SELECT_SEGURO} ORDER BY u.nome`).all());
 }));
@@ -81,6 +90,9 @@ router.put('/:id', asyncHandler(async (req, res) => {
   if (ativo !== undefined) { campos.push('ativo = ?'); valores.push(ativo ? 1 : 0); }
   if (senha) { campos.push('senha_hash = ?'); valores.push(bcrypt.hashSync(senha, 10)); }
   if (!campos.length) throw new ApiError(400, 'Nenhum campo valido informado.');
+  if (antes.perfil === 'Admin' && antes.ativo && (perfilFinal !== 'Admin' || (ativo !== undefined && !ativo))) {
+    garantirAdminRestante([antes.id]);
+  }
   campos.push("atualizado_em = datetime('now', '-3 hours')");
 
   const depois = withTransaction(db, () => {

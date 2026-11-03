@@ -5,6 +5,8 @@ import { mostrarToast } from '../../components/toast.js';
 import { formatarMoeda, formatarDataBr, hojeIsoLocal, attachDataMask, parseDataBrParaIso } from '../../masks.js';
 import { criarOcorrencias } from '../../components/ocorrencias.js';
 import { abrirBaixasFrete } from '../../components/baixasFrete.js';
+import { badgePrazoVencimento } from '../../components/statusIcons.js';
+import { esc } from '../../html.js';
 
 const STATUS_BADGE = { Pendente: 'badge-atencao', Parcial: 'badge-atencao', Recebido: 'badge-sucesso', Atrasado: 'badge-critico' };
 const STATUS_OPCOES = [
@@ -17,20 +19,6 @@ const STATUS_OPCOES = [
 
 function saldoEmAberto(r) {
   return r.valor - r.valor_recebido - r.valor_descontado;
-}
-
-// Destaque de pendencia: aparece desde a criacao do frete (contas_receber
-// nasce 'Pendente' na hora), nao so quando o prazo ja passou - por pedido
-// explicito do usuario ("deve aparecer em destaque como pendente de
-// pagamento" assim que o frete e criado ou a viagem encerrada).
-function badgePrazo(r) {
-  if (r.status === 'Recebido') return '';
-  const hoje = new Date(`${hojeIsoLocal()}T00:00:00Z`);
-  const previsto = new Date(`${r.data_prevista}T00:00:00Z`);
-  const dias = Math.round((previsto - hoje) / 86400000);
-  const cor = dias < 0 ? 'badge-critico' : dias <= 5 ? 'badge-atencao' : 'badge-neutro';
-  const texto = dias < 0 ? `${Math.abs(dias)} dia(s) vencido` : dias === 0 ? 'vence hoje' : `${dias} dia(s)`;
-  return `<span class="${cor} ml-1">${texto}</span>`;
 }
 
 // Reaproveita o mesmo modal de "Recebivel/Baixas" da tela da Viagem (ver
@@ -56,7 +44,7 @@ function abrirEditarPrevisao(conta, recarregar) {
   const form = document.createElement('form');
   form.className = 'space-y-4';
   form.innerHTML = `
-    <p class="text-sm text-slate-500">Frete #${conta.frete_id} (viagem #${conta.viagem_id}) &middot; ${conta.origem_cidade}/${conta.origem_uf} &rarr; ${conta.destino_cidade}/${conta.destino_uf}</p>
+    <p class="text-sm text-slate-500">Frete #${conta.frete_id} (viagem #${conta.viagem_id}) &middot; ${esc(conta.origem_cidade)}/${esc(conta.origem_uf)} &rarr; ${esc(conta.destino_cidade)}/${esc(conta.destino_uf)}</p>
     <div class="max-w-[12rem]"><label class="label">Previsao de recebimento *</label><input type="text" name="data_prevista" class="input" required /></div>
     <p class="hidden text-sm text-red-600" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Salvar previsao</button></div>
@@ -128,15 +116,15 @@ export async function render(container) {
   const tabela = criarDataTable({
     colunas: [
       { chave: 'frete_id', titulo: 'Frete', render: (r) => `<a href="#/viagens/${r.viagem_id}" class="text-gray-900 hover:underline">#${r.frete_id} (viagem #${r.viagem_id})</a>`, exportar: (r) => `#${r.frete_id} (viagem #${r.viagem_id})` },
-      { chave: 'rota', titulo: 'Rota', render: (r) => `${r.origem_cidade}/${r.origem_uf} &rarr; ${r.destino_cidade}/${r.destino_uf}`, exportar: (r) => `${r.origem_cidade}/${r.origem_uf} -> ${r.destino_cidade}/${r.destino_uf}` },
-      { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => r.veiculo_placa || '-' },
-      { chave: 'motorista_nome', titulo: 'Motorista', render: (r) => r.motorista_nome || '-' },
-      { chave: 'transportadora_nome', titulo: 'Transportadora', render: (r) => r.transportadora_nome || '-' },
+      { chave: 'rota', titulo: 'Rota', render: (r) => `${esc(r.origem_cidade)}/${esc(r.origem_uf)} &rarr; ${esc(r.destino_cidade)}/${esc(r.destino_uf)}`, exportar: (r) => `${r.origem_cidade}/${r.origem_uf} -> ${r.destino_cidade}/${r.destino_uf}` },
+      { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => esc(r.veiculo_placa || '-') },
+      { chave: 'motorista_nome', titulo: 'Motorista', render: (r) => esc(r.motorista_nome || '-') },
+      { chave: 'transportadora_nome', titulo: 'Transportadora', render: (r) => esc(r.transportadora_nome || '-') },
       { chave: 'valor', titulo: 'Valor', render: (r) => formatarMoeda(r.valor), exportar: (r) => r.valor / 100 },
       { chave: 'saldo', titulo: 'Saldo em Aberto', render: (r) => `<span class="${saldoEmAberto(r) > 0 ? 'font-semibold text-amber-400' : ''}">${formatarMoeda(saldoEmAberto(r))}</span>`, exportar: (r) => saldoEmAberto(r) / 100 },
       { chave: 'criado_em', titulo: 'Cadastro', render: (r) => formatarDataBr(r.criado_em) },
-      { chave: 'data_prevista', titulo: 'Previsto', render: (r) => `${formatarDataBr(r.data_prevista)}${badgePrazo(r)}`, exportar: (r) => formatarDataBr(r.data_prevista) },
-      { chave: 'status', titulo: 'Status', render: (r) => `<span class="${STATUS_BADGE[r.status]}">${r.status}</span>`, exportar: (r) => r.status },
+      { chave: 'data_prevista', titulo: 'Previsto', render: (r) => `${formatarDataBr(r.data_prevista)}${badgePrazoVencimento(r.data_prevista, r.status === 'Recebido')}`, exportar: (r) => formatarDataBr(r.data_prevista) },
+      { chave: 'status', titulo: 'Status', render: (r) => `<span class="${STATUS_BADGE[r.status]}">${esc(r.status)}</span>`, exportar: (r) => r.status },
     ],
     ordenacaoInicial: { chave: 'data_prevista', direcao: 'asc' },
     corLinha: (r) => (r.status !== 'Recebido' && r.data_prevista < hojeIsoLocal() ? 'bg-red-950/40' : ''),
