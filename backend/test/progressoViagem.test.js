@@ -74,6 +74,8 @@ test('OpenRouteService: le geocodificacao (escolhe a UF certa entre homonimas) e
   const corpo = JSON.parse(chamadas.at(-1).opcoes.body);
   assert.deepEqual(corpo.coordinates[0], [-49.37, -28.68], 'ORS usa [lng, lat]');
   assert.ok(chamadas.at(-1).url.includes('driving-hgv'), 'perfil de caminhao');
+  // O endpoint /geojson responde application/geo+json: sem aceitar esse tipo o servico real devolve 406 (visto no teste real).
+  assert.ok(chamadas.at(-1).opcoes.headers.Accept.includes('application/geo+json'));
 });
 
 test('OpenRouteService: erro do provedor vira null (nunca derruba quem chamou)', async () => {

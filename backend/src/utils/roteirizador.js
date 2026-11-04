@@ -60,7 +60,7 @@ function haversineKm(a, b) {
 async function chamarOrs(caminho, { metodo = 'GET', corpo, fetchFn = fetch } = {}) {
   const res = await fetchFn(`${ORS_BASE}${caminho}`, {
     method: metodo,
-    headers: { Authorization: process.env.ORS_API_KEY, 'Content-Type': 'application/json', Accept: 'application/json' },
+    headers: { Authorization: process.env.ORS_API_KEY, 'Content-Type': 'application/json', Accept: 'application/json, application/geo+json' },
     body: corpo ? JSON.stringify(corpo) : undefined,
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
