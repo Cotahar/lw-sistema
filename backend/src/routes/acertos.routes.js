@@ -13,6 +13,7 @@ const { SELECT_STATUS_PAGAMENTO, comStatusPagamento } = require('../utils/acerto
 const { listarItensManuais, montarDetalhamentoAcerto } = require('../utils/acertoDetalhamentoHelper');
 const { somar, formatarMoeda, formatarDataBr } = require('../utils/formatacao');
 const { percentualComissaoPorMedia } = require('../utils/comissaoHelper');
+const { calcularDiasParados } = require('../utils/diasParadosHelper');
 
 const router = express.Router();
 
@@ -117,6 +118,8 @@ function calcularAcerto(viagemId, empresaId, overrides = {}) {
     despesasLancadasTotal, despesasTotal, receitasMenosDespesas: freteBrutoTotal - despesasTotal,
     percentualSobra: freteBrutoTotal > 0 ? ((freteBrutoTotal - despesasTotal) / freteBrutoTotal) * 100 : null,
     valorPedagio,
+    // Dias sem frete (descarga -> proximo carregamento, e da ultima descarga ate o fim da viagem): indicador de desempenho.
+    diasParados: calcularDiasParados(fretes, { dataFim: viagem.data_fim }).total,
     saldoContaCorrenteAnterior, saldoFinal, despesasPendentes,
   };
 }

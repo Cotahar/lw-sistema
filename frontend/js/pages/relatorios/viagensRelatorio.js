@@ -101,6 +101,7 @@ export async function render(container) {
       { chave: 'motorista_nome', titulo: 'Motorista', render: (r) => esc(r.motorista_nome || '-') },
       { chave: 'status', titulo: 'Status', render: (r) => STATUS_LABEL[r.status] || r.status, exportar: (r) => STATUS_LABEL[r.status] || r.status },
       { chave: 'duracao_dias', titulo: 'Duracao', render: (r) => (r.duracao_dias !== null ? `${r.duracao_dias} dia(s)` : '-') },
+      { chave: 'dias_parados', titulo: 'Dias parados', render: (r) => (r.dias_parados > 0 ? `<span class="text-warning">${r.dias_parados} dia(s)</span>` : '0'), exportar: (r) => r.dias_parados },
       { chave: 'km_rodado', titulo: 'KM rodado', render: (r) => (r.km_rodado !== null ? r.km_rodado.toLocaleString('pt-BR') : '-') },
       { chave: 'media_consumo_km_l', titulo: 'Media consumo', render: (r) => (r.media_consumo_km_l !== null ? `${r.media_consumo_km_l.toFixed(2)} km/l` : '-') },
       { chave: 'faturamento', titulo: 'Faturamento', render: (r) => formatarMoeda(r.faturamento), exportar: (r) => r.faturamento / 100 },
@@ -175,12 +176,12 @@ export async function render(container) {
         { label: 'Lucro total', valor: formatarMoeda(lucroTotal), cor: lucroTotal >= 0 ? 'emerald' : 'red' },
       ],
       colunas: [
-        'Viagem', 'Inicio', 'Veiculo', 'Motorista', 'Status', 'Duracao', 'KM rodado', 'Media consumo',
+        'Viagem', 'Inicio', 'Veiculo', 'Motorista', 'Status', 'Duracao', 'Dias parados', 'KM rodado', 'Media consumo',
         { titulo: 'Faturamento', alinhar: 'right' }, { titulo: 'Despesas', alinhar: 'right' }, { titulo: 'Lucro', alinhar: 'right' },
       ],
       linhas: dados.map((r) => [
         `#${r.viagem_id}`, formatarDataBr(r.data_inicio), r.veiculo_placa || '-', r.motorista_nome || '-', STATUS_LABEL[r.status] || r.status,
-        r.duracao_dias !== null ? `${r.duracao_dias} dia(s)` : '-', r.km_rodado !== null ? r.km_rodado.toLocaleString('pt-BR') : '-',
+        r.duracao_dias !== null ? `${r.duracao_dias} dia(s)` : '-', String(r.dias_parados), r.km_rodado !== null ? r.km_rodado.toLocaleString('pt-BR') : '-',
         r.media_consumo_km_l !== null ? `${r.media_consumo_km_l.toFixed(2)} km/l` : '-',
         formatarMoeda(r.faturamento), formatarMoeda(r.despesas), formatarMoeda(r.lucro),
       ]),

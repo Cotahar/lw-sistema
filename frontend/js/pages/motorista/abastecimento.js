@@ -5,12 +5,23 @@ import { mostrarToast, mostrarErro } from '../../components/toast.js';
 import { attachMoedaMask, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso, hojeIsoLocal, attachUppercaseInput, arredondarLitros } from '../../masks.js';
 import { comprimirImagem } from '../../imageCompress.js';
 import { adicionarPendente, registrarSyncBackground, iconeFilaHtml, atualizarIndicadorFila } from './offlineQueue.js';
+import { getComCache, lerDoCache, guardarNoCache, falhaDeRede } from './cacheLocal.js';
 
 // Endpoint dedicado (nao GET /fornecedores) porque o perfil Motorista nao
 // tem acesso ao modulo "fornecedores" na matriz de permissoes - ver
 // backend/src/routes/motorista.routes.js.
+// Sem sinal, a pesquisa filtra a lista completa guardada da ultima vez que havia internet (ver cacheLocal.js).
 async function buscarPostos(termo) {
-  const postos = await get(`/motorista/postos${termo ? `?search=${encodeURIComponent(termo)}` : ''}`);
+  let postos;
+  try {
+    postos = await get(`/motorista/postos${termo ? `?search=${encodeURIComponent(termo)}` : ''}`);
+    if (!termo) guardarNoCache('/motorista/postos', postos);
+  } catch (err) {
+    const guardado = lerDoCache('/motorista/postos');
+    if (!falhaDeRede(err) || !guardado) throw err;
+    const t = String(termo || '').toLowerCase();
+    postos = guardado.dados.filter((p) => !t || String(p.nome).toLowerCase().includes(t));
+  }
   return postos.map((p) => ({ value: p.id, label: p.nome }));
 }
 
@@ -129,7 +140,7 @@ export async function render(appEl) {
   // numero que o rastreador ja sabe. Continua editavel (o rastreador pode
   // estar desatualizado ou o veiculo pode ter ficado sem sinal).
   let localizacaoAtualTexto = '';
-  get('/motorista/viagem-atual').then(({ viagem }) => {
+  getComCache('/motorista/viagem-atual').then(({ dados: { viagem } }) => {
     if (viagem && viagem.hodometro_atual != null) {
       form.km_abastecimento.value = viagem.hodometro_atual;
     }

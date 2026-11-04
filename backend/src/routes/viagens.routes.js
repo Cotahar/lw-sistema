@@ -17,6 +17,7 @@ const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimen
 const { criarDespesaVinculada, removerDespesaVinculada, categoriaPorNome, CATEGORIA_DESCONTO_FRETE } = require('../utils/custoVinculadoHelper');
 const { exigirCentavos } = require('../utils/validacao');
 const { exigirIdDaCategoria } = require('../utils/categoriasHelper');
+const { calcularDiasParados } = require('../utils/diasParadosHelper');
 
 const router = express.Router();
 
@@ -83,7 +84,8 @@ router.get('/:id', requerAcessoModulo('viagens', 'Visualizar'), exigirEmpresaEsp
     }
   }
 
-  res.json({ ...viagem, fretes, media_consumo_km_l: mediaViagemKmL, media_ultima_abastecida_km_l: mediaUltimaAbastecidaKmL, aviso_km_inicial: avisoKmInicial });
+  const diasParados = calcularDiasParados(fretes, { dataFim: viagem.data_fim });
+  res.json({ ...viagem, fretes, dias_parados: diasParados.total, dias_parados_atual: diasParados.atual, media_consumo_km_l: mediaViagemKmL, media_ultima_abastecida_km_l: mediaUltimaAbastecidaKmL, aviso_km_inicial: avisoKmInicial });
 }));
 
 // Sugere o km_inicial a partir da ultima viagem finalizada da mesma unidade

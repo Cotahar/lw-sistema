@@ -9,6 +9,7 @@
 // o Painel nunca espera o roteirizador; a primeira abertura mostra "calculando..." e a seguinte ja traz a barra.
 const db = require('../config/db');
 const roteirizador = require('./roteirizador');
+const { calcularDiasParados } = require('./diasParadosHelper');
 
 const TTL_RESTANTE_MS = 15 * 60 * 1000;
 const cacheRestante = new Map(); // viagem_id -> { frete_id, km, minutos, em }
@@ -41,15 +42,36 @@ function agendar(viagem, frete, opcoes) {
 // Acrescenta `rota` em cada viagem ativa (nao muda nada se o roteirizador estiver desligado). `viagens` e o array de
 // viagensAtivas do /dashboard/resumo (com localizacao_lat/lng do cavalo).
 function anexarRota(viagens, opcoes = {}) {
-  if (!roteirizador.disponivel() || !viagens.length) return;
+  if (!viagens.length) return;
   const ids = viagens.map((v) => v.viagem_id);
   const fretes = db.prepare(`SELECT * FROM fretes WHERE viagem_id IN (${ids.map(() => '?').join(', ')}) ORDER BY id DESC`).all(...ids);
   const atualPorViagem = new Map();
-  for (const f of fretes) if (!atualPorViagem.has(f.viagem_id)) atualPorViagem.set(f.viagem_id, f);
+  const todosPorViagem = new Map();
+  for (const f of fretes) {
+    if (!atualPorViagem.has(f.viagem_id)) atualPorViagem.set(f.viagem_id, f);
+    if (!todosPorViagem.has(f.viagem_id)) todosPorViagem.set(f.viagem_id, []);
+    todosPorViagem.get(f.viagem_id).push(f);
+  }
 
   for (const v of viagens) {
     const frete = atualPorViagem.get(v.viagem_id);
     if (!frete) continue;
+    const parados = calcularDiasParados(todosPorViagem.get(v.viagem_id));
+    v.dias_parados = parados.total;
+    // Ultimo frete JA DESCARREGADO: o caminhao esta vazio, nao ha rota em andamento - nada de roteirizador (nem consulta
+    // ao provedor); a tela troca a barra de progresso pelo estado "vazio / parado ha N dias".
+    if (frete.data_descarga) {
+      v.rota = {
+        vazio: true,
+        frete_id: frete.id,
+        desde: frete.data_descarga,
+        ultimo_destino: `${frete.destino_cidade}/${frete.destino_uf}`,
+        dias_parados_atual: parados.atual,
+        dias_parados_total: parados.total,
+      };
+      continue;
+    }
+    if (!roteirizador.disponivel()) continue;
     const c = cacheRestante.get(v.viagem_id);
     const doFreteAtual = c && c.frete_id === frete.id;
     const fresco = doFreteAtual && Date.now() - c.em < TTL_RESTANTE_MS;

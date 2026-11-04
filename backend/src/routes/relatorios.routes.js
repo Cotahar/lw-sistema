@@ -8,6 +8,7 @@ const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimen
 const { periodoOuTudo, periodoRealizado, resultadoDoVeiculo, totaisGeraisDoPeriodo, resultadoDoConjunto, conjuntoDonoPorVeiculo } = require('../utils/dreHelper');
 const { rotulosDosConjuntos, veiculoIdsDosConjuntos, comConjuntoDoVeiculo, TIPOS_TRATORA } = require('../utils/conjuntoRelatorioHelper');
 const { hojeIsoBrasilia } = require('../utils/dataHora');
+const { diasParadosPorViagem, diasParadosNoPeriodo } = require('../utils/diasParadosHelper');
 
 const router = express.Router();
 
@@ -545,6 +546,7 @@ router.get('/ranking-conjuntos', requerAcessoModulo('dre', 'Visualizar'), exigir
       // Pagamento do motorista (comissao): ja esta dentro do custo da tratora (cavalo).
       custo_comissao_motorista: r.custos.comissaoMotorista,
       margem_pct: r.receita > 0 ? (r.lucro / r.receita) * 100 : null,
+      dias_parados: diasParadosNoPeriodo({ conjuntoId: c.id }, inicio, fim),
     };
   }).filter(Boolean);
   res.json(linhas);
@@ -571,6 +573,7 @@ router.get('/ranking-motoristas', requerAcessoModulo('dre', 'Visualizar'), exigi
     WHERE mo.empresa_id = ? AND mo.ativo = 1
     ORDER BY mo.nome
   `).all(inicio, fim, inicio, fim, inicio, fim, inicio, fim, req.empresaId);
+  for (const l of linhas) l.dias_parados = diasParadosNoPeriodo({ motoristaId: l.motorista_id }, inicio, fim);
   res.json(linhas);
 }));
 
@@ -750,6 +753,7 @@ router.get('/viagens', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEsp
   const viagens = db.prepare(`SELECT vg.* FROM viagens vg WHERE ${condicoes.join(' AND ')} ORDER BY vg.data_inicio DESC`).all(...params);
   const categoriaAbastecimentoId = buscarCategoriaAbastecimentoId();
 
+  const parados = diasParadosPorViagem(viagens);
   const linhas = [];
   for (const viagem of viagens) {
     const tratora = buscarUnidadeTratora(viagem.conjunto_id);
@@ -774,6 +778,7 @@ router.get('/viagens', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEsp
       viagem_id: viagem.id, status: viagem.status, data_inicio: viagem.data_inicio, data_fim: viagem.data_fim,
       veiculo_placa: tratora ? tratora.placa : null, motorista_nome: motorista ? motorista.nome : null,
       duracao_dias: duracaoDias, km_rodado: kmRodado,
+      dias_parados: parados.get(viagem.id).total,
       faturamento: freteBruto, despesas: despesasTotal, lucro: freteBruto - despesasTotal,
       media_consumo_km_l: mediaConsumoKmL,
     });

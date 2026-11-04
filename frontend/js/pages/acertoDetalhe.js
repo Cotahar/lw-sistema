@@ -225,6 +225,7 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
       linha('Despesas da viagem (total)', formatarMoeda(p.despesasTotal), false, 'despesasTotal'),
       linha('Receitas &minus; Despesas', valorResultado(p.receitasMenosDespesas), true, 'resultado'),
       linha('% de sobra (do faturamento)', p.percentualSobra !== null ? `<span class="${p.percentualSobra >= 0 ? 'text-success' : 'text-danger'}">${p.percentualSobra.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</span>` : '-'),
+      linha('Dias parados (sem frete)', `${p.diasParados} dia(s)`),
     ]) + grupo('Comissao', [
       p.valorImposto > 0 ? linha(`Imposto (${p.empresa.razao_social})`, `- ${formatarMoeda(p.valorImposto)}`) : '',
       p.valorImposto > 0 ? linha('Base de calculo da comissao (bruto - imposto)', formatarMoeda(p.baseCalculoComissao)) : '',
@@ -693,6 +694,7 @@ async function renderFechado(container, viagem, motorista, acerto, gerenciar) {
       ${linha('Comissao do motorista (custo da viagem)', formatarMoeda(acerto.valor_comissao))}
       ${linha('Despesas da viagem (total)', formatarMoeda(despesasTotal))}
       ${linha('Receitas &minus; Despesas', valorResultado(freteBrutoTotal - despesasTotal), true)}
+      ${linha('Dias parados (sem frete)', `${viagem.dias_parados ?? 0} dia(s)`)}
       ${linha('% de sobra (do faturamento)', percentualSobra !== null ? `<span class="${percentualSobra >= 0 ? 'text-success' : 'text-danger'}">${percentualSobra.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</span>` : '-')}
       ${acerto.valor_imposto > 0 ? linha(`Imposto (${acerto.percentual_imposto_aplicado}%)`, `- ${formatarMoeda(acerto.valor_imposto)}`) : ''}
       ${acerto.valor_imposto > 0 ? linha('Base de calculo da comissao (bruto - imposto)', formatarMoeda(baseCalculoComissao)) : ''}

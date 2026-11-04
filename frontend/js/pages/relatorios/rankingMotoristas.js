@@ -65,6 +65,7 @@ export async function render(container) {
       { chave: 'faturamento_gerado', titulo: 'Faturamento gerado', render: (r) => formatarMoeda(r.faturamento_gerado), exportar: (r) => r.faturamento_gerado / 100 },
       { chave: 'comissao_total', titulo: 'Comissao', render: (r) => formatarMoeda(r.comissao_total), exportar: (r) => r.comissao_total / 100 },
       { chave: 'media_consumo_km_l', titulo: 'Media de consumo', render: (r) => (r.media_consumo_km_l !== null ? `${r.media_consumo_km_l.toFixed(2)} km/l` : '-'), exportar: (r) => (r.media_consumo_km_l !== null ? r.media_consumo_km_l.toFixed(2) : '') },
+      { chave: 'dias_parados', titulo: 'Dias parados', render: (r) => (r.dias_parados > 0 ? `<span class="text-warning">${r.dias_parados} dia(s)</span>` : '0'), exportar: (r) => r.dias_parados },
       { chave: 'qtd_multas', titulo: 'Multas', render: (r) => `<span class="${r.qtd_multas > 0 ? 'badge-critico' : 'badge-neutro'}">${r.qtd_multas}</span>`, exportar: (r) => String(r.qtd_multas) },
     ],
     ordenacaoInicial: { chave: 'faturamento_gerado', direcao: 'desc' },
@@ -100,10 +101,10 @@ export async function render(container) {
     abrirRelatorioImpressao({
       titulo: 'Ranking de Motoristas',
       filtros: [`Periodo: ${inputDataDe.value || 'inicio'} a ${inputDataAte.value || 'hoje'}`],
-      colunas: ['Motorista', { titulo: 'Faturamento gerado', alinhar: 'right' }, { titulo: 'Comissao', alinhar: 'right' }, { titulo: 'Media de consumo', alinhar: 'right' }, { titulo: 'Multas', alinhar: 'right' }],
+      colunas: ['Motorista', { titulo: 'Faturamento gerado', alinhar: 'right' }, { titulo: 'Comissao', alinhar: 'right' }, { titulo: 'Media de consumo', alinhar: 'right' }, { titulo: 'Dias parados', alinhar: 'right' }, { titulo: 'Multas', alinhar: 'right' }],
       linhas: [...dados].sort((a, b) => b.faturamento_gerado - a.faturamento_gerado).map((r) => [
         r.motorista_nome, formatarMoeda(r.faturamento_gerado), formatarMoeda(r.comissao_total),
-        r.media_consumo_km_l !== null ? `${r.media_consumo_km_l.toFixed(2)} km/l` : '-', String(r.qtd_multas),
+        r.media_consumo_km_l !== null ? `${r.media_consumo_km_l.toFixed(2)} km/l` : '-', String(r.dias_parados), String(r.qtd_multas),
       ]),
       tituloVazio: 'Nenhum motorista encontrado.',
     });

@@ -72,6 +72,7 @@ function montarFreteResumo(frete, percentualImposto) {
     destino_cidade: frete.destino_cidade, destino_uf: frete.destino_uf,
     transportadora_nome: transportadora ? transportadora.nome : null,
     peso_carga_kg: frete.peso_carga_kg,
+    data_descarga: frete.data_descarga,
     frete_bruto: frete.frete_bruto,
     frete_liquido: frete.frete_bruto - valorImposto,
   };

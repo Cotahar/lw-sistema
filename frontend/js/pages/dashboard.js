@@ -33,7 +33,7 @@ function linhaViagem(v) {
         <p class="truncate text-base font-semibold text-slate-900">${esc(v.motorista_nome)}</p>
         <p class="truncate text-sm text-slate-500">${localizacao}</p>
       </div>
-      <div class="lg:text-right"><p class="font-semibold text-slate-900">${v.km_rodado.toLocaleString('pt-BR')} km</p><p class="text-xs text-slate-400">${dias} dia(s) · desde ${formatarDataBr(v.data_inicio)}</p></div>
+      <div class="lg:text-right"><p class="font-semibold text-slate-900">${v.km_rodado.toLocaleString('pt-BR')} km</p><p class="text-xs text-slate-400">${dias} dia(s) · desde ${formatarDataBr(v.data_inicio)}</p>${v.dias_parados > 0 ? `<p class="text-xs font-semibold text-warning">${v.dias_parados} d parado(s)</p>` : ''}</div>
       <div class="lg:text-right"><p class="font-semibold text-slate-900">${consumo}</p><p class="text-xs text-slate-400">km/l</p></div>
       <div class="lg:text-right"><p class="font-semibold text-success">${moedaCurta(v.faturamento_total)}</p><p class="text-xs text-slate-400">faturado</p></div>
       <div class="lg:text-right"><p class="font-semibold text-danger">${moedaCurta(v.despesas_total)}</p><p class="text-xs text-slate-400">despesas</p></div>

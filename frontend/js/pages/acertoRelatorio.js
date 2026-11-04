@@ -328,6 +328,7 @@ export async function renderRelatorio(root, params, query) {
 
         <div class="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
           ${estatistica('Duracao', duracaoDias !== null ? `${duracaoDias} dia${duracaoDias > 1 ? 's' : ''}` : '-')}
+          ${estatistica('Dias parados', `${viagem.dias_parados ?? 0} dia(s)`, { corValor: 'text-amber-700', sub: 'sem frete' })}
           ${estatistica('Media KM/dia', kmPorDia !== null ? `${kmPorDia.toLocaleString('pt-BR')} km` : '-')}
           ${estatistica('Faturamento/dia', faturamentoPorDia !== null ? formatarMoeda(faturamentoPorDia) : '-', { corValor: 'text-emerald-700' })}
           ${estatistica('Media consumo', mediaConsumo ? `${mediaConsumo.toFixed(2)} km/l` : '-', { destaque: true })}

@@ -6,6 +6,7 @@ import { esqueletoLinhas } from '../../components/skeleton.js';
 import { esc } from '../../html.js';
 import { placaHtml } from '../../components/placa.js';
 import { barraEstradaHtml } from '../../components/barraEstrada.js';
+import { getComCache, faixaOfflineHtml, precarregarTudo, dicaIosHtml, ativarDicaIos } from './cacheLocal.js';
 
 function formatarKmL(valor) {
   return valor != null ? `${valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km/l` : '-';
@@ -49,6 +50,7 @@ export async function render(appEl) {
   async function sincronizarEAtualizar() {
     atualizarIndicadorFila(appEl, { sincronizando: true });
     await tentarSincronizarTodos();
+    if (viagemOffline) await renderizarViagem(conteudo);
     await renderizarPendentes(conteudo);
     await atualizarIndicadorFila(appEl);
   }
@@ -56,10 +58,16 @@ export async function render(appEl) {
   window.addEventListener('online', sincronizarEAtualizar);
 }
 
+// true quando a ultima renderizacao veio dos dados guardados (sem sinal): ao voltar a internet, busca de novo.
+let viagemOffline = false;
+
 async function renderizarViagem(conteudo, tentativaRota = 0) {
   try {
-    const { viagem } = await get('/motorista/viagem-atual');
+    const { dados, offline, salvoEm } = await getComCache('/motorista/viagem-atual');
+    const { viagem } = dados;
+    viagemOffline = offline;
     conteudo.innerHTML = `
+      ${offline ? faixaOfflineHtml(salvoEm) : ''}
       ${viagem ? `
         <div class="card p-4">
           <p class="text-xs font-medium uppercase text-slate-500">Viagem atual</p>
@@ -101,7 +109,7 @@ async function renderizarViagem(conteudo, tentativaRota = 0) {
 
         ${viagem.frete_atual ? `
           <button type="button" data-ver-fretes class="card block w-full p-4 text-left">
-            <p class="text-xs font-medium uppercase text-slate-500">Frete atual</p>
+            <p class="text-xs font-medium uppercase text-slate-500">${viagem.rota && viagem.rota.vazio ? 'Último frete (entregue)' : 'Frete atual'}</p>
             <p class="mt-1 font-semibold text-gray-900">${esc(viagem.frete_atual.origem_cidade)}/${esc(viagem.frete_atual.origem_uf)} &rarr; ${esc(viagem.frete_atual.destino_cidade)}/${esc(viagem.frete_atual.destino_uf)}</p>
             <div class="mt-3">${barraEstradaHtml(viagem.rota, { compacto: true })}</div>
             <dl class="mt-2 grid grid-cols-2 gap-3 text-sm">
@@ -123,7 +131,11 @@ async function renderizarViagem(conteudo, tentativaRota = 0) {
         <button type="button" class="btn-secondary w-full min-h-[48px]" data-ver-postos><svg class="h-4 w-4 text-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11.05 2.93a1 1 0 011.9 0l2.06 4.18 4.61.67a1 1 0 01.55 1.7l-3.34 3.25.79 4.59a1 1 0 01-1.45 1.05L12 16.2l-4.12 2.17a1 1 0 01-1.45-1.05l.79-4.59L3.88 9.48a1 1 0 01.55-1.7l4.61-.67 2.01-4.18z"/></svg> Postos Favoritos</button>
       `}
       <div data-pendentes></div>
+      ${dicaIosHtml()}
     `;
+    ativarDicaIos(conteudo);
+    // Com sinal, deixa guardado o que as outras telas vao precisar sem internet (em segundo plano).
+    if (!offline) precarregarTudo();
     // A rota e calculada em segundo plano no servidor: na primeira vez vem "calculando"; busca de novo em 20 s (ate 3x).
     if (viagem && viagem.rota && viagem.rota.calculando && tentativaRota < 3) {
       const hash = window.location.hash;

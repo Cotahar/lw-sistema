@@ -66,6 +66,7 @@ export async function render(container) {
       { chave: 'custo_reboque', titulo: 'Custo da carreta', render: (r) => formatarMoeda(r.custo_reboque), exportar: (r) => r.custo_reboque / 100 },
       { chave: 'custo_comissao_motorista', titulo: 'Pagto. motorista (ja no cavalo)', render: (r) => formatarMoeda(r.custo_comissao_motorista), exportar: (r) => r.custo_comissao_motorista / 100 },
       { chave: 'lucro', titulo: 'Lucro', render: (r) => `<span class="font-semibold ${r.lucro >= 0 ? 'text-success' : 'text-danger'}">${formatarMoeda(r.lucro)}</span>`, exportar: (r) => r.lucro / 100 },
+      { chave: 'dias_parados', titulo: 'Dias parados', render: (r) => (r.dias_parados > 0 ? `<span class="text-warning">${r.dias_parados} dia(s)</span>` : '0'), exportar: (r) => r.dias_parados },
       { chave: 'margem_pct', titulo: 'Margem', render: (r) => (r.margem_pct !== null ? `${r.margem_pct.toFixed(1)}%` : '-'), exportar: (r) => (r.margem_pct !== null ? r.margem_pct.toFixed(1) : '') },
     ],
     ordenacaoInicial: { chave: 'lucro', direcao: 'desc' },
@@ -101,9 +102,9 @@ export async function render(container) {
     abrirRelatorioImpressao({
       titulo: 'Ranking de Conjuntos',
       filtros: [`Periodo: ${inputDataDe.value || 'inicio'} a ${inputDataAte.value || 'hoje'}`],
-      colunas: ['Conjunto', { titulo: 'Receita', alinhar: 'right' }, { titulo: 'Custo', alinhar: 'right' }, { titulo: 'Custo do cavalo', alinhar: 'right' }, { titulo: 'Custo da carreta', alinhar: 'right' }, { titulo: 'Pagto. motorista (ja no cavalo)', alinhar: 'right' }, { titulo: 'Lucro', alinhar: 'right' }, { titulo: 'Margem', alinhar: 'right' }],
+      colunas: ['Conjunto', { titulo: 'Receita', alinhar: 'right' }, { titulo: 'Custo', alinhar: 'right' }, { titulo: 'Custo do cavalo', alinhar: 'right' }, { titulo: 'Custo da carreta', alinhar: 'right' }, { titulo: 'Pagto. motorista (ja no cavalo)', alinhar: 'right' }, { titulo: 'Lucro', alinhar: 'right' }, { titulo: 'Dias parados', alinhar: 'right' }, { titulo: 'Margem', alinhar: 'right' }],
       linhas: [...dados].sort((a, b) => b.lucro - a.lucro).map((r) => [
-        r.conjunto, formatarMoeda(r.receita), formatarMoeda(r.custo), formatarMoeda(r.custo_tratora), formatarMoeda(r.custo_reboque), formatarMoeda(r.custo_comissao_motorista), formatarMoeda(r.lucro),
+        r.conjunto, formatarMoeda(r.receita), formatarMoeda(r.custo), formatarMoeda(r.custo_tratora), formatarMoeda(r.custo_reboque), formatarMoeda(r.custo_comissao_motorista), formatarMoeda(r.lucro), String(r.dias_parados),
         r.margem_pct !== null ? `${r.margem_pct.toFixed(1)}%` : '-',
       ]),
       tituloVazio: 'Nenhum conjunto encontrado.',

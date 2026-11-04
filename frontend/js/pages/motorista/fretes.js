@@ -1,9 +1,9 @@
-import { get } from '../../api.js';
 import { navegar } from '../../router.js';
 import { formatarMoeda } from '../../masks.js';
 import { esqueletoLinhas } from '../../components/skeleton.js';
 import { iconeFilaHtml, atualizarIndicadorFila } from './offlineQueue.js';
 import { esc } from '../../html.js';
+import { getComCache, faixaOfflineHtml, aoVoltarOnline } from './cacheLocal.js';
 
 export async function render(appEl) {
   appEl.innerHTML = `
@@ -25,12 +25,14 @@ export async function render(appEl) {
 
   const conteudo = appEl.querySelector('[data-conteudo]');
   try {
-    const fretes = await get('/motorista/viagem-atual/fretes');
+    const { dados: fretes, offline, salvoEm } = await getComCache('/motorista/viagem-atual/fretes');
+    const faixa = offline ? faixaOfflineHtml(salvoEm) : '';
+    if (offline) aoVoltarOnline(() => render(appEl));
     if (!fretes.length) {
-      conteudo.innerHTML = '<div class="card p-6 text-center text-slate-500">Nenhum frete cadastrado nesta viagem ainda.</div>';
+      conteudo.innerHTML = faixa + '<div class="card p-6 text-center text-slate-500">Nenhum frete cadastrado nesta viagem ainda.</div>';
       return;
     }
-    conteudo.innerHTML = fretes.map((f) => `
+    conteudo.innerHTML = faixa + fretes.map((f) => `
       <div class="card p-4">
         <p class="font-semibold text-gray-900">${esc(f.origem_cidade)}/${esc(f.origem_uf)} &rarr; ${esc(f.destino_cidade)}/${esc(f.destino_uf)}</p>
         <dl class="mt-2 grid grid-cols-2 gap-3 text-sm">

@@ -1,9 +1,9 @@
-import { get } from '../../api.js';
 import { navegar } from '../../router.js';
 import { formatarDataBr, formatarMoeda } from '../../masks.js';
 import { esqueletoLinhas } from '../../components/skeleton.js';
 import { iconeFilaHtml, atualizarIndicadorFila } from './offlineQueue.js';
 import { esc } from '../../html.js';
+import { getComCache, faixaOfflineHtml, aoVoltarOnline } from './cacheLocal.js';
 
 function linha(rotulo, valor, destaque = false) {
   return `<div class="flex items-center justify-between border-b border-slate-100 py-2 last:border-0 ${destaque ? 'font-semibold text-gray-900' : 'text-slate-700'}">
@@ -52,12 +52,14 @@ async function renderLista(appEl) {
 
   const conteudo = appEl.querySelector('[data-conteudo]');
   try {
-    const acertos = await get('/motorista/acertos');
+    const { dados: acertos, offline, salvoEm } = await getComCache('/motorista/acertos');
+    const faixa = offline ? faixaOfflineHtml(salvoEm) : '';
+    if (offline) aoVoltarOnline(() => renderLista(appEl));
     if (!acertos.length) {
-      conteudo.innerHTML = '<div class="card p-6 text-center text-slate-500">Nenhum acerto fechado ainda.</div>';
+      conteudo.innerHTML = faixa + '<div class="card p-6 text-center text-slate-500">Nenhum acerto fechado ainda.</div>';
       return;
     }
-    conteudo.innerHTML = acertos.map((a) => `
+    conteudo.innerHTML = faixa + acertos.map((a) => `
       <button type="button" class="card block w-full p-4 text-left" data-acerto="${a.id}">
         <div class="flex items-center justify-between">
           <p class="font-semibold text-gray-900">Viagem #${a.viagem_id}</p>
@@ -97,10 +99,12 @@ async function renderDetalhe(appEl, id) {
     // Rota escopada ao proprio motorista (join com viagens.motorista_id no
     // backend) - um id de acerto de outro motorista, mesmo digitado direto
     // na URL, nunca bate e cai no catch abaixo (404).
-    const acerto = await get(`/motorista/acertos/${id}`);
+    const { dados: acerto, offline, salvoEm } = await getComCache(`/motorista/acertos/${id}`);
+    if (offline) aoVoltarOnline(() => renderDetalhe(appEl, id));
     const baseCalculoComissao = acerto.frete_bruto_total - (acerto.valor_imposto || 0);
     const detalhamento = acerto.detalhamento || { reembolsos: [], descontos: [], valorPedagio: 0 };
     conteudo.innerHTML = `
+      ${offline ? faixaOfflineHtml(salvoEm) : ''}
       <div class="card p-4">
         <p class="text-xs font-medium uppercase text-slate-500">Viagem #${acerto.viagem_id}</p>
         <p class="text-sm text-slate-500">Fechado em ${formatarDataBr(acerto.data_acerto)}${badgePagamento(acerto.status_pagamento)}</p>

@@ -23,6 +23,10 @@ export function limparSessao() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USUARIO_KEY);
   localStorage.removeItem(EMPRESA_KEY);
+  // Dados guardados para o modo sem internet do app do motorista (ver pages/motorista/cacheLocal.js): saiu, apagou.
+  for (const chave of Object.keys(localStorage)) {
+    if (chave.startsWith('frottex-motorista-cache:')) localStorage.removeItem(chave);
+  }
 }
 
 // Empresa ativa (tenant selecionado no seletor do cabecalho). 'todas' e um

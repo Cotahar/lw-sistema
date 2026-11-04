@@ -70,7 +70,13 @@ body {
   .grupo-corpo.recolhido { grid-template-rows: 0fr; opacity: 0; }
   .grupo-corpo > div { overflow: hidden; }
 }
+@keyframes estradaAndando { to { background-position-x: 14px; } }
+@keyframes estradaPulso {
+  0% { box-shadow: 0 0 0 0 rgb(245 184 0 / 0.55); }
+  100% { box-shadow: 0 0 0 12px rgb(245 184 0 / 0); }
+}
 @media (prefers-reduced-motion: reduce) {
+  .estrada-vazia .estrada-trilho, .estrada-parado { animation: none; }
   .grupo-corpo.recolhido { display: none; }
 }
 
@@ -115,6 +121,10 @@ body {
   .estrada-trilho { @apply absolute inset-x-0 top-[11px] h-0.5; background: repeating-linear-gradient(to right, #343945 0 8px, transparent 8px 14px); }
   .estrada-feito { @apply absolute left-0 top-[10px] h-1 rounded-sm bg-accent; }
   .estrada-caminhao { @apply absolute top-1 -ml-2 h-4 w-4 rounded-full border-[3px] border-accent-fg bg-brand-surface; box-shadow: 0 0 0 4px rgb(43 99 240 / 0.2); }
+  /* Caminhao vazio: o trilho "anda" devagar e o marcador vazado pulsa (esperando carga). Sem animacao para quem
+     pediu menos movimento no sistema operacional. */
+  .estrada-vazia .estrada-trilho { background: repeating-linear-gradient(to right, #F5B800 0 8px, transparent 8px 14px); opacity: 0.55; background-size: 14px 2px; animation: estradaAndando 1.6s linear infinite; }
+  .estrada-parado { @apply absolute left-0 top-1 h-4 w-4 rounded-full border-[3px] border-warning bg-brand-surface; animation: estradaPulso 2s ease-out infinite; }
   /* Placa Mercosul (assinatura visual): ver js/components/placa.js */
   .placa { @apply inline-flex w-[84px] flex-col overflow-hidden rounded-[5px] bg-[#f3f2ec] align-middle text-[#16181c] shadow-[0_0_0_1px_rgba(0,0,0,0.4)]; }
   .placa > i { @apply block h-[9px] bg-[#1f4fd0] text-center text-[6px] font-bold not-italic leading-[9px] tracking-[0.3em] text-white; }

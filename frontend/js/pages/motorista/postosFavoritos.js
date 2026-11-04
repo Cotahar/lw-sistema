@@ -1,9 +1,9 @@
-import { get } from '../../api.js';
 import { navegar } from '../../router.js';
 import { formatarMoeda } from '../../masks.js';
 import { esqueletoLinhas } from '../../components/skeleton.js';
 import { iconeFilaHtml, atualizarIndicadorFila } from './offlineQueue.js';
 import { esc } from '../../html.js';
+import { getComCache, faixaOfflineHtml, aoVoltarOnline } from './cacheLocal.js';
 
 export async function render(appEl) {
   appEl.innerHTML = `
@@ -25,12 +25,14 @@ export async function render(appEl) {
 
   const conteudo = appEl.querySelector('[data-conteudo]');
   try {
-    const postos = await get('/motorista/postos-favoritos');
+    const { dados: postos, offline, salvoEm } = await getComCache('/motorista/postos-favoritos');
+    const faixa = offline ? faixaOfflineHtml(salvoEm) : '';
+    if (offline) aoVoltarOnline(() => render(appEl));
     if (!postos.length) {
-      conteudo.innerHTML = '<div class="card p-6 text-center text-slate-500">Nenhum posto favorito cadastrado ainda.</div>';
+      conteudo.innerHTML = faixa + '<div class="card p-6 text-center text-slate-500">Nenhum posto favorito cadastrado ainda.</div>';
       return;
     }
-    conteudo.innerHTML = postos.map((p) => `
+    conteudo.innerHTML = faixa + postos.map((p) => `
       <div class="card p-4">
         <div class="flex items-center gap-2">
           <span class="text-warning">★</span>

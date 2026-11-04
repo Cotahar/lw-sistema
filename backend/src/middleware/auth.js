@@ -12,7 +12,11 @@ function gerarToken(usuario) {
   // O token so guarda o id: perfil/permissoes sao sempre lidos do banco a
   // cada request, para que uma mudanca de acesso feita pelo Admin valha na
   // hora, sem exigir que o usuario afetado faca logout/login de novo.
-  return jwt.sign({ id: usuario.id }, process.env.JWT_SECRET, { expiresIn: '12h' });
+  // Motorista fica 14 dias: o app dele funciona sem internet (dados guardados no aparelho) e a validade so e conferida
+  // quando ha sinal - com 12 h, quem passasse um fim de semana sem sinal teria que digitar a senha de novo ao voltar. Perder o
+  // celular nao e risco aberto: desativar o usuario corta o acesso na hora (a cada request o ativo e lido do banco).
+  const validade = usuario.perfil === 'Motorista' ? '14d' : '12h';
+  return jwt.sign({ id: usuario.id }, process.env.JWT_SECRET, { expiresIn: validade });
 }
 
 // Nivel que um usuario tem em um modulo por padrao, quando nao ha excecao
