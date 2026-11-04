@@ -65,7 +65,7 @@ export async function render(container) {
       { chave: 'custo_tratora', titulo: 'Custo do cavalo', render: (r) => formatarMoeda(r.custo_tratora), exportar: (r) => r.custo_tratora / 100 },
       { chave: 'custo_reboque', titulo: 'Custo da carreta', render: (r) => formatarMoeda(r.custo_reboque), exportar: (r) => r.custo_reboque / 100 },
       { chave: 'custo_comissao_motorista', titulo: 'Pagto. motorista (ja no cavalo)', render: (r) => formatarMoeda(r.custo_comissao_motorista), exportar: (r) => r.custo_comissao_motorista / 100 },
-      { chave: 'lucro', titulo: 'Lucro', render: (r) => `<span class="font-semibold ${r.lucro >= 0 ? 'text-emerald-500' : 'text-red-500'}">${formatarMoeda(r.lucro)}</span>`, exportar: (r) => r.lucro / 100 },
+      { chave: 'lucro', titulo: 'Lucro', render: (r) => `<span class="font-semibold ${r.lucro >= 0 ? 'text-success' : 'text-danger'}">${formatarMoeda(r.lucro)}</span>`, exportar: (r) => r.lucro / 100 },
       { chave: 'margem_pct', titulo: 'Margem', render: (r) => (r.margem_pct !== null ? `${r.margem_pct.toFixed(1)}%` : '-'), exportar: (r) => (r.margem_pct !== null ? r.margem_pct.toFixed(1) : '') },
     ],
     ordenacaoInicial: { chave: 'lucro', direcao: 'desc' },

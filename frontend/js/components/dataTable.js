@@ -18,6 +18,7 @@ const SETA_DESC = '<svg class="inline h-3 w-3" viewBox="0 0 24 24" fill="current
 //   isso, usa linha[chave] direto (nunca o HTML de render()).
 // acoesLote: [{ label, onClick(linhasSelecionadas) }] - botoes que aparecem
 //   quando ha linhas marcadas (alem de, ou no lugar de, onExcluirLote).
+// somaLote: (linhasSelecionadas) => string - texto de total na barra flutuante de selecao (ex.: soma dos valores).
 // selecionavel: (linha) => boolean - quais linhas mostram a caixa de selecao
 //   (padrao: todas).
 export function criarDataTable({
@@ -28,6 +29,7 @@ export function criarDataTable({
   onExcluir,
   onExcluirLote,
   acoesLote,
+  somaLote,
   selecionavel = () => true,
   acoesExtras,
   tituloNovo = 'Novo',
@@ -39,24 +41,22 @@ export function criarDataTable({
   exportar, // true, ou { nomeArquivo } - habilita botao "Exportar XLSX"
 }) {
   const el = document.createElement('div');
-  el.className = 'card border-gray-300';
+  el.className = 'card overflow-hidden';
   const temSelecao = Boolean(onExcluirLote || acoesLote);
   let ordenacao = ordenacaoInicial ? { ...ordenacaoInicial } : null;
   let paginaAtual = 1;
 
   el.innerHTML = `
-    <div class="flex flex-col gap-3 border-b border-gray-200 p-4 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex flex-col gap-3 border-b border-line p-4 sm:flex-row sm:items-center sm:justify-between">
       <input type="text" class="input sm:max-w-xs ${mostrarBusca ? '' : 'hidden'}" placeholder="Pesquisar..." data-busca />
       <div class="flex items-center gap-2">
         ${exportar ? '<button type="button" class="btn-secondary btn-sm" data-exportar>Exportar XLSX</button>' : ''}
-        ${(acoesLote || []).map((a, i) => `<button type="button" class="btn-primary hidden" data-acao-lote="${i}">${a.label}</button>`).join('')}
-        <button type="button" class="btn-danger hidden" data-excluir-lote>Excluir selecionados</button>
         ${onNovo ? `<button type="button" class="btn-primary" data-novo>+ ${tituloNovo}</button>` : ''}
       </div>
     </div>
     <div class="overflow-auto" style="max-height: 70vh">
       <table class="w-full border-collapse">
-        <thead class="sticky top-0 z-[5] bg-brand-black">
+        <thead class="sticky top-0 z-[5] bg-elevated">
           <tr>
             ${temSelecao ? '<th class="table-th w-8"><input type="checkbox" data-marcar-todos /></th>' : ''}
             ${colunas.map((c) => `
@@ -70,7 +70,14 @@ export function criarDataTable({
         <tbody data-corpo></tbody>
       </table>
     </div>
-    <div class="flex items-center justify-between gap-3 border-t border-gray-200 px-4 py-3 text-sm text-slate-500" data-paginacao></div>
+    <div class="flex items-center justify-between gap-3 border-t border-line px-4 py-3 text-sm text-slate-500" data-paginacao></div>
+    <div class="fixed bottom-6 left-1/2 z-30 hidden -translate-x-1/2 items-center gap-3 rounded-[14px] border border-field bg-brand-dark py-2.5 pl-5 pr-3 shadow-[0_18px_40px_rgba(0,0,0,0.55)]" data-barra-lote role="status">
+      <span class="whitespace-nowrap text-sm text-slate-700"><b class="font-semibold text-slate-900" data-lote-n>0</b> selecionada(s)</span>
+      <span class="font-display text-xl font-bold text-accent-fg" data-lote-soma></span>
+      ${(acoesLote || []).map((a, i) => `<button type="button" class="btn-primary btn-sm hidden" data-acao-lote="${i}">${a.label}</button>`).join('')}
+      <button type="button" class="btn-danger btn-sm hidden" data-excluir-lote>Excluir selecionados</button>
+      <button type="button" class="btn-secondary btn-sm" data-limpar-selecao>Limpar</button>
+    </div>
   `;
 
   const corpo = el.querySelector('[data-corpo]');
@@ -120,6 +127,11 @@ export function criarDataTable({
 
   function atualizarBotaoLote() {
     const ids = idsSelecionados();
+    const barra = el.querySelector('[data-barra-lote]');
+    barra.classList.toggle('hidden', ids.length === 0);
+    barra.classList.toggle('flex', ids.length > 0);
+    el.querySelector('[data-lote-n]').textContent = ids.length;
+    el.querySelector('[data-lote-soma]').textContent = somaLote && ids.length ? somaLote(linhasSelecionadas()) : '';
     if (onExcluirLote) {
       btnExcluirLote.classList.toggle('hidden', ids.length === 0);
       btnExcluirLote.textContent = `Excluir selecionados (${ids.length})`;
@@ -244,13 +256,21 @@ export function criarDataTable({
       return;
     }
     const dados = todosOrdenados.slice((paginaAtual - 1) * ITENS_POR_PAGINA, paginaAtual * ITENS_POR_PAGINA);
+    // Coluna toda em dinheiro (R$ ou "-") fica alinhada a direita, cabecalho junto: o olho
+    // compara valores de cima pra baixo pela casa das unidades.
+    const textoPlano = (v) => String(v ?? '').replace(/<[^>]*>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+    const colunasMonetarias = new Set(colunas.filter((c) => {
+      const valores = todosOrdenados.map((l) => textoPlano(c.render ? c.render(l) : l[c.chave])).filter((t) => t && t !== '-');
+      return valores.length > 0 && valores.every((t) => /^-?\s*R\$/.test(t));
+    }).map((c) => c.chave));
+    el.querySelectorAll('th[data-ordenar]').forEach((th) => th.classList.toggle('text-right', colunasMonetarias.has(th.dataset.ordenar)));
     corpo.classList.remove('fade-in'); void corpo.offsetWidth; corpo.classList.add('fade-in');
     corpo.innerHTML = '';
     for (const linha of dados) {
       const tr = document.createElement('tr');
-      // even:bg-white/5 = zebra striping (ajuda a escanear tabela grande,
-      // sutil o bastante pra nao brigar com corLinha quando ambos se aplicam).
-      tr.className = `border-b border-gray-200 last:border-0 even:bg-white/5 hover:bg-gray-50${corLinha ? ` ${corLinha(linha) || ''}` : ''}`;
+      // Linha separada por filete (sem zebra: com corLinha - atraso, divergencia - a zebra
+      // virava faixas pesadas); o hover clareia por cima (ver "tbody tr:hover" no input.css).
+      tr.className = `border-b border-line last:border-0${corLinha ? ` ${corLinha(linha) || ''}` : ''}`;
       if (temSelecao) {
         const tdCheck = document.createElement('td');
         tdCheck.className = 'table-td';
@@ -265,7 +285,7 @@ export function criarDataTable({
         // truncar:true - "..." com tooltip estilizado no hover (ver
         // input.css .celula-truncar), pra descricao/observacao longas nao
         // estourarem a linha nem ficarem ilegveis cortadas sem aviso.
-        td.className = c.truncar ? 'table-td celula-truncar' : 'table-td';
+        td.className = `${c.truncar ? 'table-td celula-truncar' : 'table-td'}${colunasMonetarias.has(c.chave) ? ' text-right whitespace-nowrap' : ''}${!c.truncar && textoPlano(valor).length <= 22 ? ' whitespace-nowrap' : ''}`;
         td.innerHTML = c.truncar
           ? `<span class="truncar-texto">${valor}</span><span class="truncar-tooltip">${valor}</span>`
           : String(valor);
@@ -422,6 +442,11 @@ export function criarDataTable({
     });
     (acoesLote || []).forEach((a, i) => {
       el.querySelector(`[data-acao-lote="${i}"]`).addEventListener('click', () => a.onClick(linhasSelecionadas()));
+    });
+    el.querySelector('[data-limpar-selecao]').addEventListener('click', () => {
+      corpo.querySelectorAll('[data-linha-check]').forEach((c) => { c.checked = false; });
+      if (checkTodos) checkTodos.checked = false;
+      atualizarBotaoLote();
     });
     if (onExcluirLote) btnExcluirLote.addEventListener('click', async () => {
       const ids = idsSelecionados();

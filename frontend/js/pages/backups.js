@@ -15,7 +15,7 @@ function tamanho(bytes) {
 
 function linhaStatus(titulo, resultado, descreverOk) {
   if (!resultado) return `<p class="text-sm text-slate-500"><span class="font-medium text-slate-700">${titulo}:</span> nada registrado desde que o servidor iniciou.</p>`;
-  if (resultado.erro) return `<p class="text-sm text-red-600"><span class="font-medium">${titulo}:</span> FALHOU em ${formatarDataHoraBr(resultado.em)} - ${esc(resultado.erro)}</p>`;
+  if (resultado.erro) return `<p class="text-sm text-danger"><span class="font-medium">${titulo}:</span> FALHOU em ${formatarDataHoraBr(resultado.em)} - ${esc(resultado.erro)}</p>`;
   return `<p class="text-sm text-slate-600"><span class="font-medium text-slate-700">${titulo}:</span> ok em ${formatarDataHoraBr(resultado.em)} - ${descreverOk(resultado)}</p>`;
 }
 
@@ -49,7 +49,7 @@ export async function render(container) {
     <div class="card mb-4 space-y-1.5 border-gray-300 p-4" data-status></div>
     <div class="card overflow-x-auto border-gray-300 p-0">
       <table class="w-full min-w-max border-collapse">
-        <thead class="bg-brand-black"><tr>
+        <thead class="bg-elevated"><tr>
           <th class="table-th">Data</th><th class="table-th">Arquivo</th><th class="table-th">Tamanho</th><th class="table-th"></th>
         </tr></thead>
         <tbody data-linhas></tbody>
@@ -66,11 +66,11 @@ export async function render(container) {
       const info = await get('/admin/backups');
       const externo = info.externo.configurado
         ? `<span class="font-medium text-green-700">ligada</span> (bucket ${esc(info.externo.bucket)})`
-        : '<span class="font-medium text-amber-700">desligada</span> - configure as variaveis BACKUP_S3_* no Railway (passo a passo no README do projeto). Enquanto isso, baixe um backup por semana pelo botao abaixo.';
+        : '<span class="font-medium text-warning">desligada</span> - configure as variaveis BACKUP_S3_* no Railway (passo a passo no README do projeto). Enquanto isso, baixe um backup por semana pelo botao abaixo.';
       statusEl.innerHTML = `
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div class="space-y-1.5">
-            <p class="text-sm text-slate-600"><span class="font-medium text-slate-700">Backup diario:</span> ${info.ativo ? `todo dia apos as ${String(info.hora).padStart(2, '0')}h, guardando ${info.manter} diario(s) + ${info.manterMensal} mensal(is)` : '<span class="text-red-600">DESATIVADO (BACKUP_DIARIO=0)</span>'}</p>
+            <p class="text-sm text-slate-600"><span class="font-medium text-slate-700">Backup diario:</span> ${info.ativo ? `todo dia apos as ${String(info.hora).padStart(2, '0')}h, guardando ${info.manter} diario(s) + ${info.manterMensal} mensal(is)` : '<span class="text-danger">DESATIVADO (BACKUP_DIARIO=0)</span>'}</p>
             <p class="text-sm text-slate-600"><span class="font-medium text-slate-700">Copia externa:</span> ${externo}</p>
             ${linhaStatus('Ultimo backup gerado', info.ultimoBackupLocal, (r) => `${esc(r.arquivo)} (${tamanho(r.bytes)})`)}
             ${info.externo.configurado ? linhaStatus('Ultimo envio externo', info.ultimoEnvioExterno, (r) => `${r.enviados.length} arquivo(s) do banco (${tamanho(r.bytesBanco)}) + ${r.uploads.quantidade} anexo(s) novo(s)`) : ''}
@@ -102,7 +102,7 @@ export async function render(container) {
       `).join('') : '<tr><td colspan="4" class="table-td py-6 text-center text-slate-400">Nenhum backup ainda.</td></tr>';
       tbody.querySelectorAll('[data-baixar]').forEach((btn) => btn.addEventListener('click', () => baixar(btn.dataset.baixar, btn)));
     } catch (err) {
-      tbody.innerHTML = '<tr><td colspan="4" class="table-td py-6 text-center text-red-600">Erro ao carregar.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="4" class="table-td py-6 text-center text-danger">Erro ao carregar.</td></tr>';
       mostrarErro(err);
     }
   }

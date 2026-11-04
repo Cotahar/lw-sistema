@@ -104,7 +104,7 @@ export async function render(container) {
       <div class="card overflow-x-auto border-gray-300 p-0">
         <div class="px-4 pt-3"><h2 class="font-semibold text-slate-900">Total por ${grupo.label}</h2></div>
         <table class="mt-2 w-full min-w-max border-collapse">
-          <thead class="bg-brand-black"><tr><th class="table-th">${grupo.label}</th><th class="table-th text-right">Qtd</th><th class="table-th text-right">Total</th></tr></thead>
+          <thead class="bg-elevated"><tr><th class="table-th">${grupo.label}</th><th class="table-th text-right">Qtd</th><th class="table-th text-right">Total</th></tr></thead>
           <tbody>
             ${grupo.linhas.map(([chave, g]) => `
               <tr class="border-b border-slate-100 last:border-0"><td class="table-td">${chave}</td><td class="table-td text-right">${g.qtd}</td><td class="table-td text-right font-medium">${formatarMoeda(g.total)}</td></tr>
@@ -144,7 +144,7 @@ export async function render(container) {
         : todos;
       const total = dados.reduce((t, r) => t + r.valor_total, 0);
       resumoEl.innerHTML = `
-        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Total no filtro</p><p class="mt-1 text-2xl font-bold text-red-500">${formatarMoeda(total)}</p></div>
+        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Total no filtro</p><p class="mt-1 text-2xl font-bold text-danger">${formatarMoeda(total)}</p></div>
         <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Ordens de servico</p><p class="mt-1 text-2xl font-bold text-slate-900">${dados.length}</p></div>
       `;
       renderResumoGrupo(dados);

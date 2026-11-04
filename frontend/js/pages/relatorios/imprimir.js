@@ -94,7 +94,7 @@ export async function render(root) {
       </div>
 
       <div class="rounded-xl border border-zinc-200 bg-white p-8 text-zinc-900 print:border-0 print:p-0">
-        <div class="mb-5 border-b-4 border-brand-yellow pb-4">
+        <div class="mb-5 border-b-4 border-accent pb-4">
           <h1 class="text-2xl font-extrabold text-zinc-900">${escapeHtml(payload.titulo || 'Relatorio')}</h1>
           <p class="mt-1 text-sm font-medium text-zinc-500">Gerado em ${formatarDataBr(hojeIsoLocal())}${usuario ? ` por ${escapeHtml(usuario.nome)}` : ''}</p>
           ${payload.filtros && payload.filtros.length ? `

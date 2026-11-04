@@ -51,9 +51,9 @@ export function mostrarToastAcao(mensagem, { textoAcao, duracaoMs = 4000, onAcao
   el.innerHTML = `
     <div class="flex items-center gap-3">
       <span class="flex-1">${mensagem}</span>
-      ${textoAcao ? `<button type="button" data-acao class="shrink-0 rounded border border-white/30 px-2 py-1 text-xs font-bold text-brand-yellow hover:bg-white/10">${textoAcao}</button>` : ''}
+      ${textoAcao ? `<button type="button" data-acao class="shrink-0 rounded border border-white/30 px-2 py-1 text-xs font-bold text-accent-fg hover:bg-white/10">${textoAcao}</button>` : ''}
     </div>
-    <div class="mt-1.5 h-[3px] w-full rounded-full bg-white/15"><div data-barra class="h-full rounded-full bg-brand-yellow" style="width:100%"></div></div>
+    <div class="mt-1.5 h-[3px] w-full rounded-full bg-white/15"><div data-barra class="h-full rounded-full bg-accent" style="width:100%"></div></div>
   `;
   getContainer().appendChild(el);
   requestAnimationFrame(() => {

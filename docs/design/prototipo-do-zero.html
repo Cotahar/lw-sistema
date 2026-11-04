@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Frottex · Sistema visual "Rodovia" (protótipo)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow+Semi+Condensed:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+<style>
+/* =====================================================================
+   SISTEMA VISUAL "RODOVIA" — tokens
+   Ideia: o Frottex é uma ferramenta de quem vive de estrada. A linguagem
+   vem da sinalização rodoviária brasileira (CONTRAN) e do asfalto:
+   - superfícies = asfalto (grafite levemente quente), nunca preto puro
+   - cores semânticas = placas: azul (serviço/informação), amarelo
+     (advertência), vermelho (regulamentação), verde (indicação)
+   - tipografia = letreiro de rodovia, condensada: cabe mais coluna na tabela
+   - assinatura = faixa tracejada (divisor/progresso) e placa Mercosul
+   ===================================================================== */
+:root {
+  --bg: #0b0c0e;
+  --s1: #121418;
+  --s2: #181b20;
+  --s3: #1f2329;
+  --line: #262a31;
+  --line-2: #343945;
+  --t1: #eceef2;
+  --t2: #a3a9b5;
+  --t3: #7b8290;
+
+  --azul: #2b63f0;      /* placa de serviço: ação principal */
+  --azul-fg: #7ea4ff;   /* texto/foco sobre escuro */
+  --amarelo: #f5b800;   /* advertência */
+  --vermelho: #f0524a;  /* regulamentação / crítico */
+  --verde: #2bb673;     /* indicação / ok */
+
+  --azul-bg: rgb(43 99 240 / .14);
+  --amarelo-bg: rgb(245 184 0 / .12);
+  --vermelho-bg: rgb(240 82 74 / .12);
+  --verde-bg: rgb(43 182 115 / .12);
+
+  --r-sm: 6px; --r-md: 10px; --r-lg: 14px;
+  --ui: 'Barlow Semi Condensed', system-ui, sans-serif;
+  --display: 'Barlow Condensed', 'Barlow Semi Condensed', sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+* { box-sizing: border-box; margin: 0; }
+html { color-scheme: dark; }
+body {
+  background: var(--bg); color: var(--t1);
+  font: 400 15px/1.35 var(--ui); font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--azul-fg); outline-offset: 2px; border-radius: 4px; }
+.num { font-variant-numeric: tabular-nums; }
+.mono { font-family: var(--mono); }
+
+/* ---------- casca ---------- */
+.app { display: grid; grid-template-columns: 224px minmax(0, 1fr); min-height: 100vh; }
+.rail { background: var(--bg); border-right: 1px solid var(--line); padding: 18px 12px; position: sticky; top: 0; height: 100vh; overflow: auto; }
+.logo { display: flex; align-items: center; gap: 10px; padding: 4px 10px 18px; }
+.logo-mark { width: 28px; height: 28px; border-radius: 7px; background: var(--azul); display: grid; place-items: center; position: relative; overflow: hidden; }
+.logo-mark::before { content: ''; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 2px; transform: translateX(-50%);
+  background: repeating-linear-gradient(to bottom, #fff 0 5px, transparent 5px 9px); opacity: .9; }
+.logo-word { font: 700 22px/1 var(--display); letter-spacing: .04em; text-transform: uppercase; }
+.grupo { margin-top: 14px; }
+.grupo-t { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font: 600 11px/1 var(--ui); letter-spacing: .12em; text-transform: uppercase; color: var(--t3); }
+.grupo-t i { width: 3px; height: 12px; border-radius: 2px; background: var(--c); }
+.nav a { display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 22px; margin: 1px 0; border-radius: var(--r-sm); color: var(--t2); text-decoration: none; font-weight: 500; position: relative; }
+.nav a:hover { background: var(--s2); color: var(--t1); }
+.nav a.on { background: var(--s2); color: var(--t1); }
+.nav a.on::before { content: ''; position: absolute; left: 8px; top: 8px; bottom: 8px; width: 3px; border-radius: 2px; background: var(--azul); }
+
+.main { min-width: 0; }
+.top { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 14px; padding: 12px 28px; background: rgb(11 12 14 / .85); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+.top h1 { font: 700 30px/1 var(--display); letter-spacing: .01em; }
+.top .sub { color: var(--t3); font-size: 14px; }
+.top .sp { flex: 1; }
+.busca { display: flex; align-items: center; gap: 10px; min-width: 280px; padding: 8px 12px; border-radius: var(--r-md); background: var(--s1); border: 1px solid var(--line); color: var(--t3); }
+.busca kbd { margin-left: auto; font: 500 11px var(--mono); padding: 2px 6px; border: 1px solid var(--line-2); border-radius: 4px; color: var(--t2); }
+.pill { padding: 7px 12px; border-radius: 999px; background: var(--s1); border: 1px solid var(--line); color: var(--t2); font-weight: 500; }
+.avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--s3); border: 1px solid var(--line-2); display: grid; place-items: center; font-weight: 700; color: var(--azul-fg); }
+.page { padding: 24px 28px 80px; display: none; }
+.page.on { display: block; animation: ent .32s ease-out both; }
+@keyframes ent { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .page.on { animation: none; } }
+
+/* ---------- peças ---------- */
+.panel { background: var(--s1); border: 1px solid var(--line); border-radius: var(--r-lg); }
+.panel-h { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.panel-h h2 { font: 700 20px/1 var(--display); letter-spacing: .02em; text-transform: uppercase; }
+.chip { padding: 2px 8px; border-radius: 999px; background: var(--s3); color: var(--t2); font-size: 12px; font-weight: 600; }
+.link { margin-left: auto; color: var(--azul-fg); font-weight: 600; font-size: 14px; background: none; border: 0; }
+.faixa { height: 2px; border: 0; background: repeating-linear-gradient(to right, var(--amarelo) 0 14px, transparent 14px 26px); opacity: .55; }
+
+.btn { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 16px; border-radius: var(--r-sm); border: 1px solid transparent; font-weight: 600; transition: background .15s, border-color .15s; }
+.btn.pri { background: var(--azul); color: #fff; }
+.btn.pri:hover { background: #1f52d6; }
+.btn.sec { background: var(--s2); border-color: var(--line-2); color: var(--t1); }
+.btn.sec:hover { background: var(--s3); }
+.btn.gho { background: none; color: var(--azul-fg); }
+.btn.dan { background: var(--vermelho); color: #fff; }
+.btn.off { background: var(--s3); color: var(--t3); cursor: not-allowed; }
+.btn.sm { height: 30px; padding: 0 10px; font-size: 13px; }
+
+.badge { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 13px; font-weight: 600; border: 1px solid transparent; white-space: nowrap; }
+.badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.b-ok { color: #6fdba5; background: var(--verde-bg); border-color: rgb(43 182 115 / .3); }
+.b-at { color: #ffd34d; background: var(--amarelo-bg); border-color: rgb(245 184 0 / .3); }
+.b-cr { color: #ff8b84; background: var(--vermelho-bg); border-color: rgb(240 82 74 / .3); }
+.b-in { color: var(--azul-fg); background: var(--azul-bg); border-color: rgb(43 99 240 / .35); }
+.b-ne { color: var(--t2); background: var(--s3); border-color: var(--line-2); }
+
+/* placa Mercosul: assinatura do sistema */
+.placa { display: inline-flex; flex-direction: column; align-items: stretch; width: 88px; border-radius: 5px; overflow: hidden; background: #f3f2ec; color: #16181c; box-shadow: 0 0 0 1px #00000040, 0 1px 0 #ffffff55 inset; vertical-align: middle; }
+.placa i { display: block; height: 9px; background: #1f4fd0; color: #fff; font: 700 6px/9px var(--ui); letter-spacing: .3em; text-align: center; font-style: normal; }
+.placa b { display: block; font: 700 16px/1.25 var(--mono); letter-spacing: .06em; text-align: center; padding: 1px 0 2px; }
+.placa.p-sm { width: 70px; } .placa.p-sm b { font-size: 13px; } .placa.p-sm i { height: 7px; line-height: 7px; font-size: 5px; }
+
+/* ---------- Painel ---------- */
+.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.kpi { padding: 16px 18px 14px; position: relative; overflow: hidden; }
+.kpi .l { font: 600 12px/1 var(--ui); letter-spacing: .1em; text-transform: uppercase; color: var(--t3); display: flex; gap: 8px; align-items: center; }
+.kpi .l i { width: 8px; height: 8px; border-radius: 2px; background: var(--c); }
+.kpi .v { font: 700 44px/1 var(--display); margin: 12px 0 6px; letter-spacing: .005em; }
+.kpi .v small { font-size: 22px; color: var(--t2); margin-right: 4px; font-weight: 600; }
+.kpi .d { font-size: 14px; color: var(--t2); display: flex; gap: 8px; align-items: center; }
+.d .up { color: #6fdba5; font-weight: 600; } .d .dn { color: #ff8b84; font-weight: 600; }
+.kpi svg.sp { position: absolute; right: 16px; top: 14px; opacity: .9; }
+.grid2 { display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr); gap: 14px; margin-top: 14px; }
+.stack { display: grid; gap: 14px; align-content: start; }
+
+.viagem { display: grid; grid-template-columns: 100px minmax(150px, 1.1fr) minmax(190px, 1.5fr) 92px 104px; gap: 16px; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.viagem:last-child { border-bottom: 0; }
+.viagem:hover { background: var(--s2); }
+.viagem .quem b { display: block; font-weight: 600; font-size: 16px; }
+.viagem .quem span { color: var(--t3); font-size: 14px; }
+.estrada { position: relative; height: 24px; }
+.estrada .trilho { position: absolute; left: 0; right: 0; top: 11px; height: 2px; background: repeating-linear-gradient(to right, var(--line-2) 0 8px, transparent 8px 14px); }
+.estrada .feito { position: absolute; left: 0; top: 10px; height: 4px; border-radius: 2px; background: var(--azul); }
+.estrada .caminhao { position: absolute; top: 4px; width: 16px; height: 16px; margin-left: -8px; border-radius: 50%; background: var(--s1); border: 3px solid var(--azul-fg); box-shadow: 0 0 0 4px rgb(43 99 240 / .2); }
+.estrada-l { display: flex; justify-content: space-between; color: var(--t3); font-size: 13px; margin-top: 2px; }
+.estrada-l b { color: var(--t2); font-weight: 600; }
+.metrica { text-align: right; }
+.metrica b { display: block; font: 600 17px/1.1 var(--ui); } .metrica span { font-size: 13px; color: var(--t3); }
+.atencao { display: grid; grid-template-columns: 4px 1fr auto; gap: 12px; padding: 13px 18px; border-bottom: 1px solid var(--line); align-items: center; }
+.atencao:last-child { border-bottom: 0; }
+.atencao .barra { align-self: stretch; border-radius: 2px; background: var(--c); }
+.atencao b { display: block; font-weight: 600; } .atencao span { color: var(--t3); font-size: 14px; }
+.atencao time { font-size: 13px; color: var(--t3); text-align: right; }
+
+.grafico { padding: 6px 12px 12px; }
+.leg { display: flex; gap: 16px; margin-left: auto; color: var(--t2); font-size: 14px; }
+.leg i { display: inline-block; width: 12px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.rank { padding: 6px 18px 14px; }
+.rank .r { display: grid; grid-template-columns: 78px 1fr 92px; gap: 12px; align-items: center; padding: 8px 0; }
+.rank .bar { height: 8px; border-radius: 2px; background: var(--s3); position: relative; overflow: hidden; }
+.rank .bar i { position: absolute; inset: 0 auto 0 0; background: var(--azul); border-radius: 2px; }
+.rank .val { text-align: right; font-weight: 600; }
+
+/* ---------- Tabela ---------- */
+.tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+.seg { display: inline-flex; padding: 3px; background: var(--s1); border: 1px solid var(--line); border-radius: var(--r-md); }
+.seg button { border: 0; background: none; padding: 6px 12px; border-radius: 7px; color: var(--t2); font-weight: 600; }
+.seg button em { font-style: normal; margin-left: 6px; color: var(--t3); font-weight: 500; }
+.seg button.on { background: var(--s3); color: var(--t1); }
+.seg button.on em { color: var(--azul-fg); }
+.campo { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; border-radius: var(--r-sm); background: var(--bg); border: 1px solid var(--line-2); color: var(--t3); min-width: 260px; }
+.campo input { background: none; border: 0; color: var(--t1); font: inherit; outline: 0; width: 100%; }
+.tbl-wrap { overflow: auto; max-height: 560px; }
+table { width: 100%; border-collapse: collapse; }
+thead th { position: sticky; top: 0; z-index: 2; background: var(--s2); text-align: left; padding: 11px 16px; font: 600 12px/1 var(--ui); letter-spacing: .1em; text-transform: uppercase; color: var(--t3); white-space: nowrap; box-shadow: inset 0 -1px 0 var(--line-2); }
+thead th.sorted { color: var(--azul-fg); }
+th.r, td.r { text-align: right; }
+tbody td { padding: 0 16px; height: 46px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+tbody tr { position: relative; }
+tbody tr:hover { background: var(--s2); }
+tbody tr.sel { background: var(--azul-bg); }
+tbody tr.venc td:first-child { box-shadow: inset 3px 0 0 var(--vermelho); }
+tbody tr.hoje td:first-child { box-shadow: inset 3px 0 0 var(--amarelo); }
+td .desc b { font-weight: 600; } td .desc span { display: block; color: var(--t3); font-size: 13px; line-height: 1.1; }
+.ck { appearance: none; width: 18px; height: 18px; border: 1.5px solid var(--line-2); border-radius: 5px; background: var(--bg); display: grid; place-items: center; cursor: pointer; vertical-align: middle; }
+.ck:checked { background: var(--azul); border-color: var(--azul); }
+.ck:checked::after { content: ''; width: 5px; height: 9px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg) translate(-1px, -1px); }
+.prazo { font-weight: 600; } .prazo.cr { color: #ff8b84; } .prazo.at { color: #ffd34d; } .prazo.ne { color: var(--t2); font-weight: 500; }
+.acoes { opacity: 0; transition: opacity .1s; display: flex; gap: 6px; justify-content: flex-end; }
+tbody tr:hover .acoes, tbody tr:focus-within .acoes { opacity: 1; }
+@media (hover: none) { .acoes { opacity: 1; } }
+.rodape { display: flex; align-items: center; padding: 12px 16px; color: var(--t3); border-top: 1px solid var(--line); gap: 12px; }
+.rodape .sp { flex: 1; }
+.lote { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 140%); transition: transform .25s ease-out; z-index: 30; display: flex; align-items: center; gap: 14px; padding: 10px 12px 10px 18px; background: var(--s3); border: 1px solid var(--line-2); border-radius: var(--r-lg); box-shadow: 0 18px 40px rgb(0 0 0 / .55); }
+.lote.on { transform: translate(-50%, 0); }
+.lote b { font-weight: 700; } .lote .tot { font: 700 22px/1 var(--display); color: var(--azul-fg); }
+
+/* ---------- Fundamentos ---------- */
+.fund { display: grid; gap: 14px; }
+.cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.sw { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 10px; padding: 16px 18px 18px; }
+.sw div { border-radius: var(--r-md); border: 1px solid var(--line-2); overflow: hidden; }
+.sw i { display: block; height: 54px; } .sw span { display: block; padding: 7px 9px 8px; font-size: 13px; background: var(--s1); color: var(--t2); } .sw span b { display: block; color: var(--t1); font-weight: 600; }
+.espec { padding: 18px; display: grid; gap: 14px; }
+.espec .row { display: grid; grid-template-columns: 150px 1fr; gap: 16px; align-items: baseline; border-bottom: 1px dashed var(--line); padding-bottom: 12px; }
+.espec .row:last-child { border: 0; padding: 0; }
+.espec small { color: var(--t3); font-size: 13px; }
+.dz { display: grid; gap: 12px; padding: 18px; }
+.dz .lin { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.principios { padding: 6px 18px 18px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 28px; }
+.principios p { padding: 10px 0; border-bottom: 1px solid var(--line); } .principios p b { color: var(--azul-fg); font-weight: 600; margin-right: 6px; }
+
+.tabs { display: flex; gap: 4px; margin-left: 18px; }
+.tabs a { padding: 7px 14px; border-radius: 999px; color: var(--t2); text-decoration: none; font-weight: 600; }
+.tabs a.on { background: var(--s3); color: var(--t1); }
+
+@media (max-width: 1180px) { .kpis { grid-template-columns: repeat(2, 1fr); } .grid2 { grid-template-columns: 1fr; } .cols { grid-template-columns: 1fr; } }
+@media (max-width: 860px) {
+  .app { grid-template-columns: 1fr; } .rail { display: none; }
+  .top { padding: 10px 16px; flex-wrap: wrap; } .busca { display: none; }
+  .page { padding: 16px 16px 90px; }
+  .viagem { grid-template-columns: 1fr 1fr; } .viagem .estrada-box { grid-column: 1 / -1; order: 3; }
+  .principios { grid-template-columns: 1fr; } .kpis { grid-template-columns: 1fr 1fr; } .kpi .v { font-size: 36px; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="logo"><div class="logo-mark"></div><div class="logo-word">Frottex</div></div>
+    <nav class="nav" aria-label="Principal">
+      <a href="#painel" data-tab="painel" class="on">Painel</a>
+      <div class="grupo"><div class="grupo-t" style="--c:#7ea4ff"><i></i>Operação</div></div>
+      <a href="#painel">Viagens e Fretes</a><a href="#painel">Acertos</a><a href="#painel">Multas</a>
+      <div class="grupo"><div class="grupo-t" style="--c:#2bb673"><i></i>Financeiro</div></div>
+      <a href="#tabela" data-tab="tabela">Contas a pagar</a><a href="#painel">Contas a receber</a><a href="#painel">DRE</a>
+      <div class="grupo"><div class="grupo-t" style="--c:#fb923c"><i></i>Frota</div></div>
+      <a href="#painel">Veículos</a><a href="#painel">Manutenção</a><a href="#painel">Pneus</a>
+      <div class="grupo"><div class="grupo-t" style="--c:#c084fc"><i></i>Cadastros</div></div>
+      <a href="#painel">Motoristas</a><a href="#painel">Fornecedores</a>
+      <div class="grupo"><div class="grupo-t" style="--c:#f472b6"><i></i>Sistema</div></div>
+      <a href="#fundamentos" data-tab="fundamentos">Fundamentos visuais</a>
+    </nav>
+  </aside>
+
+  <div class="main">
+    <header class="top">
+      <h1 id="titulo">Painel</h1>
+      <span class="sub" id="sub">Terça, 3 de novembro</span>
+      <div class="tabs" role="tablist" aria-label="Telas do protótipo">
+        <a href="#painel" data-tab="painel" class="on">Painel</a>
+        <a href="#tabela" data-tab="tabela">Tabela</a>
+        <a href="#fundamentos" data-tab="fundamentos">Fundamentos</a>
+      </div>
+      <span class="sp"></span>
+      <div class="busca"><span aria-hidden="true">⌕</span> Buscar placa, motorista, conta… <kbd>Ctrl K</kbd></div>
+      <span class="pill">LOWELL ▾</span>
+      <span class="avatar" aria-label="Usuário">R</span>
+    </header>
+
+    <!-- ===================== PAINEL ===================== -->
+    <section class="page on" id="painel">
+      <div class="kpis">
+        <div class="panel kpi"><div class="l" style="--c:var(--azul-fg)"><i></i>A receber · 30 dias</div><div class="v"><small>R$</small><span class="num">184.300</span></div><div class="d"><span class="up">▲ 12,4%</span> vs. mês anterior</div><svg class="sp" id="sp1" width="96" height="34"></svg></div>
+        <div class="panel kpi"><div class="l" style="--c:var(--vermelho)"><i></i>Vencido a pagar</div><div class="v"><small>R$</small><span class="num">12.480</span></div><div class="d"><span class="dn">5 contas</span> · a mais antiga há 8 dias</div><svg class="sp" id="sp2" width="96" height="34"></svg></div>
+        <div class="panel kpi"><div class="l" style="--c:var(--verde)"><i></i>Resultado do mês</div><div class="v"><small>R$</small><span class="num">96.210</span></div><div class="d"><span class="up">38,4%</span> de sobra sobre o faturado</div><svg class="sp" id="sp3" width="96" height="34"></svg></div>
+        <div class="panel kpi"><div class="l" style="--c:var(--amarelo)"><i></i>Na estrada agora</div><div class="v"><span class="num">6</span><small style="margin-left:8px">de 9 veículos</small></div><div class="d"><span class="up">2,38 km/l</span> média da frota</div><svg class="sp" id="sp4" width="96" height="34"></svg></div>
+      </div>
+
+      <div class="grid2">
+        <div class="panel">
+          <div class="panel-h"><h2>Na estrada agora</h2><span class="chip">6 viagens</span><button class="link">Ver todas →</button></div>
+          <div id="viagens"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-h"><h2>Precisa de atenção</h2><span class="chip">5</span></div>
+          <div class="atencao" style="--c:var(--vermelho)"><div class="barra"></div><div><b>Posto Sul · R$ 2.140,00</b><span>Conta vencida há 3 dias</span></div><time>3 d</time></div>
+          <div class="atencao" style="--c:var(--amarelo)"><div class="barra"></div><div><b>Oficina Leste · R$ 860,00</b><span>Vence hoje</span></div><time>hoje</time></div>
+          <div class="atencao" style="--c:var(--amarelo)"><div class="barra"></div><div><b>Troca de óleo · <span class="mono" style="font-size:13px;color:var(--t2)">ABC1D23</span></b><span>Passou 650 km do intervalo</span></div><time>650 km</time></div>
+          <div class="atencao" style="--c:var(--azul)"><div class="barra"></div><div><b>CNH de Marcos vence</b><span>Renovação pendente</span></div><time>12 d</time></div>
+          <div class="atencao" style="--c:var(--azul)"><div class="barra"></div><div><b>Acerto da viagem #128</b><span>Paulo · aguardando fechamento</span></div><button class="btn sec sm">Abrir</button></div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="panel">
+          <div class="panel-h"><h2>Fluxo de caixa previsto</h2><div class="leg"><span><i style="background:var(--azul)"></i>Entradas</span><span><i style="background:var(--amarelo)"></i>Saídas</span></div></div>
+          <div class="grafico"><svg id="fluxo" viewBox="0 0 720 230" width="100%" role="img" aria-label="Fluxo de caixa dos próximos 30 dias"></svg></div>
+        </div>
+        <div class="panel">
+          <div class="panel-h"><h2>Resultado por veículo</h2></div>
+          <div class="rank" id="rank"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== TABELA ===================== -->
+    <section class="page" id="tabela">
+      <div class="tools">
+        <div class="seg" role="group" aria-label="Filtro de status">
+          <button class="on">Todas<em>37</em></button><button>Vencidas<em>5</em></button><button>Vencem em 7 dias<em>9</em></button><button>Pagas<em>23</em></button>
+        </div>
+        <label class="campo"><span aria-hidden="true">⌕</span><input placeholder="Pesquisar descrição, fornecedor, placa…" /></label>
+        <span style="flex:1"></span>
+        <button class="btn sec">Exportar XLSX</button>
+        <button class="btn pri">+ Conta a pagar</button>
+      </div>
+      <div class="panel" style="overflow:hidden">
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th style="width:44px"><input type="checkbox" class="ck" id="ckAll" aria-label="Selecionar todas" /></th>
+              <th>Descrição</th><th>Categoria</th><th>Veículo</th><th class="sorted">Vencimento ↑</th><th class="r">Valor</th><th>Status</th><th style="width:150px"></th>
+            </tr></thead>
+            <tbody id="linhas"></tbody>
+          </table>
+        </div>
+        <div class="rodape"><span id="resumo">12 de 37 contas</span><span class="sp"></span><button class="btn sec sm">‹ Anterior</button><span>Página 1 de 4</span><button class="btn sec sm">Próxima ›</button></div>
+      </div>
+    </section>
+
+    <!-- ===================== FUNDAMENTOS ===================== -->
+    <section class="page" id="fundamentos">
+      <div class="fund">
+        <div class="panel">
+          <div class="panel-h"><h2>Princípios</h2></div>
+          <div class="principios">
+            <p><b>Estrada, não escritório.</b>A linguagem vem da sinalização rodoviária: azul informa, amarelo adverte, vermelho obriga, verde indica.</p>
+            <p><b>Condensado cabe mais.</b>Letreiro de rodovia economiza largura: tabelas de 10 colunas respiram sem rolar.</p>
+            <p><b>Número é protagonista.</b>Valores em tabular, grandes, à direita. O resto abaixa a voz.</p>
+            <p><b>Cor só com significado.</b>Nada decorativo. Cada matiz codifica um estado e sempre vem com texto.</p>
+            <p><b>Asfalto, não preto.</b>Superfícies grafite em 4 degraus; profundidade por tom e filete, sem sombra pesada.</p>
+            <p><b>Assinaturas discretas.</b>Faixa tracejada para progresso e divisão, placa Mercosul para identificar veículo.</p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-h"><h2>Tipografia</h2></div>
+          <div class="espec">
+            <div class="row"><small>Letreiro · Barlow Condensed 700</small><div style="font:700 44px/1 var(--display);letter-spacing:.01em">Resultado do mês <span style="color:var(--azul-fg)">R$ 96.210</span></div></div>
+            <div class="row"><small>Interface · Barlow Semi Condensed 400–700</small><div style="font-size:17px">Contas a pagar vencidas, viagens em andamento e acertos aguardando fechamento. <b>Texto de 15px</b> nas tabelas.</div></div>
+            <div class="row"><small>Rótulo · 12px, caixa alta, +10%</small><div style="font:600 12px/1 var(--ui);letter-spacing:.1em;text-transform:uppercase;color:var(--t3)">Vencimento · Valor · Status</div></div>
+            <div class="row"><small>Identificadores · JetBrains Mono</small><div class="mono" style="font-size:16px;font-weight:700;letter-spacing:.04em">ABC1D23 · 123.456.789-00 · 4125 1034 0001 …</div></div>
+            <div class="row"><small>Escala (px)</small><div style="color:var(--t2)">12 rótulo · 13 auxiliar · 15 corpo · 17 destaque · 20 painel · 30 título · 44 KPI</div></div>
+          </div>
+        </div>
+
+        <div class="cols">
+          <div class="panel" style="grid-column: span 2">
+            <div class="panel-h"><h2>Cor</h2><span class="chip">asfalto + sinalização</span></div>
+            <div class="sw">
+              <div><i style="background:#0b0c0e"></i><span><b>Asfalto</b>#0B0C0E</span></div>
+              <div><i style="background:#121418"></i><span><b>Pista</b>#121418</span></div>
+              <div><i style="background:#181b20"></i><span><b>Meio-fio</b>#181B20</span></div>
+              <div><i style="background:#1f2329"></i><span><b>Calçada</b>#1F2329</span></div>
+              <div><i style="background:#262a31"></i><span><b>Filete</b>#262A31</span></div>
+              <div><i style="background:#2b63f0"></i><span><b>Placa de serviço</b>#2B63F0</span></div>
+              <div><i style="background:#7ea4ff"></i><span><b>Serviço claro</b>#7EA4FF</span></div>
+              <div><i style="background:#f5b800"></i><span><b>Advertência</b>#F5B800</span></div>
+              <div><i style="background:#f0524a"></i><span><b>Regulamentação</b>#F0524A</span></div>
+              <div><i style="background:#2bb673"></i><span><b>Indicação</b>#2BB673</span></div>
+              <div><i style="background:#eceef2"></i><span><b>Texto</b>#ECEEF2</span></div>
+              <div><i style="background:#7b8290"></i><span><b>Texto auxiliar</b>#7B8290</span></div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-h"><h2>Assinaturas</h2></div>
+            <div class="dz">
+              <div class="lin"><span class="placa"><i>BRASIL</i><b>ABC1D23</b></span><span class="placa p-sm"><i>BRASIL</i><b>QRS4T56</b></span></div>
+              <hr class="faixa" />
+              <div class="estrada" style="width:100%"><div class="trilho"></div><div class="feito" style="width:58%"></div><div class="caminhao" style="left:58%"></div></div>
+              <small style="color:var(--t3)">Placa Mercosul identifica o veículo; a faixa tracejada mostra progresso de viagem e separa blocos.</small>
+            </div>
+          </div>
+        </div>
+
+        <div class="cols">
+          <div class="panel">
+            <div class="panel-h"><h2>Botões</h2></div>
+            <div class="dz"><div class="lin"><button class="btn pri">Primário</button><button class="btn sec">Secundário</button><button class="btn gho">Fantasma</button></div><div class="lin"><button class="btn dan">Excluir</button><button class="btn off" disabled>Desabilitado</button><button class="btn pri sm">Pequeno</button></div></div>
+          </div>
+          <div class="panel">
+            <div class="panel-h"><h2>Status</h2></div>
+            <div class="dz"><div class="lin"><span class="badge b-ok">Pago</span><span class="badge b-at">Pendente</span><span class="badge b-cr">Atrasado</span></div><div class="lin"><span class="badge b-in">Em viagem</span><span class="badge b-ne">Rascunho</span></div><small style="color:var(--t3)">Ponto + texto: a cor nunca é a única pista.</small></div>
+          </div>
+          <div class="panel">
+            <div class="panel-h"><h2>Campos</h2></div>
+            <div class="dz"><label class="campo" style="min-width:0"><input value="TWO4H96" class="mono" /></label><label class="campo" style="min-width:0;border-color:var(--vermelho)"><input value="ABC1D2" class="mono" /></label><small style="color:#ff8b84">Placa incompleta</small></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="lote" id="lote" role="status">
+  <span><b id="loteN">0</b> selecionadas</span><span class="tot num" id="loteTot">R$ 0,00</span>
+  <button class="btn pri sm" type="button">Pagar selecionadas</button><button class="btn gho sm" type="button" id="limpar">Limpar</button>
+</div>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const brl = (n) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+/* ---- navegação entre as 3 telas do protótipo ---- */
+const titulos = { painel: ['Painel', 'Terça, 3 de novembro'], tabela: ['Contas a pagar', '37 contas · R$ 142.380,00 em aberto'], fundamentos: ['Fundamentos', 'Sistema visual “Rodovia”'] };
+function ir(idArg) {
+  const id = typeof idArg === 'string' ? idArg : (location.hash || '#painel').slice(1);
+  const tab = titulos[id] ? id : 'painel';
+  document.querySelectorAll('.page').forEach((p) => p.classList.toggle('on', p.id === tab));
+  document.querySelectorAll('[data-tab]').forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
+  $('#titulo').textContent = titulos[tab][0]; $('#sub').textContent = titulos[tab][1];
+  if (tab !== 'tabela') $('#lote').classList.remove('on'); else atualizarLote();
+}
+addEventListener('hashchange', ir);
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a[href^="#"]');
+  if (!a) return;
+  e.preventDefault();
+  const h = a.getAttribute('href');
+  try { history.replaceState(null, '', h); } catch { /* visualizado como arquivo estatico */ }
+  ir(h.slice(1));
+});
+ir();
+
+/* ---- sparklines ---- */
+function spark(id, pts, cor) {
+  const el = $(id), w = 96, h = 34, mx = Math.max(...pts), mn = Math.min(...pts);
+  const xy = pts.map((v, i) => [i * (w / (pts.length - 1)), h - 4 - ((v - mn) / (mx - mn || 1)) * (h - 8)]);
+  const d = xy.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+  el.innerHTML = `<path d="${d}" fill="none" stroke="${cor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="${xy.at(-1)[0]}" cy="${xy.at(-1)[1]}" r="3" fill="${cor}"/>`;
+}
+spark('#sp1', [3, 5, 4, 6, 7, 6, 9, 10], '#7ea4ff'); spark('#sp2', [2, 3, 3, 5, 4, 6, 6, 8], '#f0524a');
+spark('#sp3', [4, 5, 7, 6, 8, 9, 9, 11], '#2bb673'); spark('#sp4', [5, 6, 6, 7, 6, 6, 5, 6], '#f5b800');
+
+/* ---- viagens na estrada ---- */
+const viagens = [
+  ['ABC1D23', 'Carlos Ferreira', 'Criciúma/SC', 'Curitiba/PR', 412, 720, '2,41', 'up', 18200],
+  ['DEF4G56', 'Marcos Silva', 'Itajaí/SC', 'Betim/MG', 1010, 1190, '2,38', 'up', 31700],
+  ['HIJ7K89', 'Paulo Ramos', 'Tubarão/SC', 'Recife/PE', 640, 3480, '2,19', 'dn', 52400],
+  ['KLM2N34', 'Jorge Lima', 'Joinville/SC', 'Goiânia/GO', 1480, 1560, '2,44', 'up', 27900],
+];
+$('#viagens').innerHTML = viagens.map(([pl, nome, o, d, km, tot, media, tend, fat]) => {
+  const pct = Math.round((km / tot) * 100);
+  return `<div class="viagem">
+    <span class="placa"><i>BRASIL</i><b>${pl}</b></span>
+    <div class="quem"><b>${nome}</b><span>${o} → ${d}</span></div>
+    <div class="estrada-box"><div class="estrada"><div class="trilho"></div><div class="feito" style="width:${pct}%"></div><div class="caminhao" style="left:${pct}%"></div></div>
+      <div class="estrada-l"><span>${o.split('/')[0]}</span><b class="num">${km.toLocaleString('pt-BR')} / ${tot.toLocaleString('pt-BR')} km</b><span>${d.split('/')[0]}</span></div></div>
+    <div class="metrica"><b class="num">${media} <span style="color:${tend === 'up' ? '#6fdba5' : '#ff8b84'}">${tend === 'up' ? '▲' : '▼'}</span></b><span>km/l</span></div>
+    <div class="metrica"><b class="num">${brl(fat).replace(',00', '')}</b><span>faturado</span></div></div>`;
+}).join('');
+
+/* ---- ranking por veículo ---- */
+const rank = [['ABC1D23', 41200], ['DEF4G56', 33800], ['KLM2N34', 27100], ['HIJ7K89', 18900], ['QRS4T56', 6400]];
+$('#rank').innerHTML = rank.map(([p, v]) => `<div class="r"><span class="mono" style="font-weight:700;font-size:14px">${p}</span><div class="bar"><i style="width:${(v / 41200) * 100}%"></i></div><span class="val num">${brl(v).replace(',00', '')}</span></div>`).join('');
+
+/* ---- fluxo de caixa (SVG) ---- */
+(function () {
+  const W = 720, H = 230, L = 46, R = 12, T = 12, B = 28, n = 30;
+  const ent = Array.from({ length: n }, (_, i) => 30 + 22 * Math.sin(i / 3.1) + (i % 7 === 0 ? 38 : 0) + i * 0.9);
+  const sai = Array.from({ length: n }, (_, i) => 26 + 14 * Math.cos(i / 2.4) + (i % 9 === 0 ? 30 : 0));
+  const mx = 100, x = (i) => L + (i * (W - L - R)) / (n - 1), y = (v) => T + (H - T - B) * (1 - v / mx);
+  const linha = (a) => a.map((v, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1)).join(' ');
+  let g = '<defs><linearGradient id="gA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2b63f0" stop-opacity=".38"/><stop offset="1" stop-color="#2b63f0" stop-opacity="0"/></linearGradient></defs>';
+  for (let v = 0; v <= mx; v += 25) g += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="#262a31" stroke-dasharray="2 5"/><text x="${L - 8}" y="${y(v) + 4}" text-anchor="end" fill="#7b8290" font-size="12">${v}k</text>`;
+  for (let i = 0; i < n; i += 5) g += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle" fill="#7b8290" font-size="12">${i === 0 ? 'hoje' : '+' + i + ' d'}</text>`;
+  g += `<path d="${linha(ent)} L${x(n - 1)} ${y(0)} L${x(0)} ${y(0)} Z" fill="url(#gA)"/><path d="${linha(ent)}" fill="none" stroke="#7ea4ff" stroke-width="2.4" stroke-linejoin="round"/>`;
+  g += `<path d="${linha(sai)}" fill="none" stroke="#f5b800" stroke-width="2.2" stroke-dasharray="7 5" stroke-linejoin="round"/>`;
+  g += `<line x1="${x(0)}" x2="${x(0)}" y1="${T}" y2="${H - B}" stroke="#eceef2" stroke-opacity=".5"/><circle cx="${x(11)}" cy="${y(ent[11])}" r="5" fill="#0b0c0e" stroke="#7ea4ff" stroke-width="2.5"/>`;
+  g += `<g transform="translate(${x(11) - 52},${y(ent[11]) - 46})"><rect width="104" height="34" rx="7" fill="#1f2329" stroke="#343945"/><text x="52" y="14" text-anchor="middle" fill="#a3a9b5" font-size="11">+11 d</text><text x="52" y="28" text-anchor="middle" fill="#eceef2" font-size="13" font-weight="700">R$ ${(ent[11] * 1000).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</text></g>`;
+  $('#fluxo').innerHTML = g;
+})();
+
+/* ---- tabela de contas a pagar ---- */
+const contas = [
+  ['Compra de pneus FG-0001', 'Nota 4821', 'Pneus', 'ABC1D23', -8, 2500.0, 'cr'],
+  ['Posto Sul · abastecimento', 'Nota 1190', 'Combustível', 'DEF4G56', -3, 2140.0, 'cr'],
+  ['Financiamento do cavalo', 'Parcela 1/12', 'Financiamento', 'ABC1D23', -1, 10000.0, 'cr'],
+  ['Oficina Leste · freios', 'OS #118', 'Manutenção', 'KLM2N34', 0, 860.0, 'at'],
+  ['Seguro da carreta', 'Apólice 7731', 'Seguro', 'HIJ7K89', 2, 3420.0, 'at'],
+  ['Pedágio Sem Parar · fatura', 'Out/2026', 'Pedágio', '—', 4, 5815.9, 'ne'],
+  ['Posto Boa Viagem', 'Nota 2208', 'Combustível', 'HIJ7K89', 6, 5890.0, 'ne'],
+  ['Licenciamento anual', 'CRLV 2026', 'Impostos', 'DEF4G56', 9, 1218.4, 'ne'],
+  ['Retífica do motor', 'OS #121', 'Manutenção', 'QRS4T56', 12, 14320.0, 'ne'],
+  ['Arla 32 · 1.000 L', 'Nota 903', 'Insumos', '—', 15, 2850.0, 'ne'],
+  ['Aluguel do pátio', 'Nov/2026', 'Despesa fixa', '—', 18, 4600.0, 'ne'],
+  ['Contabilidade', 'Nov/2026', 'Despesa fixa', '—', 22, 1900.0, 'ne'],
+];
+const prazoTxt = (d) => (d < 0 ? `vencida há ${-d} d` : d === 0 ? 'vence hoje' : `em ${d} d`);
+const dataTxt = (d) => { const dt = new Date(2026, 10, 3 + d); return dt.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }).replace('.', ''); };
+$('#linhas').innerHTML = contas.map(([desc, sub, cat, pl, d, v, t], i) => {
+  const cls = d < 0 ? 'venc' : d === 0 ? 'hoje' : '';
+  const badge = d < 0 ? '<span class="badge b-cr">Atrasada</span>' : d <= 7 ? '<span class="badge b-at">Pendente</span>' : '<span class="badge b-ne">A vencer</span>';
+  return `<tr class="${cls}" data-v="${v}"><td><input type="checkbox" class="ck" data-i="${i}" aria-label="Selecionar ${desc}" /></td>
+    <td><div class="desc"><b>${desc}</b><span>${sub}</span></div></td><td>${cat}</td>
+    <td>${pl === '—' ? '<span style="color:var(--t3)">—</span>' : `<span class="placa p-sm"><i>BRASIL</i><b>${pl}</b></span>`}</td>
+    <td><span class="prazo ${t}">${dataTxt(d)}</span> <span style="color:var(--t3);font-size:13px;margin-left:6px">${prazoTxt(d)}</span></td>
+    <td class="r num" style="font-weight:600">${brl(v)}</td><td>${badge}</td>
+    <td><div class="acoes"><button class="btn sec sm">Pagar</button><button class="btn gho sm">Editar</button></div></td></tr>`;
+}).join('');
+
+function atualizarLote() {
+  const marcados = [...document.querySelectorAll('#linhas .ck:checked')];
+  const soma = marcados.reduce((s, c) => s + Number(c.closest('tr').dataset.v), 0);
+  $('#loteN').textContent = marcados.length; $('#loteTot').textContent = brl(soma);
+  $('#lote').classList.toggle('on', marcados.length > 0 && $('#tabela').classList.contains('on'));
+}
+$('#linhas').addEventListener('change', (e) => { if (e.target.matches('.ck')) { e.target.closest('tr').classList.toggle('sel', e.target.checked); atualizarLote(); } });
+$('#ckAll').addEventListener('change', (e) => { document.querySelectorAll('#linhas .ck').forEach((c) => { c.checked = e.target.checked; c.closest('tr').classList.toggle('sel', c.checked); }); atualizarLote(); });
+$('#limpar').addEventListener('click', () => { document.querySelectorAll('#linhas .ck, #ckAll').forEach((c) => { c.checked = false; }); document.querySelectorAll('#linhas tr').forEach((r) => r.classList.remove('sel')); atualizarLote(); });
+document.querySelectorAll('.seg button').forEach((b) => b.addEventListener('click', () => { document.querySelectorAll('.seg button').forEach((x) => x.classList.toggle('on', x === b)); }));
+</script>
+</body>
+</html>

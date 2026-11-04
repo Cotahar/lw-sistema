@@ -37,7 +37,7 @@ async function abrirLancarComoCusto(baixa, aoConcluir) {
       <div><label class="label">Data do custo</label><input type="text" name="data" class="input" /></div>
       <div><label class="label">Descricao</label><input type="text" name="descricao" class="input" /></div>
     </div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Lancar como custo</button></div>
   `;
   attachDataMask(form.data, baixa.data);
@@ -118,9 +118,9 @@ export async function abrirBaixasFrete(frete, recarregar, gerenciar) {
                 <td class="py-1 text-right">${formatarMoeda(b.valor)}</td>
                 <td class="py-1">${esc(b.descricao || '-')}</td>
                 ${gerenciar ? `<td class="py-1 text-xs">${b.custo_id
-                  ? `<span class="badge-neutro" title="Custo lancado no DRE">${esc(b.custo_centro_nome)} &middot; ${esc(b.custo_categoria_nome)}</span> <button type="button" class="text-red-600 hover:underline" data-desfazer-custo="${b.id}">Desfazer</button>`
-                  : (TIPOS_QUE_VIRAM_CUSTO.includes(b.tipo) ? `<button type="button" class="text-brand-yellow hover:underline" data-lancar-custo="${b.id}">Lancar como custo</button>` : '')}</td>
-                <td class="py-1 text-right"><button type="button" class="text-xs text-red-600 hover:underline" data-remover-baixa="${b.id}">Remover</button></td>` : ''}
+                  ? `<span class="badge-neutro" title="Custo lancado no DRE">${esc(b.custo_centro_nome)} &middot; ${esc(b.custo_categoria_nome)}</span> <button type="button" class="text-danger hover:underline" data-desfazer-custo="${b.id}">Desfazer</button>`
+                  : (TIPOS_QUE_VIRAM_CUSTO.includes(b.tipo) ? `<button type="button" class="text-accent-fg hover:underline" data-lancar-custo="${b.id}">Lancar como custo</button>` : '')}</td>
+                <td class="py-1 text-right"><button type="button" class="text-xs text-danger hover:underline" data-remover-baixa="${b.id}">Remover</button></td>` : ''}
               </tr>
             `).join('') || `<tr><td colspan="6" class="py-3 text-center text-slate-400">Nenhuma baixa lancada.</td></tr>`}
           </tbody>
@@ -135,7 +135,7 @@ export async function abrirBaixasFrete(frete, recarregar, gerenciar) {
             <p class="text-xs text-slate-500" data-dica-tipo></p>
             <div data-bloco-conta><label class="label">Conta bancaria (se recebeu de verdade)</label><div data-conta-select></div></div>
             <div><label class="label">Descricao</label><input type="text" name="descricao" class="input" /></div>
-            <p class="hidden text-sm text-red-600" data-erro-baixa></p>
+            <p class="hidden text-sm text-danger" data-erro-baixa></p>
             <div class="flex justify-end"><button type="submit" class="btn-primary btn-sm">Lancar baixa</button></div>
           </form>
         ` : ''}

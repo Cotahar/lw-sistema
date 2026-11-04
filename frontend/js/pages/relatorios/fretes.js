@@ -181,7 +181,7 @@ export async function render(container) {
       <div class="card overflow-x-auto border-gray-300 p-0">
         <div class="px-4 pt-3"><h2 class="font-semibold text-slate-900">Total por ${grupo.label}</h2></div>
         <table class="mt-2 w-full min-w-max border-collapse">
-          <thead class="bg-brand-black"><tr><th class="table-th">${grupo.label}</th><th class="table-th text-right">Qtd</th><th class="table-th text-right">Total</th></tr></thead>
+          <thead class="bg-elevated"><tr><th class="table-th">${grupo.label}</th><th class="table-th text-right">Qtd</th><th class="table-th text-right">Total</th></tr></thead>
           <tbody>
             ${grupo.linhas.map(([chave, g]) => `
               <tr class="border-b border-slate-100 last:border-0">
@@ -200,7 +200,7 @@ export async function render(container) {
     tabela = criarDataTable({
       colunas: [...colunasEscolhidas, COLUNA_VALOR],
       ordenacaoInicial: { chave: 'data_carregamento', direcao: 'desc' },
-      corLinha: (r) => (r.status !== 'Recebido' && r.data_prevista < hojeIsoLocal() ? 'bg-red-950/40' : ''),
+      corLinha: (r) => (r.status !== 'Recebido' && r.data_prevista < hojeIsoLocal() ? 'linha-critica' : ''),
       exportar: { nomeArquivo: 'relatorio-fretes' },
       buscarDados: async (termo) => {
         const params = new URLSearchParams();
@@ -221,8 +221,8 @@ export async function render(container) {
         const total = dados.reduce((t, r) => t + r.valor, 0);
         const pendente = dados.reduce((t, r) => t + r.saldo_pendente, 0);
         resumoEl.innerHTML = `
-          <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Frete bruto total</p><p class="mt-1 text-2xl font-bold text-emerald-500">${formatarMoeda(total)}</p></div>
-          <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Saldo ainda pendente</p><p class="mt-1 text-2xl font-bold text-amber-400">${formatarMoeda(pendente)}</p></div>
+          <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Frete bruto total</p><p class="mt-1 text-2xl font-bold text-success">${formatarMoeda(total)}</p></div>
+          <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Saldo ainda pendente</p><p class="mt-1 text-2xl font-bold text-warning">${formatarMoeda(pendente)}</p></div>
         `;
         renderResumoGrupo(dados);
         atualizarComparativo(dados);

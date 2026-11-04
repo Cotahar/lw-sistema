@@ -12,8 +12,8 @@ function formatarTamanho(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-const ICONE_PDF = '<svg class="h-5 w-5 shrink-0 text-red-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 2a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V4a2 2 0 00-2-2H4zm3 5a1 1 0 000 2h6a1 1 0 100-2H7zm0 4a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd"/></svg>';
-const ICONE_IMG = '<svg class="h-5 w-5 shrink-0 text-blue-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-5 2.5 3L14 9l4 6z" clip-rule="evenodd"/></svg>';
+const ICONE_PDF = '<svg class="h-5 w-5 shrink-0 text-danger" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 2a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V4a2 2 0 00-2-2H4zm3 5a1 1 0 000 2h6a1 1 0 100-2H7zm0 4a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd"/></svg>';
+const ICONE_IMG = '<svg class="h-5 w-5 shrink-0 text-info" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-5 2.5 3L14 9l4 6z" clip-rule="evenodd"/></svg>';
 
 // Lista de anexos reutilizavel, anexada a um registro (entidadeTipo +
 // entidadeId precisam bater com MODULO_POR_ENTIDADE em anexos.routes.js) -
@@ -47,7 +47,7 @@ export function criarAnexos({ entidadeTipo, entidadeId, podeGerenciar, max }) {
         <a href="/uploads/anexos/${esc(a.nome_arquivo)}" download="${esc(a.nome_original)}" target="_blank" rel="noopener" class="flex-1 truncate text-gray-900 hover:underline" title="${esc(a.nome_original)}">${esc(a.nome_original)}</a>
         <span class="shrink-0 text-xs text-slate-400">${formatarTamanho(a.tamanho_bytes)}</span>
         <span class="shrink-0 text-xs text-slate-400">${esc(a.criado_por_nome || 'Usuario')} &middot; ${formatarDataHoraBr(a.criado_em)}</span>
-        ${podeGerenciar ? `<button type="button" class="shrink-0 text-xs text-red-600 hover:underline" data-remover="${a.id}">Remover</button>` : ''}
+        ${podeGerenciar ? `<button type="button" class="shrink-0 text-xs text-danger hover:underline" data-remover="${a.id}">Remover</button>` : ''}
       </div>
     `;
   }
@@ -76,7 +76,7 @@ export function criarAnexos({ entidadeTipo, entidadeId, podeGerenciar, max }) {
         });
       });
     } catch (err) {
-      lista.innerHTML = '<p class="text-sm text-red-600">Nao foi possivel carregar os anexos.</p>';
+      lista.innerHTML = '<p class="text-sm text-danger">Nao foi possivel carregar os anexos.</p>';
       mostrarErro(err);
     }
   }

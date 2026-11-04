@@ -8,7 +8,7 @@ import { navegar } from '../router.js';
 import { esc } from '../html.js';
 
 const STATUS_BADGE = {
-  EmAndamento: 'badge-sucesso',
+  EmAndamento: 'badge-info',
   AguardandoAcerto: 'badge-atencao',
   Finalizada: 'badge-neutro',
 };
@@ -34,7 +34,7 @@ async function abrirNovaViagem(recarregar) {
     <div><label class="label">Motorista *</label><div data-motorista></div></div>
     <div><label class="label">Data de inicio *</label><input type="text" name="data_inicio" class="input" required /></div>
     <div><label class="label">KM inicial *</label><input type="number" name="km_inicial" class="input" required /><p class="mt-1 text-xs text-slate-400" data-dica-km></p></div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Iniciar viagem</button></div>
   `;
   attachDataMask(form.data_inicio);

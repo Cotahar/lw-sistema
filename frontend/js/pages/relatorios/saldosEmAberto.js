@@ -80,10 +80,10 @@ export async function render(container) {
       { chave: 'data_descarga', titulo: 'Entrega', render: (r) => (r.data_descarga ? formatarDataBr(r.data_descarga) : '-') },
       { chave: 'ultima_baixa', titulo: 'Ultima baixa', render: celulaUltimaBaixa, exportar: (r) => (r.ultima_baixa ? `${formatarDataBr(r.ultima_baixa.data)} (${r.ultima_baixa.tipo})` : '-') },
       { chave: 'data_prevista', titulo: 'Vencimento', render: (r) => `${formatarDataBr(r.data_prevista)}${badgePrazoVencimento(r.data_prevista, r.status === 'Recebido')}`, exportar: (r) => formatarDataBr(r.data_prevista) },
-      { chave: 'saldo_pendente', titulo: 'Valor Pendente', render: (r) => `<span class="font-semibold text-amber-500">${formatarMoeda(r.saldo_pendente)}</span>`, exportar: (r) => r.saldo_pendente / 100 },
+      { chave: 'saldo_pendente', titulo: 'Valor Pendente', render: (r) => `<span class="font-semibold text-warning">${formatarMoeda(r.saldo_pendente)}</span>`, exportar: (r) => r.saldo_pendente / 100 },
     ],
     ordenacaoInicial: { chave: 'data_prevista', direcao: 'asc' },
-    corLinha: (r) => (new Date(`${r.data_prevista}T00:00:00Z`) < new Date(`${hojeIsoLocal()}T00:00:00Z`) ? 'bg-red-950/40' : ''),
+    corLinha: (r) => (new Date(`${r.data_prevista}T00:00:00Z`) < new Date(`${hojeIsoLocal()}T00:00:00Z`) ? 'linha-critica' : ''),
     exportar: { nomeArquivo: 'saldos-em-aberto' },
     buscarDados: async (termo) => {
       const params = new URLSearchParams();
@@ -107,9 +107,9 @@ export async function render(container) {
       const saldoTotal = dados.reduce((t, r) => t + r.saldo_pendente, 0);
       const vencidos = dados.filter((r) => new Date(`${r.data_prevista}T00:00:00Z`) < new Date(`${hojeIsoLocal()}T00:00:00Z`)).length;
       resumoEl.innerHTML = `
-        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Saldo pendente total</p><p class="mt-1 text-2xl font-bold text-amber-400">${formatarMoeda(saldoTotal)}</p></div>
+        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Saldo pendente total</p><p class="mt-1 text-2xl font-bold text-warning">${formatarMoeda(saldoTotal)}</p></div>
         <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Fretes com saldo pendente</p><p class="mt-1 text-2xl font-bold text-slate-900">${dados.length}</p></div>
-        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Fretes vencidos</p><p class="mt-1 text-2xl font-bold ${vencidos ? 'text-red-600' : 'text-slate-900'}">${vencidos}</p></div>
+        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Fretes vencidos</p><p class="mt-1 text-2xl font-bold ${vencidos ? 'text-danger' : 'text-slate-900'}">${vencidos}</p></div>
       `;
       return dados;
     },

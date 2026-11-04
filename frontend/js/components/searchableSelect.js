@@ -89,7 +89,7 @@ export function criarSearchableSelect({ buscar, valorInicial = null, labelInicia
     if (criarNovo) {
       const btnNovo = document.createElement('button');
       btnNovo.type = 'button';
-      btnNovo.className = 'block w-full border-t border-slate-200 px-3 py-2 text-left text-sm font-medium text-brand-yellow hover:bg-white/10';
+      btnNovo.className = 'block w-full border-t border-slate-200 px-3 py-2 text-left text-sm font-medium text-accent-fg hover:bg-white/10';
       btnNovo.textContent = `+ ${criarNovo.label}`;
       btnNovo.addEventListener('click', async () => {
         fecharLista();
@@ -126,7 +126,7 @@ export function criarSearchableSelect({ buscar, valorInicial = null, labelInicia
       if (criarNovo) {
         const btnNovo = document.createElement('button');
         btnNovo.type = 'button';
-        btnNovo.className = 'block w-full border-t border-slate-200 px-3 py-2 text-left text-sm font-medium text-brand-yellow hover:bg-white/10';
+        btnNovo.className = 'block w-full border-t border-slate-200 px-3 py-2 text-left text-sm font-medium text-accent-fg hover:bg-white/10';
         btnNovo.textContent = `+ ${criarNovo.label}`;
         btnNovo.addEventListener('click', async () => {
           fecharLista();

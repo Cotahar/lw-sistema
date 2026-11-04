@@ -19,7 +19,7 @@ export function criarNovoFornecedor() {
     form.innerHTML = `
       <div><label class="label">Nome *</label><input type="text" name="nome" class="input" required autofocus /></div>
       <div><label class="label">Tipo *</label><select name="tipo_id" class="input" required data-tipo></select></div>
-      <p class="hidden text-sm text-red-600" data-erro></p>
+      <p class="hidden text-sm text-danger" data-erro></p>
       <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Cadastrar</button></div>
     `;
     attachUppercaseInput(form.nome);

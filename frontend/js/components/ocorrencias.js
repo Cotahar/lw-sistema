@@ -57,7 +57,7 @@ export function criarOcorrencias({ entidadeTipo, entidadeId, podeGerenciar, resu
         lista.innerHTML = ocorrencias.map(renderItem).join('');
       }
     } catch (err) {
-      lista.innerHTML = '<p class="text-sm text-red-600">Nao foi possivel carregar as ocorrencias.</p>';
+      lista.innerHTML = '<p class="text-sm text-danger">Nao foi possivel carregar as ocorrencias.</p>';
       mostrarErro(err);
     }
   }

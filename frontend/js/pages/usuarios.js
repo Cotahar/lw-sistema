@@ -27,7 +27,7 @@ function montarFormularioUsuario(registro, aoSalvar) {
     <div><label class="label">Perfil *</label><select name="perfil" class="input" required>${PERFIS.map((p) => `<option value="${p}">${p}</option>`).join('')}</select></div>
     <div class="hidden" data-bloco-motorista><label class="label">Motorista vinculado *</label><div data-motorista-select></div></div>
     ${registro ? '<div class="flex items-center gap-2"><input type="checkbox" name="ativo" id="ativo-usuario" class="h-4 w-4" /><label for="ativo-usuario" class="text-sm">Ativo</label></div>' : ''}
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">${registro ? 'Salvar alteracoes' : 'Cadastrar'}</button></div>
   `;
   form.nome.value = registro?.nome || '';
@@ -94,9 +94,9 @@ async function abrirFormularioUsuario(registro, recarregar) {
 function celulaPermissao(modulo, nivel, nivelAtual) {
   const id = `perm-${modulo}-${nivel}`;
   return `
-    <label for="${id}" class="flex cursor-pointer items-center justify-center rounded-lg py-1.5 has-[:checked]:bg-brand-yellow has-[:checked]:font-semibold has-[:checked]:text-brand-black">
+    <label for="${id}" class="flex cursor-pointer items-center justify-center rounded-lg py-1.5 has-[:checked]:bg-accent has-[:checked]:font-semibold has-[:checked]:text-white">
       <input type="radio" id="${id}" name="perm-${modulo}" value="${nivel}" class="sr-only" ${nivel === nivelAtual ? 'checked' : ''} />
-      <span class="text-xs text-slate-600 has-[:checked]:text-brand-black">${nivel}</span>
+      <span class="text-xs text-slate-600 has-[:checked]:text-white">${nivel}</span>
     </label>
   `;
 }
@@ -113,13 +113,13 @@ async function abrirPermissoes(usuarioRow) {
           ${NIVEIS.map((n) => `<span class="text-center">${n}</span>`).join('')}
         </div>
         ${permissoes.map((p) => `
-          <div class="grid grid-cols-[1fr_repeat(3,5rem)] items-center gap-1 rounded-lg px-2 py-1 ${p.excecao ? 'bg-amber-950/40' : ''}" data-linha-modulo="${esc(p.modulo)}">
+          <div class="grid grid-cols-[1fr_repeat(3,5rem)] items-center gap-1 rounded-lg px-2 py-1 ${p.excecao ? 'bg-warning-soft' : ''}" data-linha-modulo="${esc(p.modulo)}">
             <span class="truncate text-sm text-slate-700" title="${esc(p.nome)}">${esc(p.nome)}</span>
             ${NIVEIS.map((n) => celulaPermissao(p.modulo, n, p.nivel)).join('')}
           </div>
         `).join('')}
       </div>
-      <p class="hidden mt-3 text-sm text-red-600" data-erro></p>
+      <p class="hidden mt-3 text-sm text-danger" data-erro></p>
       <div class="mt-4 flex justify-end gap-2 border-t border-slate-200 pt-3">
         <button type="button" class="btn-primary" data-salvar>Salvar permissoes</button>
       </div>
@@ -161,7 +161,7 @@ async function abrirEmpresas(usuarioRow) {
         `).join('')}
       </div>
       ${!empresas.length ? '<p class="text-sm text-slate-500">Nenhuma empresa ativa cadastrada.</p>' : ''}
-      <p class="hidden mt-3 text-sm text-red-600" data-erro></p>
+      <p class="hidden mt-3 text-sm text-danger" data-erro></p>
       <div class="mt-4 flex justify-end gap-2 border-t border-slate-200 pt-3">
         <button type="button" class="btn-primary" data-salvar>Salvar empresas</button>
       </div>

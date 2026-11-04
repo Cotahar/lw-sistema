@@ -1,5 +1,4 @@
 import { hojeIsoLocal } from '../masks.js';
-
 // Icones SVG pros badges de status (multas, alertas, pneus) - a cor sozinha
 // nao chega pra quem tem daltonismo distinguir sucesso/atencao/critico;
 // forma (check/triangulo/x) da o segundo sinal. `mr-1 inline h-3 w-3`

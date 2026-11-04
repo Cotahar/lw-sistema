@@ -69,7 +69,7 @@ async function montarFormulario(registro, aoSalvar) {
     </div>
     <div><label class="label">Observacoes</label><textarea name="observacoes" class="input" rows="2"></textarea></div>
     <p class="text-xs text-slate-500">O prazo de 30 dias pra indicar o condutor (Art. 257 par. 8 CTB) e calculado automaticamente a partir da data de notificacao.</p>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">${registro ? 'Salvar alteracoes' : 'Cadastrar'}</button></div>
   `;
 
@@ -137,7 +137,7 @@ async function abrirIndicarCondutor(registro, recarregar) {
   corpo.innerHTML = `
     <div><label class="label">Motorista *</label><div data-motorista></div></div>
     <p class="hidden text-xs text-slate-500" data-sugestao></p>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="button" class="btn-primary" data-salvar>Indicar condutor</button></div>
   `;
   const motoristaSelect = criarSearchableSelect({ buscar: buscarMotoristas, placeholder: 'Pesquisar motorista...', valorInicial: registro.motorista_id ?? null, labelInicial: registro.motorista_nome || '' });

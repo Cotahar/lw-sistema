@@ -4,7 +4,7 @@ import { formatarDataHoraBr } from '../masks.js';
 import { esc } from '../html.js';
 
 export const ACAO_LABEL = { INSERT: 'Criacao', UPDATE: 'Alteracao', DELETE: 'Exclusao' };
-const ACAO_COR = { INSERT: 'bg-emerald-600', UPDATE: 'bg-brand-yellow', DELETE: 'bg-red-600' };
+const ACAO_COR = { INSERT: 'bg-emerald-600', UPDATE: 'bg-accent', DELETE: 'bg-red-600' };
 
 export function verDetalhesAuditoria(log) {
   const corpo = document.createElement('div');
@@ -47,7 +47,7 @@ export function criarTimelineAuditoria({ tabela, registroId }) {
               <span class="relative z-10 mt-1 h-4 w-4 shrink-0 rounded-full ${ACAO_COR[l.acao] || 'bg-slate-400'}"></span>
               <div class="min-w-0 flex-1">
                 <div class="flex items-center justify-between gap-2">
-                  <p class="text-sm font-medium text-slate-900">${ACAO_LABEL[l.acao] || l.acao}${l.revertido_em ? ' <span class="text-xs font-normal text-amber-600">(revertido)</span>' : ''}</p>
+                  <p class="text-sm font-medium text-slate-900">${ACAO_LABEL[l.acao] || l.acao}${l.revertido_em ? ' <span class="text-xs font-normal text-warning">(revertido)</span>' : ''}</p>
                   <button type="button" class="shrink-0 text-xs text-gray-900 hover:underline" data-ver-log="${l.id}">Detalhes</button>
                 </div>
                 <p class="text-xs text-slate-500">${formatarDataHoraBr(l.criado_em)} · ${esc(l.usuario_nome || 'sistema')}</p>
@@ -62,7 +62,7 @@ export function criarTimelineAuditoria({ tabela, registroId }) {
       });
     })
     .catch(() => {
-      el.innerHTML = '<p class="text-sm text-red-600">Nao foi possivel carregar o historico de auditoria.</p>';
+      el.innerHTML = '<p class="text-sm text-danger">Nao foi possivel carregar o historico de auditoria.</p>';
     });
 
   return { el };

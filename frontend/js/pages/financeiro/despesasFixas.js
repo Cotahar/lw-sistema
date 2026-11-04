@@ -51,7 +51,7 @@ async function abrirFormularioRateio(recarregar) {
       <div class="space-y-2" data-linhas></div>
       <p class="mt-2 text-sm" data-situacao></p>
     </div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Lancar com rateio</button></div>
   `;
   attachMoedaMaskReais(form.valor, 0);
@@ -71,9 +71,9 @@ async function abrirFormularioRateio(recarregar) {
     const diferenca = total - soma;
     if (!linhas.length) situacaoEl.innerHTML = '<span class="text-slate-400">Adicione os centros de custo que dividem o valor.</span>';
     else if (total <= 0) situacaoEl.innerHTML = `<span class="text-slate-500">Soma do rateio: ${formatarMoeda(soma)} - informe o valor total.</span>`;
-    else if (diferenca === 0) situacaoEl.innerHTML = `<span class="font-medium text-emerald-500">Rateio completo: ${formatarMoeda(soma)}</span>`;
-    else if (diferenca > 0) situacaoEl.innerHTML = `<span class="font-medium text-amber-500">Falta ratear ${formatarMoeda(diferenca)} (rateado ${formatarMoeda(soma)} de ${formatarMoeda(total)})</span>`;
-    else situacaoEl.innerHTML = `<span class="font-medium text-red-500">Rateio passou ${formatarMoeda(-diferenca)} do total (${formatarMoeda(soma)} de ${formatarMoeda(total)})</span>`;
+    else if (diferenca === 0) situacaoEl.innerHTML = `<span class="font-medium text-success">Rateio completo: ${formatarMoeda(soma)}</span>`;
+    else if (diferenca > 0) situacaoEl.innerHTML = `<span class="font-medium text-warning">Falta ratear ${formatarMoeda(diferenca)} (rateado ${formatarMoeda(soma)} de ${formatarMoeda(total)})</span>`;
+    else situacaoEl.innerHTML = `<span class="font-medium text-danger">Rateio passou ${formatarMoeda(-diferenca)} do total (${formatarMoeda(soma)} de ${formatarMoeda(total)})</span>`;
   }
 
   function removerLinha(linha) {
@@ -85,7 +85,7 @@ async function abrirFormularioRateio(recarregar) {
   function adicionarLinha({ centroId = null, centroLabel = '', valor = 0 } = {}) {
     const el = document.createElement('div');
     el.className = 'grid grid-cols-[1fr_9rem_auto] items-center gap-2';
-    el.innerHTML = '<div data-centro></div><input type="text" class="input" data-valor /><button type="button" class="text-xs text-red-600 hover:underline" data-remover>Remover</button>';
+    el.innerHTML = '<div data-centro></div><input type="text" class="input" data-valor /><button type="button" class="text-xs text-danger hover:underline" data-remover>Remover</button>';
     const select = criarSearchableSelect({ buscar: buscarCentrosCusto, placeholder: 'Centro de custo...', valorInicial: centroId, labelInicial: centroLabel });
     el.querySelector('[data-centro]').appendChild(select.el);
     const inputValor = el.querySelector('[data-valor]');
@@ -169,7 +169,7 @@ async function montarFormulario(registro, aoSalvar) {
       <div>
         <label class="label">Categoria *</label>
         <select name="categoria_id" class="input" required>${categorias.map((c) => `<option value="${c.id}">${esc(c.nome)}</option>`).join('')}</select>
-        ${!categorias.length ? '<p class="mt-1 text-xs text-amber-500">Nenhuma categoria de despesa cadastrada ainda. <a href="#/config/categorias-despesa" class="font-medium underline" data-ir-categorias>Cadastrar agora</a>.</p>' : ''}
+        ${!categorias.length ? '<p class="mt-1 text-xs text-warning">Nenhuma categoria de despesa cadastrada ainda. <a href="#/config/categorias-despesa" class="font-medium underline" data-ir-categorias>Cadastrar agora</a>.</p>' : ''}
       </div>
       <div><label class="label">Valor *</label><input type="text" name="valor" class="input" required /></div>
     </div>
@@ -188,7 +188,7 @@ async function montarFormulario(registro, aoSalvar) {
       </div>
     ` : registro.qtd_parcelas ? '<p class="text-xs text-slate-500">Parcelamento nao pode ser alterado depois de criado - veja as parcelas em Contas a Pagar.</p>' : ''}
     <div><label class="label">Descricao</label><input type="text" name="descricao" class="input" /></div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">${registro ? 'Salvar alteracoes' : 'Cadastrar'}</button></div>
   `;
   const centroSelect = criarSearchableSelect({ buscar: buscarCentrosCusto, placeholder: 'Pesquisar centro de custo...', valorInicial: registro?.centro_custo_id, labelInicial: registro?.centro_custo_nome || '' });

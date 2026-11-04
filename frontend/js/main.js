@@ -143,13 +143,10 @@ function renderShellHtml() {
   const usuario = getUsuario();
   return `
     <div class="flex min-h-screen">
-      <aside class="fixed inset-y-0 left-0 z-30 w-64 -translate-x-full transform overflow-y-auto border-r border-gray-800 bg-brand-black p-3 transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0" data-sidebar>
+      <aside class="fixed inset-y-0 left-0 z-30 w-64 -translate-x-full transform overflow-y-auto border-r border-line bg-brand-surface p-3 transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0" data-sidebar>
         <div class="mb-4 flex items-center gap-2 px-3 py-2">
-          <img src="/img/favicon.png" alt="" class="h-8 w-8 shrink-0" />
-          <div>
-            <p class="text-lg font-bold leading-tight text-white">Frottex</p>
-            <p class="text-xs leading-tight text-gray-400">Gestao de Frota</p>
-          </div>
+          <span class="logo-mark" aria-hidden="true"></span>
+          <span class="logo-word">Frottex</span>
         </div>
         <nav data-menu>${montarSidebarHtml()}</nav>
       </aside>
@@ -170,7 +167,7 @@ function renderShellHtml() {
               <span data-sino-badge class="absolute right-1.5 top-1.5 hidden h-2 w-2 rounded-full bg-red-500"></span>
             </a>
             <div class="flex items-center gap-2">
-              <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-black text-sm font-bold text-brand-yellow">
+              <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-elevated text-sm font-bold text-accent-fg">
                 ${usuario && usuario.nome ? esc(usuario.nome.charAt(0).toUpperCase()) : '?'}
               </span>
               <div class="text-right">
@@ -181,11 +178,11 @@ function renderShellHtml() {
             <button type="button" class="btn-secondary btn-sm" data-sair>Sair</button>
           </div>
         </header>
-        <div class="hidden items-center justify-between border-b border-amber-800 bg-amber-950/40 px-4 py-2 text-sm text-amber-400" data-banner-sync>
+        <div class="hidden items-center justify-between border-b border-warning/40 bg-warning-soft px-4 py-2 text-sm text-warning" data-banner-sync>
           <span>Dados foram atualizados em outra aba.</span>
           <div class="flex items-center gap-3">
             <button type="button" class="font-medium underline" data-banner-sync-atualizar>Recarregar</button>
-            <button type="button" class="text-amber-400/70 hover:text-amber-400" data-banner-sync-fechar>&times;</button>
+            <button type="button" class="text-warning/70 hover:text-warning" data-banner-sync-fechar>&times;</button>
           </div>
         </div>
         <main id="conteudo" class="flex-1 p-4 lg:p-6"></main>
@@ -358,10 +355,7 @@ function atualizarLinkAtivo() {
   appEl.querySelectorAll('.menu-link').forEach((link) => {
     const rota = link.dataset.rota;
     const ativo = hash === rota || hash.startsWith(`${rota}/`);
-    link.classList.toggle('bg-white/10', ativo);
-    link.classList.toggle('border-brand-yellow', ativo);
-    link.classList.toggle('border-transparent', !ativo);
-    link.classList.toggle('text-brand-yellow', ativo);
+    link.classList.toggle('menu-ativo', ativo);
     link.classList.toggle('font-bold', ativo);
     if (link.dataset.corBase) link.classList.toggle(link.dataset.corBase, !ativo);
     if (link.dataset.pesoBase) link.classList.toggle(link.dataset.pesoBase, !ativo);
@@ -369,7 +363,7 @@ function atualizarLinkAtivo() {
   appEl.querySelectorAll('[data-grupo]').forEach((grupo) => {
     const btn = grupo.querySelector('[data-grupo-toggle]');
     if (!btn) return;
-    const algumAtivo = grupo.querySelector('.menu-link.text-brand-yellow') !== null;
+    const algumAtivo = grupo.querySelector('.menu-link.menu-ativo') !== null;
     btn.classList.toggle('menu-grupo-ativo', algumAtivo);
   });
 }

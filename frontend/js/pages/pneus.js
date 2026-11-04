@@ -59,7 +59,7 @@ async function abrirFormularioCompraEmLote(recarregar) {
       <p class="mt-1 text-sm text-slate-500" data-resumo></p>
     </div>
     <div><label class="label">Observacoes</label><input type="text" name="observacao" class="input" /></div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Cadastrar pneus</button></div>
   `;
   attachMoedaMask(form.custo_unitario, 0);
@@ -132,7 +132,7 @@ async function abrirFormularioAquisicao(recarregar) {
     <div>${campoTexto('Medida *', 'medida').replace('/>', 'required value="295/80R22.5" />')}</div>
     <div><label class="label">Custo de aquisicao *</label><input type="text" name="custo_unitario" class="input" required /></div>
     <div><label class="label">Fornecedor</label><div data-fornecedor></div></div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Cadastrar</button></div>
   `;
   attachMoedaMask(form.custo_unitario, 0);
@@ -205,7 +205,7 @@ async function abrirInstalar(pneu, recarregar) {
       <input type="number" name="km_veiculo" class="input" />
       <p class="mt-1 text-xs text-slate-400" data-dica-km>A carreta nao tem hodometro proprio: o KM sugerido e o do conjunto (cavalo). Pode corrigir.</p>
     </div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Instalar</button></div>
   `;
   const veiculoSelect = criarSearchableSelect({
@@ -257,7 +257,7 @@ async function abrirEnviarRecapagem(pneu, recarregar) {
   form.className = 'space-y-4';
   form.innerHTML = `
     <div><label class="label">Recapadora *</label><div data-fornecedor></div></div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Enviar</button></div>
   `;
   const fornecedorSelect = criarSearchableSelect({ buscar: buscarFornecedores, placeholder: 'Pesquisar recapadora...', criarNovo: { label: 'Cadastrar novo fornecedor', abrir: criarNovoFornecedor } });
@@ -286,7 +286,7 @@ async function abrirRetornarRecapagem(pneu, recarregar) {
   form.innerHTML = `
     <div><label class="label">Recapadora</label><div data-fornecedor></div></div>
     <div><label class="label">Custo da recapagem *</label><input type="text" name="custo" class="input" required /></div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Registrar retorno</button></div>
   `;
   attachMoedaMask(form.custo, 0);

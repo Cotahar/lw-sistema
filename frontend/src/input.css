@@ -2,14 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Fonte custom (Barlow Condensed + Public Sans) - troca a fonte padrao do
-   sistema operacional por uma dupla com personalidade propria, sem tocar
-   nenhuma classe existente nas telas (ver revisao de design - "Tipografia"). */
+/* Fonte: Barlow Semi Condensed (fontFamily.sans no tailwind.config.js) com digitos tabulares -
+   alinha colunas (placas, CPF, dinheiro); so afeta numeros, letras continuam
+   normais. JetBrains Mono (font-mono) so para identificadores (placa, CPF,
+   chave de nota). */
 body {
-  font-family: 'Public Sans', ui-sans-serif, system-ui, sans-serif;
-  /* Alinha digitos em colunas (placas, CPF, dinheiro) - so afeta numeros,
-     letras continuam normais, seguro aplicar em tudo (ver parecer de
-     refatoracao, Bloco 1). */
   font-variant-numeric: tabular-nums;
 }
 
@@ -29,18 +26,13 @@ body {
 .celula-truncar .truncar-texto { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
 .celula-truncar .truncar-tooltip {
   position: absolute; z-index: 30; left: 0; top: 100%; margin-top: 4px;
-  max-width: 320px; white-space: normal; background: var(--tw-brand-surface, #1E1E1E);
-  background: #1E1E1E; color: #fff; font-size: 12.5px; line-height: 1.4;
+  max-width: 320px; white-space: normal; background: #181B20; color: #ECEEF2; font-size: 12.5px; line-height: 1.4;
   padding: 8px 10px; border-radius: 8px; box-shadow: 0 8px 20px -6px rgba(0,0,0,0.4);
-  border: 1px solid rgba(255,255,255,0.1);
+  border: 1px solid #262A31;
   opacity: 0; visibility: hidden; transition: opacity 0.12s ease-out;
   pointer-events: none;
 }
 .celula-truncar:hover .truncar-tooltip, .celula-truncar:focus-within .truncar-tooltip { opacity: 1; visibility: visible; }
-h1, h2, h3 {
-  font-family: 'Barlow Condensed', ui-sans-serif, system-ui, sans-serif;
-  letter-spacing: 0.01em;
-}
 
 /* Sistema de animacao/skeleton (entrada, saida, carregamento, progresso) -
    respeita quem desativou animacao no sistema operacional (prefers-reduced-
@@ -54,16 +46,16 @@ h1, h2, h3 {
     from { opacity: 0; transform: scale(0.96); }
     to { opacity: 1; transform: scale(1); }
   }
-  .fade-in { animation: fadeIn 0.2s ease-out both; }
+  .fade-in { animation: fadeIn 0.2s ease-out backwards; }
   .scale-in { animation: scaleIn 0.15s ease-out both; }
   .fechando { animation: scaleIn 0.12s ease-in reverse both; }
 
   /* Destaca um valor que acabou de ser recalculado automaticamente (ex.:
      resumo do acerto apos o usuario mexer num campo de ajuste) - pisca um
-     fundo amarelo e esmaece, pra chamar atencao sem exigir leitura atenta
+     fundo azul e esmaece, pra chamar atencao sem exigir leitura atenta
      de cada numero a cada debounce. */
   @keyframes flashRecalculo {
-    from { background-color: rgb(250 204 21 / 0.35); }
+    from { background-color: rgb(126 164 255 / 0.25); }
     to { background-color: transparent; }
   }
   .flash-recalculo { animation: flashRecalculo 1s ease-out both; border-radius: 0.25rem; }
@@ -82,10 +74,10 @@ h1, h2, h3 {
   .grupo-corpo.recolhido { display: none; }
 }
 
-/* Menu lateral: cada grupo (OPERACAO, FINANCEIRO, FROTA...) tem a sua cor - o cabecalho
-   vira uma faixa colorida e uma linha da mesma cor acompanha os itens do grupo, pra achar
-   a categoria de relance mesmo com o menu comprido (RGB em "R G B" pra poder aplicar
-   transparencia: rgb(var(--cor-grupo) / 0.1)). O item ativo usa a cor do proprio grupo. */
+/* Menu lateral: cada grupo (OPERACAO, FINANCEIRO, FROTA...) tem a sua cor, mas so como
+   faixa de 3px acompanhando os itens + icone do cabecalho - o texto do menu fica neutro,
+   pra a cor do grupo nao competir com o destaque (azul) nem com as semanticas (verde =
+   sucesso, etc.). RGB em "R G B" pra poder aplicar transparencia. */
 [data-grupo] { --cor-grupo: 148 163 184; }
 [data-grupo="operacao"] { --cor-grupo: 96 165 250; }
 [data-grupo="financeiro"] { --cor-grupo: 74 222 128; }
@@ -94,73 +86,125 @@ h1, h2, h3 {
 [data-grupo="relatorios"] { --cor-grupo: 244 114 182; }
 [data-grupo="administracao"] { --cor-grupo: 45 212 191; }
 .menu-grupo-toggle {
-  color: rgb(var(--cor-grupo));
-  background-color: rgb(var(--cor-grupo) / 0.1);
-  border-left: 3px solid rgb(var(--cor-grupo));
-  transition: background-color 0.12s ease-out;
+  color: #7B8290;
+  transition: background-color 0.12s ease-out, color 0.12s ease-out;
 }
-.menu-grupo-toggle:hover, .menu-grupo-toggle.menu-grupo-ativo { background-color: rgb(var(--cor-grupo) / 0.22); }
+.menu-grupo-toggle svg:not([data-grupo-chevron]) { color: rgb(var(--cor-grupo)); }
+.menu-grupo-toggle:hover, .menu-grupo-toggle.menu-grupo-ativo { color: #ECEEF2; background-color: rgb(255 255 255 / 0.05); }
 .menu-grupo-itens {
-  margin: 0.25rem 0 0 0.5rem;
+  margin: 0.25rem 0 0 0.75rem;
   padding-left: 0.25rem;
-  border-left: 2px solid rgb(var(--cor-grupo) / 0.4);
+  border-left: 3px solid rgb(var(--cor-grupo));
 }
-[data-grupo] .menu-link.text-brand-yellow { color: rgb(var(--cor-grupo)); }
-[data-grupo] .menu-link.border-brand-yellow { border-color: rgb(var(--cor-grupo)); }
+/* Item ativo: fundo "accent-soft" + texto claro; a borda esquerda usa a cor do grupo. */
+.menu-link.menu-ativo { background-color: #181B20; color: #ECEEF2; border-left-color: #7EA4FF; }
+[data-grupo] .menu-link.menu-ativo { border-left-color: rgb(var(--cor-grupo)); }
+
+@layer base {
+  /* Titulo de pagina em letreiro (Barlow Condensed) - ver fontFamily.display. */
+  h1 { @apply font-display tracking-[0.01em]; }
+}
 
 @layer components {
+  /* Logo: quadrado azul de placa de servico com a faixa tracejada da pista + letreiro */
+  .logo-mark { @apply relative inline-block h-7 w-7 shrink-0 overflow-hidden rounded-[7px] bg-accent; }
+  .logo-mark::before { content: ''; @apply absolute -bottom-0.5 -top-0.5 left-1/2 w-0.5 -translate-x-1/2 opacity-90; background: repeating-linear-gradient(to bottom, #fff 0 5px, transparent 5px 9px); }
+  .logo-word { @apply font-display text-[22px] font-bold uppercase leading-none tracking-[0.04em] text-slate-900; }
+  /* Placa Mercosul (assinatura visual): ver js/components/placa.js */
+  .placa { @apply inline-flex w-[84px] flex-col overflow-hidden rounded-[5px] bg-[#f3f2ec] align-middle text-[#16181c] shadow-[0_0_0_1px_rgba(0,0,0,0.4)]; }
+  .placa > i { @apply block h-[9px] bg-[#1f4fd0] text-center text-[6px] font-bold not-italic leading-[9px] tracking-[0.3em] text-white; }
+  .placa > b { @apply block px-1 pb-0.5 pt-px text-center font-mono text-[15px] font-bold leading-[1.25] tracking-[0.05em]; }
+  .placa-sm { @apply w-[66px]; }
+  .placa-sm > i { @apply h-[7px] text-[5px] leading-[7px]; }
+  .placa-sm > b { @apply text-[12px]; }
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-yellow focus-visible:ring-offset-2 focus-visible:ring-offset-brand-light;
+    @apply inline-flex min-h-[38px] items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-fg focus-visible:ring-offset-2 focus-visible:ring-offset-brand-light;
   }
   .btn-primary {
-    @apply btn bg-brand-yellow text-brand-black font-bold shadow-sm hover:bg-brand-yellow-hover;
+    @apply btn bg-accent text-white hover:bg-accent-hover;
   }
   .btn-secondary {
-    /* bg-brand-surface, nao bg-brand-black: no dark mode o fundo da pagina
-       (#121212) e quase identico ao brand-black (#131217) - um botao com
-       essa cor de fundo ficaria sem contraste nenhum contra a pagina. */
-    @apply btn bg-brand-surface text-white font-semibold border border-gray-700 hover:bg-brand-dark;
+    @apply btn border border-field bg-elevated text-slate-900 hover:bg-brand-dark;
   }
   .btn-danger {
     @apply btn bg-red-600 text-white hover:bg-red-700;
   }
   .btn-sm {
-    @apply px-2.5 py-1.5 text-xs;
+    @apply min-h-0 px-2.5 py-1.5 text-xs;
   }
   .input {
-    @apply block w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-yellow focus:outline-none focus:ring-1 focus:ring-brand-yellow;
+    @apply block w-full rounded-md border border-field bg-brand-light p-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-accent-fg focus:outline-none focus:ring-2 focus:ring-accent-fg/40;
   }
   .input.input-data-invalida {
-    @apply border-red-500 ring-1 ring-red-500;
+    @apply border-danger ring-1 ring-danger;
   }
   .label {
-    @apply mb-1 block text-sm font-medium text-slate-700;
+    @apply mb-1 block text-sm font-medium text-slate-500;
   }
   .card {
-    @apply rounded-xl border border-gray-100 bg-brand-surface shadow-sm;
+    @apply rounded-[14px] border border-line bg-brand-surface;
   }
   .table-th {
-    @apply px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-brand-yellow;
+    @apply px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-slate-400;
   }
   .table-td {
-    @apply px-3 py-2 text-sm text-slate-700;
+    @apply px-4 py-2.5 text-sm text-slate-800;
   }
   .badge {
-    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+    @apply inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium;
   }
-  /* Sistema de cor com nome (sucesso/atencao/critico/neutro): antes cada tela
-     redigitava a cor do Tailwind a mao (~15 arquivos, ver revisao de design).
-     Trocar a cor de um status agora e mudar uma linha aqui, nao 15 arquivos. */
+  .badge:not(:has(svg))::before { content: ''; @apply mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-current; }
+  /* Sistema de cor com nome (sucesso/atencao/critico/info/neutro): badge =
+     fundo ~14% da cor + texto num tom mais claro (contraste AA no escuro).
+     Trocar a cor de um status e mudar uma linha aqui, nao 15 arquivos. */
   .badge-sucesso {
-    @apply badge bg-emerald-100 text-emerald-700;
+    @apply badge border-success/30 bg-success-soft text-success-text;
   }
   .badge-atencao {
-    @apply badge bg-amber-100 text-amber-700;
+    @apply badge border-warning/30 bg-warning-soft text-warning-text;
   }
   .badge-critico {
-    @apply badge bg-red-100 text-red-700;
+    @apply badge border-danger/30 bg-danger-soft text-danger-text;
+  }
+  .badge-info {
+    @apply badge border-info/30 bg-info-soft text-info-text;
   }
   .badge-neutro {
-    @apply badge bg-slate-100 text-slate-500;
+    @apply badge border-field/60 bg-brand-dark text-slate-500;
   }
+  /* Faixas de aviso (antes: border-amber-800 bg-amber-950/40 digitado em cada tela). */
+  .aviso-atencao { @apply rounded-lg border border-warning/40 bg-warning-soft text-warning-text; }
+  .aviso-critico { @apply rounded-lg border border-danger/40 bg-danger-soft text-danger-text; }
 }
+
+/* Celular/toque: alvo minimo de 44px e campos em 16px (o iOS da zoom em campo
+   menor que 16px). Em tabela densa de escritorio (mouse) continua 40px/14px. */
+@media (pointer: coarse) {
+  .btn { min-height: 44px; }
+  .btn-sm { min-height: 36px; }
+}
+@media (max-width: 767px) {
+  .input { font-size: 16px; }
+}
+
+/* ---- Tabelas e controles nativos ---------------------------------------------------- */
+/* Controles nativos (scrollbar, select, calendario) no tema escuro, em vez do cinza-claro. */
+html { color-scheme: dark; }
+* { scrollbar-width: thin; scrollbar-color: #343945 transparent; }
+input[type='checkbox'], input[type='radio'] { accent-color: #2B63F0; }
+
+/* Linha de tabela: o hover clareia POR CIMA da cor da linha (gradiente), entao o tom de
+   atraso/atencao continua visivel quando o mouse passa. */
+tbody tr:hover { background-image: linear-gradient(rgb(255 255 255 / 0.04), rgb(255 255 255 / 0.04)); }
+/* Linha em estado: faixa lateral de 3px + tom leve (antes: a linha inteira preenchida,
+   pesada demais numa tabela de 20+ linhas). */
+.linha-critica { background-color: rgb(240 82 74 / 0.07); }
+.linha-critica > td:first-child { box-shadow: inset 3px 0 0 #F0524A; }
+.linha-atencao { background-color: rgb(245 184 0 / 0.07); }
+.linha-atencao > td:first-child { box-shadow: inset 3px 0 0 #F5B800; }
+/* Cabecalho: filete inferior mais forte que o das linhas, pra separar do corpo mesmo
+   com o cabecalho fixo (borda de <th> nao acompanha o sticky com border-collapse). */
+thead th { box-shadow: inset 0 -1px 0 #343945; }
+
+/* Linha selecionada (caixa marcada): fundo azul suave; a barra flutuante de lote aparece embaixo. */
+tbody tr:has(input[data-linha-check]:checked) { background-color: rgb(43 99 240 / 0.14); }

@@ -28,10 +28,10 @@ function linhaHtml(faixa, idx) {
       <td class="table-td"><input type="checkbox" data-campo="ativo" class="h-4 w-4" ${faixa.ativo === undefined || faixa.ativo ? 'checked' : ''} /></td>
       <td class="table-td text-right whitespace-nowrap">
         <button type="button" class="btn-secondary btn-sm" data-salvar>Salvar</button>
-        <button type="button" class="btn-secondary btn-sm text-red-600" data-remover>Remover</button>
+        <button type="button" class="btn-secondary btn-sm text-danger" data-remover>Remover</button>
       </td>
     </tr>
-    <tr data-linha-erro="${idx}"><td colspan="6" class="hidden px-3 pb-2 text-xs text-red-600" data-erro></td></tr>
+    <tr data-linha-erro="${idx}"><td colspan="6" class="hidden px-3 pb-2 text-xs text-danger" data-erro></td></tr>
   `;
 }
 
@@ -43,7 +43,7 @@ export async function render(container) {
     <datalist id="lista-marcas"></datalist>
     <div class="card overflow-x-auto border-gray-300 p-0">
       <table class="w-full min-w-max border-collapse">
-        <thead class="bg-brand-black"><tr>
+        <thead class="bg-elevated"><tr>
           <th class="table-th">Marca</th><th class="table-th">KM/L de</th><th class="table-th">KM/L ate</th><th class="table-th">Comissao %</th><th class="table-th">Ativa</th><th class="table-th"></th>
         </tr></thead>
         <tbody data-linhas></tbody>

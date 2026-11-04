@@ -57,7 +57,7 @@ function montarFormulario(registro, aoSalvar) {
         <p class="mt-1 text-xs text-slate-500">Usado no diagrama de pneus pra saber qual eixo e de tracao. Eixo 1 (dianteiro) nunca traciona.</p>
       </div>
     </div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2">
       <button type="submit" class="btn-primary">${registro ? 'Salvar alteracoes' : 'Cadastrar'}</button>
     </div>
@@ -160,7 +160,7 @@ export async function abrirHodometro(veiculo, recarregar) {
         </div>
         <button type="button" class="btn-primary" data-registrar>Registrar</button>
       </div>
-      <p class="hidden text-sm text-red-600" data-erro-km></p>
+      <p class="hidden text-sm text-danger" data-erro-km></p>
       <div class="max-h-64 overflow-y-auto">
         <table class="w-full text-sm">
           <thead><tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500"><th class="py-1">Data</th><th class="py-1">KM</th><th class="py-1">Origem</th></tr></thead>
@@ -200,7 +200,7 @@ export async function abrirLocalizacao(veiculo, recarregar) {
         <div class="flex-1" data-cidade-uf></div>
         <button type="button" class="btn-primary" data-registrar>Registrar</button>
       </div>
-      <p class="hidden text-sm text-red-600" data-erro-loc></p>
+      <p class="hidden text-sm text-danger" data-erro-loc></p>
       <div class="max-h-64 overflow-y-auto">
         <table class="w-full text-sm">
           <thead><tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500"><th class="py-1">Data</th><th class="py-1">Cidade/UF</th><th class="py-1">Origem</th></tr></thead>

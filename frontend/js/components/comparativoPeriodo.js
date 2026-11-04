@@ -31,7 +31,7 @@ function deltaPercentual(atual, anterior, inverterCores) {
   const variacao = ((atual - anterior) / Math.abs(anterior)) * 100;
   const subiu = variacao >= 0;
   const bom = inverterCores ? !subiu : subiu;
-  const cor = variacao === 0 ? 'text-slate-400' : bom ? 'text-emerald-600' : 'text-red-600';
+  const cor = variacao === 0 ? 'text-slate-400' : bom ? 'text-success' : 'text-danger';
   const seta = variacao === 0 ? '' : subiu ? '&uarr;' : '&darr;';
   return `<span class="text-xs font-medium ${cor}">${seta} ${Math.abs(variacao).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</span>`;
 }
@@ -58,7 +58,7 @@ export function renderComparativoPeriodo(el, { periodoAnteriorTexto, indicadores
         <p class="text-xs text-slate-400">${periodoAnteriorTexto}</p>
       </div>
       <table class="mt-2 w-full min-w-max border-collapse">
-        <thead class="bg-brand-black"><tr>
+        <thead class="bg-elevated"><tr>
           <th class="table-th">Indicador</th><th class="table-th text-right">Periodo atual</th><th class="table-th text-right">Periodo anterior</th><th class="table-th text-right">Variacao</th>
         </tr></thead>
         <tbody>${indicadores.map((i) => linha(i.label, i.atual, i.anterior, i.formatador, i.inverterCores)).join('')}</tbody>

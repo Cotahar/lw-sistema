@@ -31,13 +31,13 @@ function mostrarAviso() {
   aviso.dataset.avisoVersao = '';
   aviso.setAttribute('role', 'status');
   aviso.style.cssText = 'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:9999;display:flex;align-items:center;gap:12px;'
-    + 'max-width:calc(100vw - 32px);padding:10px 14px;border:1px solid #F5C400;border-radius:10px;background:#131217;color:#fff;font:500 14px/1.3 system-ui,sans-serif;'
+    + 'max-width:calc(100vw - 32px);padding:10px 14px;border:1px solid #F5B800;border-radius:10px;background:#181B20;color:#fff;font:500 14px/1.3 system-ui,sans-serif;'
     + 'box-shadow:0 6px 24px rgba(0,0,0,.25)';
   aviso.innerHTML = '<span>Saiu uma versao nova do Frottex. Ela entra sozinha quando voce trocar de tela.</span>';
   const botao = document.createElement('button');
   botao.type = 'button';
   botao.textContent = 'Atualizar agora';
-  botao.style.cssText = 'flex-shrink:0;padding:6px 10px;border:0;border-radius:8px;background:#F5C400;color:#131217;font-weight:700;cursor:pointer';
+  botao.style.cssText = 'flex-shrink:0;padding:6px 10px;border:0;border-radius:8px;background:#F5B800;color:#181B20;font-weight:700;cursor:pointer';
   botao.addEventListener('click', () => window.location.reload());
   aviso.appendChild(botao);
   document.body.appendChild(aviso);

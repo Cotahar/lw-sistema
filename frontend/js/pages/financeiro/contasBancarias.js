@@ -16,7 +16,7 @@ function montarFormulario(registro, aoSalvar) {
       <div><label class="label">Conta</label><input type="text" name="conta" class="input" /></div>
     </div>
     ${!registro ? '<div><label class="label">Saldo inicial</label><input type="text" name="saldo_atual" class="input" /></div>' : ''}
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">${registro ? 'Salvar alteracoes' : 'Cadastrar'}</button></div>
   `;
   form.nome.value = registro?.nome || '';
@@ -73,7 +73,7 @@ async function abrirExtrato(conta, gerenciar, recarregar) {
             <div><label class="label">Valor</label><input type="text" name="valor" class="input" required /></div>
           </div>
           <div><label class="label">Descricao</label><input type="text" name="descricao" class="input" /></div>
-          <p class="hidden text-sm text-red-600" data-erro-ajuste></p>
+          <p class="hidden text-sm text-danger" data-erro-ajuste></p>
           <div class="flex justify-end"><button type="submit" class="btn-primary btn-sm">Lancar ajuste</button></div>
         </form>
       ` : ''}
@@ -123,7 +123,7 @@ async function abrirTransferencia(recarregar) {
       <div><label class="label">Data</label><input type="text" name="data" class="input" /></div>
     </div>
     <div><label class="label">Descricao (para que foi)</label><input type="text" name="descricao" class="input" placeholder="Ex.: juntar para pagar o boleto do pedagio" /></div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Transferir</button></div>
   `;
   form.destino.value = String(contas[1].id);
@@ -187,7 +187,7 @@ async function abrirHistoricoTransferencias(gerenciar, recarregar) {
                 <td class="py-1 pr-3 text-right font-medium">${formatarMoeda(t.valor)}</td>
                 <td class="py-1 pr-3">${esc(t.descricao || '-')}</td>
                 <td class="py-1 pr-3">${esc(t.criado_por_nome || '-')}</td>
-                ${gerenciar ? `<td class="py-1 text-right"><button type="button" class="text-xs text-red-600 hover:underline" data-desfazer="${t.id}">Desfazer</button></td>` : ''}
+                ${gerenciar ? `<td class="py-1 text-right"><button type="button" class="text-xs text-danger hover:underline" data-desfazer="${t.id}">Desfazer</button></td>` : ''}
               </tr>
             `).join('') || `<tr><td colspan="${gerenciar ? 7 : 6}" class="py-4 text-center text-slate-400">Nenhuma transferencia registrada.</td></tr>`}
           </tbody>
@@ -237,14 +237,14 @@ async function abrirConferencia(recarregar) {
           </tr></thead>
           <tbody>
             ${contas.map((c) => `
-              <tr class="border-b border-slate-100 ${c.diferenca !== 0 ? 'bg-red-950/40' : ''}">
+              <tr class="border-b border-slate-100 ${c.diferenca !== 0 ? 'bg-danger-soft' : ''}">
                 <td class="py-1 pr-3">${esc(c.nome)}${c.ativo ? '' : ' <span class="badge-neutro">Inativa</span>'}<br /><span class="text-xs text-slate-500">${c.lancamentos} lancamento(s)${c.ultimo_lancamento ? `, ultimo em ${formatarDataBr(c.ultimo_lancamento)}` : ''}</span></td>
                 <td class="py-1 pr-3 text-right">${formatarMoeda(c.saldo_inicial)}</td>
                 <td class="py-1 pr-3 text-right">${formatarMoeda(c.entradas)}</td>
                 <td class="py-1 pr-3 text-right">${formatarMoeda(c.saidas)}</td>
                 <td class="py-1 pr-3 text-right">${formatarMoeda(c.saldo_calculado)}</td>
                 <td class="py-1 pr-3 text-right">${formatarMoeda(c.saldo_atual)}</td>
-                <td class="py-1 pr-3 text-right font-medium ${c.diferenca !== 0 ? 'text-red-600' : 'text-emerald-600'}">${c.diferenca !== 0 ? formatarMoeda(c.diferenca) : 'ok'}</td>
+                <td class="py-1 pr-3 text-right font-medium ${c.diferenca !== 0 ? 'text-danger' : 'text-success'}">${c.diferenca !== 0 ? formatarMoeda(c.diferenca) : 'ok'}</td>
                 ${admin ? `<td class="py-1 text-right whitespace-nowrap">${c.diferenca !== 0 ? `
                   <button type="button" class="text-xs hover:underline" data-acertar="recalcular" data-id="${c.id}" title="O extrato esta certo: o saldo passa a ser o calculado">Usar o calculado</button>
                   <button type="button" class="ml-2 text-xs hover:underline" data-acertar="registrar_ajuste" data-id="${c.id}" title="O saldo registrado esta certo (bate com o banco): lanca a diferenca no extrato">Lancar diferenca</button>` : ''}</td>` : ''}
@@ -311,7 +311,7 @@ export async function render(container) {
         ${podeGerenciar('contas_bancarias') ? '<button type="button" class="btn-primary btn-sm" data-transferir>Transferir entre contas</button>' : ''}
       </div>
     </div>
-    <div class="mb-3 hidden flex-wrap items-center gap-3 rounded-lg border border-amber-800 bg-amber-950/40 px-4 py-2 text-sm text-amber-400" data-aviso-conferencia></div>
+    <div class="mb-3 hidden flex-wrap items-center gap-3 rounded-lg border border-warning bg-warning-soft px-4 py-2 text-sm text-warning" data-aviso-conferencia></div>
     <div data-tabela></div>
   `;
   const gerenciar = podeGerenciar('contas_bancarias');

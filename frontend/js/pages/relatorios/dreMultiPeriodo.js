@@ -42,7 +42,7 @@ export async function render(container) {
     ultimoResultado = resultado;
     tabelaEl.innerHTML = `
       <table class="w-full min-w-max border-collapse">
-        <thead class="bg-brand-black"><tr>
+        <thead class="bg-elevated"><tr>
           <th class="table-th">Mes</th><th class="table-th text-right">Receita</th><th class="table-th text-right">Custo</th><th class="table-th text-right">Lucro</th>
         </tr></thead>
         <tbody>
@@ -51,7 +51,7 @@ export async function render(container) {
               <td class="table-td">${m.periodo}</td>
               <td class="table-td text-right">${formatarMoeda(m.receita)}</td>
               <td class="table-td text-right">${formatarMoeda(m.custo)}</td>
-              <td class="table-td text-right font-medium ${m.lucro >= 0 ? 'text-emerald-500' : 'text-red-500'}">${formatarMoeda(m.lucro)}</td>
+              <td class="table-td text-right font-medium ${m.lucro >= 0 ? 'text-success' : 'text-danger'}">${formatarMoeda(m.lucro)}</td>
             </tr>
           `).join('') || '<tr><td colspan="4" class="table-td py-6 text-center text-slate-400">Sem dados.</td></tr>'}
         </tbody>

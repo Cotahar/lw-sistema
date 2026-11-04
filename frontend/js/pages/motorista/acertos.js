@@ -11,7 +11,6 @@ function linha(rotulo, valor, destaque = false) {
   </div>`;
 }
 
-
 // Reembolsos/descontos linha a linha, recuados sob o total da categoria.
 function linhasItens(itens) {
   return itens.map((i) => `<div class="flex items-center justify-between py-1 pl-3 text-xs text-slate-500"><span>&bull; ${esc(i.descricao)}</span><span>${formatarMoeda(i.valor)}</span></div>`).join('');
@@ -36,7 +35,7 @@ export async function render(appEl, params = {}) {
 async function renderLista(appEl) {
   appEl.innerHTML = `
     <div class="min-h-screen bg-brand-light pb-6">
-      <header class="flex items-center gap-3 bg-brand-black px-4 py-3 text-white">
+      <header class="flex items-center gap-3 bg-brand-surface px-4 py-3 text-white">
         <button type="button" class="rounded-lg p-1 hover:bg-white/10" data-voltar>
           <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
         </button>
@@ -71,14 +70,14 @@ async function renderLista(appEl) {
       btn.addEventListener('click', () => navegar(`/motorista/acertos/${btn.dataset.acerto}`));
     });
   } catch (err) {
-    conteudo.innerHTML = '<div class="card p-6 text-center text-red-600">Nao foi possivel carregar os acertos. Confira sua conexao e tente novamente.</div>';
+    conteudo.innerHTML = '<div class="card p-6 text-center text-danger">Nao foi possivel carregar os acertos. Confira sua conexao e tente novamente.</div>';
   }
 }
 
 async function renderDetalhe(appEl, id) {
   appEl.innerHTML = `
     <div class="min-h-screen bg-brand-light pb-6">
-      <header class="flex items-center gap-3 bg-brand-black px-4 py-3 text-white">
+      <header class="flex items-center gap-3 bg-brand-surface px-4 py-3 text-white">
         <button type="button" class="rounded-lg p-1 hover:bg-white/10" data-voltar>
           <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
         </button>
@@ -123,6 +122,6 @@ async function renderDetalhe(appEl, id) {
       </div>
     `;
   } catch (err) {
-    conteudo.innerHTML = '<div class="card p-6 text-center text-red-600">Acerto nao encontrado.</div>';
+    conteudo.innerHTML = '<div class="card p-6 text-center text-danger">Acerto nao encontrado.</div>';
   }
 }

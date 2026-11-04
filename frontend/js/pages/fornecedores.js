@@ -31,7 +31,7 @@ export const render = criarPaginaCrud({
   modulo: 'fornecedores',
   campos: camposFormulario,
   colunas: [
-    { chave: 'favorito', titulo: '', render: (r) => (r.favorito ? '<span title="Favorito" class="text-amber-500">★</span>' : '') },
+    { chave: 'favorito', titulo: '', render: (r) => (r.favorito ? '<span title="Favorito" class="text-warning">★</span>' : '') },
     { chave: 'nome', titulo: 'Nome' },
     { chave: 'cnpj', titulo: 'CPF/CNPJ', render: (r) => (r.cnpj ? comCopiar(formatarCpfCnpj(r.cnpj)) : '-') },
     { chave: 'tipo_nome', titulo: 'Tipo' },

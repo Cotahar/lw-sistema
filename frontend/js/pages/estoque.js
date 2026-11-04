@@ -19,7 +19,7 @@ function montarFormularioItem(registro, aoSalvar) {
       <div><label class="label">Unidade</label><input type="text" name="unidade_medida" class="input" placeholder="UN" /></div>
     </div>
     <div><label class="label">Estoque minimo</label><input type="number" name="estoque_minimo" class="input" step="0.01" /></div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">${registro ? 'Salvar alteracoes' : 'Cadastrar'}</button></div>
   `;
   form.nome.value = registro?.nome || '';
@@ -81,7 +81,7 @@ function abrirFormularioMovimentacao(recarregarTudo) {
     <div data-bloco-fornecedor><label class="label">Fornecedor (compra)</label><div data-fornecedor-select></div></div>
     <div data-bloco-veiculo class="hidden"><label class="label">Instalar no veiculo (opcional)</label><div data-veiculo-select></div></div>
     <div><label class="label">Observacao</label><textarea name="observacao" class="input" rows="2"></textarea></div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Registrar</button></div>
   `;
   const itemSelect = criarSearchableSelect({ buscar: buscarItensEstoque, placeholder: 'Pesquisar item...' });

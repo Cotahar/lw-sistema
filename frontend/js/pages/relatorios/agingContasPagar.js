@@ -81,7 +81,7 @@ export async function render(container) {
     });
   }
 
-  const COR_TEXTO = { zinc: 'text-slate-900', amber: 'text-amber-400', red: 'text-red-600' };
+  const COR_TEXTO = { zinc: 'text-slate-900', amber: 'text-warning', red: 'text-danger' };
   function renderFaixas(dados) {
     const faixas = calcularFaixas(dados);
     faixasEl.innerHTML = faixas.map((f) => `
@@ -103,7 +103,7 @@ export async function render(container) {
       { chave: 'saldo_pendente', titulo: 'Saldo pendente', render: (r) => `<span class="font-semibold">${formatarMoeda(r.saldo_pendente)}</span>`, exportar: (r) => r.saldo_pendente / 100 },
     ],
     ordenacaoInicial: { chave: 'data_vencimento', direcao: 'asc' },
-    corLinha: (r) => (r.dias_vencido > 30 ? 'bg-red-950/40' : ''),
+    corLinha: (r) => (r.dias_vencido > 30 ? 'linha-critica' : ''),
     exportar: { nomeArquivo: 'aging-contas-pagar' },
     buscarDados: async (termo) => {
       const params = new URLSearchParams();

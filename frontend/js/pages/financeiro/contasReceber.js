@@ -46,7 +46,7 @@ function abrirEditarPrevisao(conta, recarregar) {
   form.innerHTML = `
     <p class="text-sm text-slate-500">Frete #${conta.frete_id} (viagem #${conta.viagem_id}) &middot; ${esc(conta.origem_cidade)}/${esc(conta.origem_uf)} &rarr; ${esc(conta.destino_cidade)}/${esc(conta.destino_uf)}</p>
     <div class="max-w-[12rem]"><label class="label">Previsao de recebimento *</label><input type="text" name="data_prevista" class="input" required /></div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Salvar previsao</button></div>
   `;
   attachDataMask(form.data_prevista, conta.data_prevista);
@@ -121,13 +121,13 @@ export async function render(container) {
       { chave: 'motorista_nome', titulo: 'Motorista', render: (r) => esc(r.motorista_nome || '-') },
       { chave: 'transportadora_nome', titulo: 'Transportadora', render: (r) => esc(r.transportadora_nome || '-') },
       { chave: 'valor', titulo: 'Valor', render: (r) => formatarMoeda(r.valor), exportar: (r) => r.valor / 100 },
-      { chave: 'saldo', titulo: 'Saldo em Aberto', render: (r) => `<span class="${saldoEmAberto(r) > 0 ? 'font-semibold text-amber-400' : ''}">${formatarMoeda(saldoEmAberto(r))}</span>`, exportar: (r) => saldoEmAberto(r) / 100 },
+      { chave: 'saldo', titulo: 'Saldo em Aberto', render: (r) => `<span class="${saldoEmAberto(r) > 0 ? 'font-semibold text-warning' : ''}">${formatarMoeda(saldoEmAberto(r))}</span>`, exportar: (r) => saldoEmAberto(r) / 100 },
       { chave: 'criado_em', titulo: 'Cadastro', render: (r) => formatarDataBr(r.criado_em) },
       { chave: 'data_prevista', titulo: 'Previsto', render: (r) => `${formatarDataBr(r.data_prevista)}${badgePrazoVencimento(r.data_prevista, r.status === 'Recebido')}`, exportar: (r) => formatarDataBr(r.data_prevista) },
       { chave: 'status', titulo: 'Status', render: (r) => `<span class="${STATUS_BADGE[r.status]}">${esc(r.status)}</span>`, exportar: (r) => r.status },
     ],
     ordenacaoInicial: { chave: 'data_prevista', direcao: 'asc' },
-    corLinha: (r) => (r.status !== 'Recebido' && r.data_prevista < hojeIsoLocal() ? 'bg-red-950/40' : ''),
+    corLinha: (r) => (r.status !== 'Recebido' && r.data_prevista < hojeIsoLocal() ? 'linha-critica' : ''),
     exportar: { nomeArquivo: 'contas-a-receber' },
     buscarDados: async () => {
       const params = new URLSearchParams();
@@ -142,9 +142,9 @@ export async function render(container) {
       const saldoTotal = pendentes.reduce((t, r) => t + saldoEmAberto(r), 0);
       const vencidos = pendentes.filter((r) => new Date(`${r.data_prevista}T00:00:00Z`) < new Date(`${hojeIsoLocal()}T00:00:00Z`)).length;
       resumoEl.innerHTML = `
-        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Saldo pendente total</p><p class="mt-1 text-2xl font-bold text-amber-400">${formatarMoeda(saldoTotal)}</p></div>
+        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Saldo pendente total</p><p class="mt-1 text-2xl font-bold text-warning">${formatarMoeda(saldoTotal)}</p></div>
         <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Fretes com saldo pendente</p><p class="mt-1 text-2xl font-bold text-slate-900">${pendentes.length}</p></div>
-        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Fretes vencidos</p><p class="mt-1 text-2xl font-bold ${vencidos ? 'text-red-600' : 'text-slate-900'}">${vencidos}</p></div>
+        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Fretes vencidos</p><p class="mt-1 text-2xl font-bold ${vencidos ? 'text-danger' : 'text-slate-900'}">${vencidos}</p></div>
       `;
       return dados;
     },

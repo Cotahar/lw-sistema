@@ -43,7 +43,7 @@ function recalcularTrio(formPreco, formLitragem, formValor, campoEditado) {
 export async function render(appEl) {
   appEl.innerHTML = `
     <div class="min-h-screen bg-brand-light">
-      <header class="flex items-center gap-3 bg-brand-black px-4 py-3 text-white">
+      <header class="flex items-center gap-3 bg-brand-surface px-4 py-3 text-white">
         <button type="button" class="rounded-lg p-1 hover:bg-white/10" data-voltar>
           <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
         </button>
@@ -72,7 +72,7 @@ export async function render(appEl) {
             <div class="mt-2 hidden space-y-3 rounded-lg border border-slate-200 p-3" data-novo-posto-bloco>
               <div><label class="label">Nome do novo posto</label><input type="text" class="input" data-novo-posto-nome /></div>
               <div><label class="label">Localizacao</label><input type="text" class="input" data-novo-posto-localizacao placeholder="Cidade/UF ou nome do local" /></div>
-              <p class="hidden text-xs text-red-600" data-erro-novo-posto></p>
+              <p class="hidden text-xs text-danger" data-erro-novo-posto></p>
               <div class="flex gap-2">
                 <button type="button" class="btn-primary flex-1" data-confirmar-novo-posto>Cadastrar e usar</button>
                 <button type="button" class="btn-secondary" data-cancelar-novo-posto>Cancelar</button>
@@ -106,7 +106,7 @@ export async function render(appEl) {
             <button type="button" class="btn-secondary w-full min-h-[48px]" data-tirar-foto>Tirar foto</button>
             <img class="mt-2 hidden w-full rounded-lg border border-slate-200" data-preview-foto />
           </div>
-          <p class="hidden text-sm text-red-600" data-erro></p>
+          <p class="hidden text-sm text-danger" data-erro></p>
           <button type="submit" class="btn-primary w-full min-h-[48px]">Lancar abastecimento</button>
         </form>
       </main>

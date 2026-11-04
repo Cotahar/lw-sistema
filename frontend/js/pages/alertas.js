@@ -31,7 +31,7 @@ async function abrirNovaRegra(recarregar) {
       <input type="number" name="intervalo_km" class="input" required min="1" step="1" />
       <p class="mt-1 text-xs text-slate-500" data-previa>O intervalo e contado desde o 0 km: com 25.000 km, os alertas disparam em 25.000, 50.000, 75.000...</p>
     </div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Cadastrar</button></div>
   `;
   const veiculoSelect = criarSearchableSelect({ buscar: buscarVeiculos, placeholder: 'Pesquisar placa...', onChange: () => atualizarPrevia() });

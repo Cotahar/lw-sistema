@@ -81,7 +81,7 @@ export async function render(container) {
       <div class="card overflow-x-auto border-gray-300 p-0">
         <div class="px-4 pt-3"><h2 class="font-semibold text-slate-900">Lancamentos por ${grupo.label}</h2></div>
         <table class="mt-2 w-full min-w-max border-collapse">
-          <thead class="bg-brand-black"><tr><th class="table-th">${grupo.label}</th><th class="table-th text-right">Qtd</th></tr></thead>
+          <thead class="bg-elevated"><tr><th class="table-th">${grupo.label}</th><th class="table-th text-right">Qtd</th></tr></thead>
           <tbody>
             ${grupo.linhas.map(([chave, qtd]) => `
               <tr class="border-b border-slate-100 last:border-0"><td class="table-td">${chave}</td><td class="table-td text-right font-medium">${qtd}</td></tr>

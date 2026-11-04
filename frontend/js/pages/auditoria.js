@@ -34,7 +34,7 @@ export async function render(container) {
     </div>
     <div class="card overflow-x-auto border-gray-300 p-0">
       <table class="w-full min-w-max border-collapse">
-        <thead class="bg-brand-black"><tr>
+        <thead class="bg-elevated"><tr>
           <th class="table-th">Data</th><th class="table-th">Tabela</th><th class="table-th">Registro</th>
           <th class="table-th">Acao</th><th class="table-th">Usuario</th><th class="table-th">Status</th><th class="table-th"></th>
         </tr></thead>
@@ -61,7 +61,7 @@ export async function render(container) {
           <td class="table-td">${l.revertido_em ? `Revertido (${esc(l.revertido_por_nome || '')} &middot; ${formatarDataHoraBr(l.revertido_em)})` : '-'}</td>
           <td class="table-td text-right whitespace-nowrap">
             <button type="button" class="text-xs text-gray-900 hover:underline" data-detalhes="${l.id}">Detalhes</button>
-            ${l.revertido_em ? '' : `<button type="button" class="ml-2 text-xs text-red-600 hover:underline" data-reverter="${l.id}">Reverter</button>`}
+            ${l.revertido_em ? '' : `<button type="button" class="ml-2 text-xs text-danger hover:underline" data-reverter="${l.id}">Reverter</button>`}
           </td>
         </tr>
       `).join('') : '<tr><td colspan="7" class="table-td py-6 text-center text-slate-400">Nenhum registro.</td></tr>';
@@ -75,7 +75,7 @@ export async function render(container) {
         btn.addEventListener('click', () => reverter(log, () => carregar(filtroInput.value.trim())));
       });
     } catch (err) {
-      tbody.innerHTML = '<tr><td colspan="7" class="table-td py-6 text-center text-red-600">Erro ao carregar.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="table-td py-6 text-center text-danger">Erro ao carregar.</td></tr>';
       mostrarErro(err);
     }
   }

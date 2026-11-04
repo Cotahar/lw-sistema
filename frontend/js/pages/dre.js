@@ -58,7 +58,7 @@ function deltaPercentual(atual, anterior, inverterCores = false) {
   const variacao = ((atual - anterior) / Math.abs(anterior)) * 100;
   const subiu = variacao >= 0;
   const bom = inverterCores ? !subiu : subiu;
-  const cor = variacao === 0 ? 'text-slate-400' : bom ? 'text-emerald-600' : 'text-red-600';
+  const cor = variacao === 0 ? 'text-slate-400' : bom ? 'text-success' : 'text-danger';
   const seta = variacao === 0 ? '' : subiu ? '&uarr;' : '&darr;';
   return `<span class="text-xs font-medium ${cor}">${seta} ${Math.abs(variacao).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</span>`;
 }
@@ -86,7 +86,7 @@ async function renderComparativo(container, inicio, fim) {
           <p class="text-xs text-slate-400">${formatarDataBr(comp.anterior.periodo.inicio)} a ${formatarDataBr(comp.anterior.periodo.fim)}</p>
         </div>
         <table class="mt-2 w-full min-w-max border-collapse">
-          <thead class="bg-brand-black"><tr>
+          <thead class="bg-elevated"><tr>
             <th class="table-th">Indicador</th><th class="table-th text-right">Periodo atual</th><th class="table-th text-right">Periodo anterior</th><th class="table-th text-right">Variacao</th>
           </tr></thead>
           <tbody>
@@ -132,14 +132,14 @@ async function renderGeral(resultadoEl, inicio, fim, selecionarConjunto) {
       ${cartao('Receita Total', formatarMoeda(dre.receitaTotal))}
       ${cartao('Custo Total (frota)', formatarMoeda(dre.custoTotalVeiculos))}
       ${cartao('Despesas Base/Admin', formatarMoeda(despesasBaseTotal))}
-      ${cartao('Lucro Liquido', formatarMoeda(dre.lucroLiquido), dre.lucroLiquido >= 0 ? 'text-emerald-600' : 'text-red-600')}
+      ${cartao('Lucro Liquido', formatarMoeda(dre.lucroLiquido), dre.lucroLiquido >= 0 ? 'text-success' : 'text-danger')}
     </div>
     ${semNenhumValor ? `
       <p class="mt-3 text-xs text-slate-400">Tudo zerado neste periodo (${formatarDataBr(inicio) || 'inicio'} a ${formatarDataBr(fim) || 'hoje'}), mas ha composicoes cadastradas. Se esperava ver valores, confira se o filtro de datas acima cobre a data dos fretes/despesas lancados.</p>
     ` : ''}
     <div class="card mt-6 overflow-x-auto border-gray-300 p-0">
       <table class="w-full min-w-max border-collapse">
-        <thead class="bg-brand-black"><tr>
+        <thead class="bg-elevated"><tr>
           <th class="table-th">Conjunto</th><th class="table-th text-right">Receita</th><th class="table-th text-right">Custo</th><th class="table-th text-right">Lucro</th><th class="table-th"></th>
         </tr></thead>
         <tbody>
@@ -153,7 +153,7 @@ async function renderGeral(resultadoEl, inicio, fim, selecionarConjunto) {
               </td>
               <td class="table-td text-right">${formatarMoeda(c.receita)}</td>
               <td class="table-td text-right">${formatarMoeda(c.custoTotal)}</td>
-              <td class="table-td text-right ${c.lucro >= 0 ? 'text-emerald-600' : 'text-red-600'}">${formatarMoeda(c.lucro)}</td>
+              <td class="table-td text-right ${c.lucro >= 0 ? 'text-success' : 'text-danger'}">${formatarMoeda(c.lucro)}</td>
               <td class="table-td text-right">${c.conjunto_id ? `<button type="button" class="text-sm text-gray-900 hover:underline" data-detalhar-conjunto="${c.conjunto_id}" data-conjunto-label="${(c.nome || '').replace(/"/g, '')} (${rotuloPlacas(c.placas)})">Detalhar</button>` : ''}</td>
             </tr>
           `).join('') || '<tr><td colspan="5" class="table-td py-6 text-center text-slate-400">Sem dados no periodo.</td></tr>'}
@@ -227,7 +227,7 @@ async function renderConjunto(resultadoEl, conjuntoId, inicio, fim) {
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       ${cartao('Receita do conjunto', formatarMoeda(dre.receita))}
       ${cartao('Custo Total do conjunto', formatarMoeda(dre.custos.total))}
-      ${cartao('Lucro', formatarMoeda(dre.lucro), dre.lucro >= 0 ? 'text-emerald-600' : 'text-red-600')}
+      ${cartao('Lucro', formatarMoeda(dre.lucro), dre.lucro >= 0 ? 'text-success' : 'text-danger')}
     </div>
     ${semNenhumValor ? `
       <p class="mt-3 text-xs text-slate-400">Tudo zerado neste conjunto entre ${formatarDataBr(inicio) || 'o inicio'} e ${formatarDataBr(fim) || 'hoje'}. Se esperava ver valores, confira se o periodo filtrado acima cobre a data dos fretes/despesas lancados.</p>
@@ -235,7 +235,7 @@ async function renderConjunto(resultadoEl, conjuntoId, inicio, fim) {
     <div class="card mt-6 overflow-x-auto border-gray-300 p-0">
       <h2 class="px-4 pt-3 font-semibold text-slate-900">Custos por unidade do conjunto</h2>
       <table class="mt-2 w-full min-w-max border-collapse">
-        <thead class="bg-brand-black"><tr>
+        <thead class="bg-elevated"><tr>
           <th class="table-th">Categoria</th>
           ${unidades.map((v) => `<th class="table-th text-right">${esc(v.placa)}<br /><span class="font-normal normal-case opacity-70">${TIPO_ROTULO[v.tipo] || v.tipo}${v.contabilizadoEmOutroConjunto ? ' (custo em outro conjunto)' : ''}</span></th>`).join('')}
           <th class="table-th text-right">Total do conjunto</th>
@@ -283,7 +283,7 @@ async function renderConjunto(resultadoEl, conjuntoId, inicio, fim) {
           ? itens.map(linhaDetalheDre).join('')
           : '<p class="text-slate-400">Nenhum lancamento no periodo.</p>';
       } catch (err) {
-        corpo.innerHTML = `<p class="text-red-600">${err.message}</p>`;
+        corpo.innerHTML = `<p class="text-danger">${err.message}</p>`;
       }
     });
   });

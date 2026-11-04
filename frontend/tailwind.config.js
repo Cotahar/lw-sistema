@@ -3,37 +3,63 @@ module.exports = {
   content: ['./index.html', './js/**/*.js'],
   theme: {
     extend: {
+      borderColor: { DEFAULT: '#262A31' },
+      // Tipografia "letreiro de rodovia": Barlow Semi Condensed na interface (cabe mais coluna
+      // na tabela), Barlow Condensed nos titulos e numeros grandes (font-display), JetBrains
+      // Mono so em identificadores. A condensada le menor, entao a escala sobe ~1px.
+      fontSize: {
+        xs: ['0.8125rem', '1.15rem'],
+        sm: ['0.9375rem', '1.35rem'],
+        base: ['1.0625rem', '1.55rem'],
+        lg: ['1.1875rem', '1.65rem'],
+        xl: ['1.375rem', '1.8rem'],
+        '2xl': ['1.75rem', '2rem'],
+        '3xl': ['2.125rem', '2.35rem'],
+        '4xl': ['2.625rem', '1'],
+      },
+      fontFamily: {
+        sans: ['"Barlow Semi Condensed"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        display: ['"Barlow Condensed"', '"Barlow Semi Condensed"', 'ui-sans-serif', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+      },
       colors: {
-        // Design system Criciuma EC (amarelo/preto/branco), alto contraste.
-        'brand-yellow': '#FACC15',
-        'brand-yellow-hover': '#EAB308',
-        'brand-black': '#131217',
-        'brand-dark': '#1F2937',
-        // Dark mode fixo pro sistema inteiro (escritorio + motorista), sem
-        // alternancia - pedido explicito do usuario. #121212 em vez de preto
-        // puro evita fadiga ocular (Bloco 1 do parecer de refatoracao).
-        'brand-light': '#121212',
-        // Superficie "elevada" (cards, modais, dropdowns) - um tom mais claro
-        // que o fundo da pagina pra dar profundidade, como bg-white fazia no
-        // claro (pagina cinza-clara + card branco). Substitui bg-white nesses
-        // usos; texto branco de verdade (text-white) continua intacto.
-        'brand-surface': '#1E1E1E',
-        // slate/gray: a maioria do sistema usa essas escalas de forma
-        // "posicional" (900 = texto principal, 50/100 = fundo sutil, etc) -
-        // invertida aqui pra virar dark mode automaticamente em ~98% dos
-        // usos, sem tocar em nenhuma tela. As poucas excecoes onde
-        // slate/gray-800/900 eram usados como fundo FIXO escuro (hover do
-        // menu, scrim de modal, toast) foram trocadas por bg-white/10,
-        // bg-black/40 ou brand-dark - ver commits desta mudanca.
+        // Sistema visual "Rodovia" (tema escuro fixo, escritorio + motorista).
+        // Superficies = asfalto (grafite levemente quente, sem preto puro); cores de estado =
+        // sinalizacao rodoviaria brasileira: azul (servico/acao), amarelo (advertencia),
+        // vermelho (regulamentacao), verde (indicacao). Contrastes AA conferidos.
+        'brand-light': '#0B0C0E', // asfalto: fundo da pagina
+        'brand-surface': '#121418', // pista: card
+        elevated: '#181B20', // meio-fio: modal, menu, dropdown, cabecalho de tabela
+        'brand-dark': '#1F2329', // calcada: hover de linha/botao secundario
+        line: '#262A31', // filete
+        field: '#343945', // borda de campo e de botao secundario
+
+        // Placa de servico (azul) = acao principal. "fg" = tom claro p/ texto, link e foco.
+        accent: {
+          DEFAULT: '#2B63F0',
+          hover: '#1F52D6',
+          fg: '#7EA4FF',
+          soft: '#161F36',
+        },
+        // DEFAULT = cor base (texto/borda/faixa), soft = fundo (~12% da cor sobre o card),
+        // text = tom claro p/ texto sobre o "soft".
+        success: { DEFAULT: '#2BB673', soft: '#152723', text: '#6FDBA5' },
+        warning: { DEFAULT: '#F5B800', soft: '#2D2815', text: '#FFD34D' },
+        danger: { DEFAULT: '#F0524A', soft: '#2D1B1E', text: '#FF8B84' },
+        info: { DEFAULT: '#7EA4FF', soft: '#161F36', text: '#A9C1FF' },
+
+        // slate/gray: o sistema usa essas escalas de forma "posicional" (900 = texto principal,
+        // 50/100 = fundo sutil...) - invertida aqui pra virar dark mode. 400 = texto auxiliar
+        // (muted), 500 = texto secundario.
         slate: {
-          50: '#18171C', 100: '#1F1E23', 200: '#2B2A30', 300: '#3D3B42',
-          400: '#68656F', 500: '#8B8894', 600: '#ACA9B3', 700: '#C9C6CE',
-          800: '#E1DFE4', 900: '#F5F4F6', 950: '#FAFAFB',
+          50: '#0B0C0E', 100: '#181B20', 200: '#262A31', 300: '#343945',
+          400: '#7B8290', 500: '#A3A9B5', 600: '#BDC2CB', 700: '#D3D7DE',
+          800: '#E5E7EC', 900: '#ECEEF2', 950: '#F7F8FA',
         },
         gray: {
-          50: '#18181A', 100: '#1F1F21', 200: '#2C2C2F', 300: '#3E3E42',
-          400: '#69696E', 500: '#8C8C91', 600: '#ADADB1', 700: '#CACACD',
-          800: '#E2E2E3', 900: '#F5F5F6', 950: '#FAFAFA',
+          50: '#0B0C0E', 100: '#181B20', 200: '#262A31', 300: '#343945',
+          400: '#7B8290', 500: '#A3A9B5', 600: '#BDC2CB', 700: '#D3D7DE',
+          800: '#E5E7EC', 900: '#ECEEF2', 950: '#F7F8FA',
         },
       },
     },

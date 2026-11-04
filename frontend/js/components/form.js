@@ -30,7 +30,7 @@ export function criarFormulario({ campos, valoresIniciais = {}, aoSalvar, textoS
 
   function criarBlocoErro(bloco, elParaBorda) {
     const erroCampo = document.createElement('p');
-    erroCampo.className = 'mt-1 hidden text-xs text-red-500';
+    erroCampo.className = 'mt-1 hidden text-xs text-danger';
     bloco.appendChild(erroCampo);
     return (msg) => {
       elParaBorda.classList.toggle('border-red-500', Boolean(msg));
@@ -71,7 +71,7 @@ export function criarFormulario({ campos, valoresIniciais = {}, aoSalvar, textoS
       // cadastrar isso (campo.avisoSemOpcoes: {mensagem, rota}).
       if (campo.obrigatorio && !(campo.opcoes || []).length && campo.avisoSemOpcoes) {
         const aviso = document.createElement('p');
-        aviso.className = 'mt-1 text-xs text-amber-500';
+        aviso.className = 'mt-1 text-xs text-warning';
         aviso.innerHTML = campo.avisoSemOpcoes.rota
           ? `${campo.avisoSemOpcoes.mensagem} <a href="#${campo.avisoSemOpcoes.rota}" class="font-medium underline" data-ir-cadastrar>Cadastrar agora</a>.`
           : campo.avisoSemOpcoes.mensagem;
@@ -146,7 +146,7 @@ export function criarFormulario({ campos, valoresIniciais = {}, aoSalvar, textoS
   }
 
   const erro = document.createElement('p');
-  erro.className = 'hidden text-sm text-red-600';
+  erro.className = 'hidden text-sm text-danger';
   form.appendChild(erro);
 
   const rodape = document.createElement('div');

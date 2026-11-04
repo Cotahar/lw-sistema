@@ -107,7 +107,7 @@ function montarFormularioFrete(aoSalvar, frete, transportadoraLabelInicial) {
       <div><label class="label">Previsao de recebimento</label><input type="text" name="data_prevista_recebimento" class="input" /></div>
     </div>
     <p class="-mt-2 text-xs text-slate-400">A previsao de recebimento sugere a data de descarga + 3 dias; pode ser alterada aqui ou depois em Contas a Receber.</p>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">${frete ? 'Salvar alteracoes' : 'Cadastrar frete'}</button></div>
   `;
   const transportadoraSelect = criarSearchableSelect({
@@ -281,7 +281,7 @@ export async function abrirNovaDespesa(viagemId, recarregar, centroCustoPadrao) 
       </details>
     </div>
     <div><label class="label">Observacao</label><textarea name="observacao" class="input" rows="2"></textarea></div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Cadastrar despesa</button></div>
   `;
   attachMoedaMask(form.valor, 0);
@@ -565,7 +565,7 @@ function montarFormularioDespesaExistente({ despesa, arlaDespesa, categoriaNome,
         <input type="text" name="data_vencimento" class="input" placeholder="Fatura do posto" />
       </div>
     ` : ''}
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">${textoSubmit}</button></div>
   `;
 
@@ -762,7 +762,7 @@ async function abrirFormAdiantamento({ viagemId, adiantamento = null, recarregar
     <div><label class="label">Data</label><input type="text" name="data" class="input" /></div>
     <div><label class="label">Conta bancaria (se saiu de verdade do caixa)</label><div data-conta-select></div></div>
     <div><label class="label">Descricao</label><input type="text" name="descricao" class="input" /></div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">${adiantamento ? 'Salvar alteracoes' : 'Lancar adiantamento'}</button></div>
   `;
   attachMoedaMaskReais(form.valor, adiantamento ? adiantamento.valor : 0);
@@ -834,7 +834,7 @@ async function abrirFinalizar(viagem, recarregarPagina) {
     <p class="text-sm text-slate-600">KM inicial: ${viagem.km_inicial.toLocaleString('pt-BR')} km</p>
     <div><label class="label">KM final *</label><input type="number" name="km_final" class="input" required min="${viagem.km_inicial}" /></div>
     <div><label class="label">Data de fim</label><input type="text" name="data_fim" class="input" /></div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Finalizar viagem</button></div>
   `;
   attachDataMask(form.data_fim, hojeIsoLocal());
@@ -888,7 +888,7 @@ async function abrirEditarKmInicial(viagem, recarregarPagina) {
   form.className = 'space-y-4';
   form.innerHTML = `
     <div><label class="label">KM Inicial *</label><input type="number" name="km_inicial" class="input" required min="0" /></div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Salvar</button></div>
   `;
   form.km_inicial.value = viagem.km_inicial;
@@ -917,12 +917,12 @@ async function abrirEditarKmInicial(viagem, recarregarPagina) {
 // nao atualizava de forma confiavel dentro do <summary>.
 function resumoSecao(titulo, contagem, aberto) {
   return `
-    <summary class="mb-3 flex cursor-pointer list-none items-center justify-between rounded-lg bg-brand-black px-4 py-2.5 hover:bg-white/10">
+    <summary class="mb-3 flex cursor-pointer list-none items-center justify-between rounded-lg bg-elevated px-4 py-2.5 hover:bg-white/10">
       <h2 class="font-semibold text-white">${titulo}${contagem !== null ? ` <span class="text-sm font-normal text-gray-400">(${contagem})</span>` : ''}</h2>
-      <svg data-chevron-fechado class="h-4 w-4 shrink-0 text-brand-yellow ${aberto ? 'hidden' : ''}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <svg data-chevron-fechado class="h-4 w-4 shrink-0 text-accent-fg ${aberto ? 'hidden' : ''}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
       </svg>
-      <svg data-chevron-aberto class="h-4 w-4 shrink-0 text-brand-yellow ${aberto ? '' : 'hidden'}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <svg data-chevron-aberto class="h-4 w-4 shrink-0 text-accent-fg ${aberto ? '' : 'hidden'}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
       </svg>
     </summary>
@@ -1046,7 +1046,7 @@ export async function render(container, params) {
             ${viagem.km_inicial.toLocaleString('pt-BR')} km
             ${getUsuario()?.perfil === 'Admin' ? '<button type="button" class="ml-1 text-xs font-normal text-gray-900 hover:underline" data-editar-km-inicial>Editar</button>' : ''}
           </p>
-          ${viagem.aviso_km_inicial ? `<p class="mt-1 text-xs text-amber-500" title="${viagem.aviso_km_inicial}">&#9888; ${viagem.aviso_km_inicial}</p>` : ''}
+          ${viagem.aviso_km_inicial ? `<p class="mt-1 text-xs text-warning" title="${viagem.aviso_km_inicial}">&#9888; ${viagem.aviso_km_inicial}</p>` : ''}
         </div>
         <div>
           <p class="text-xs font-medium uppercase text-slate-500">Localizacao atual</p>
@@ -1100,11 +1100,11 @@ export async function render(container, params) {
           </div>
           <div>
             <p class="text-xs font-medium uppercase text-slate-500">Lucro</p>
-            <p class="text-sm font-semibold ${lucroAteAgora >= 0 ? 'text-emerald-600' : 'text-red-600'}">${formatarMoeda(lucroAteAgora)}</p>
+            <p class="text-sm font-semibold ${lucroAteAgora >= 0 ? 'text-success' : 'text-danger'}">${formatarMoeda(lucroAteAgora)}</p>
           </div>
           <div>
             <p class="text-xs font-medium uppercase text-slate-500">Margem</p>
-            <p class="text-sm font-semibold ${margemPercentual !== null && margemPercentual >= 0 ? 'text-emerald-600' : 'text-red-600'}">${margemPercentual !== null ? `${margemPercentual.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%` : '-'}</p>
+            <p class="text-sm font-semibold ${margemPercentual !== null && margemPercentual >= 0 ? 'text-success' : 'text-danger'}">${margemPercentual !== null ? `${margemPercentual.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%` : '-'}</p>
           </div>
           <div>
             <p class="text-xs font-medium uppercase text-slate-500">Faturamento/dia</p>
@@ -1150,7 +1150,7 @@ export async function render(container, params) {
           <div class="mb-3 grid grid-cols-3 gap-2 rounded-lg bg-slate-50 p-3 text-sm">
             <div><p class="text-xs uppercase text-slate-500">Adiantado em dinheiro</p><p class="font-medium text-slate-900">${formatarMoeda(dinheiroAdiantado)}</p></div>
             <div><p class="text-xs uppercase text-slate-500">Gasto em dinheiro</p><p class="font-medium text-slate-900">${formatarMoeda(dinheiroGasto)}</p></div>
-            <div><p class="text-xs uppercase text-slate-500">Saldo em dinheiro</p><p class="font-medium ${saldoDinheiro >= 0 ? 'text-emerald-600' : 'text-red-600'}">${formatarMoeda(saldoDinheiro)}</p></div>
+            <div><p class="text-xs uppercase text-slate-500">Saldo em dinheiro</p><p class="font-medium ${saldoDinheiro >= 0 ? 'text-success' : 'text-danger'}">${formatarMoeda(saldoDinheiro)}</p></div>
           </div>
         ` : ''}
         <div class="mb-3 flex flex-wrap justify-end gap-2">
@@ -1159,11 +1159,11 @@ export async function render(container, params) {
         </div>
         <div class="card overflow-x-auto border-gray-300 p-0">
           <table class="w-full min-w-max border-collapse">
-            <thead class="bg-brand-black"><tr>
+            <thead class="bg-elevated"><tr>
               <th class="table-th">Data</th><th class="table-th">Valor</th><th class="table-th">Descricao</th><th class="table-th"></th>
             </tr></thead>
             <tbody>
-              ${adiantamentos.map((a) => `<tr class="border-b border-slate-100"><td class="table-td">${formatarDataBr(a.data)}</td><td class="table-td">${formatarMoeda(a.valor)}${a.conta_bancaria_id ? '' : ' (sem caixa)'}</td><td class="table-td">${esc(a.descricao || '-')}</td><td class="table-td text-right whitespace-nowrap"><a href="#/viagens/${viagemId}/recibos?adiantamento=${a.id}" target="_blank" rel="noopener" class="mr-3 text-xs text-gray-900 hover:underline">Recibo</a>${gerenciar && viagem.status !== 'Finalizada' ? `<button type="button" class="mr-3 text-xs text-gray-900 hover:underline" data-editar-adiantamento="${a.id}">Editar</button><button type="button" class="text-xs text-red-600 hover:underline" data-remover-adiantamento="${a.id}">Remover</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="4" class="table-td py-6 text-center text-slate-400">Nenhum adiantamento lancado.</td></tr>'}
+              ${adiantamentos.map((a) => `<tr class="border-b border-slate-100"><td class="table-td">${formatarDataBr(a.data)}</td><td class="table-td">${formatarMoeda(a.valor)}${a.conta_bancaria_id ? '' : ' (sem caixa)'}</td><td class="table-td">${esc(a.descricao || '-')}</td><td class="table-td text-right whitespace-nowrap"><a href="#/viagens/${viagemId}/recibos?adiantamento=${a.id}" target="_blank" rel="noopener" class="mr-3 text-xs text-gray-900 hover:underline">Recibo</a>${gerenciar && viagem.status !== 'Finalizada' ? `<button type="button" class="mr-3 text-xs text-gray-900 hover:underline" data-editar-adiantamento="${a.id}">Editar</button><button type="button" class="text-xs text-danger hover:underline" data-remover-adiantamento="${a.id}">Remover</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="4" class="table-td py-6 text-center text-slate-400">Nenhum adiantamento lancado.</td></tr>'}
             </tbody>
           </table>
         </div>

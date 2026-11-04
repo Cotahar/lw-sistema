@@ -49,7 +49,7 @@ export async function renderDreRelatorio(root, params, query) {
         <button type="button" class="btn-primary btn-sm" data-imprimir>Imprimir / Salvar PDF</button>
       </div>
       <div class="rounded-xl border border-zinc-200 bg-white p-8 text-zinc-900 print:border-0 print:p-0">
-        <div class="mb-6 border-b-4 border-brand-yellow pb-4">
+        <div class="mb-6 border-b-4 border-accent pb-4">
           <h1 class="text-2xl font-extrabold text-zinc-900">DRE Detalhado ${conjunto_id ? '- Conjunto' : '- Geral'}</h1>
           <p class="mt-1 text-sm font-medium text-zinc-500">${periodoTexto(data_inicio, data_fim)} &middot; Gerado em ${formatarDataBr(hojeIsoLocal())}${usuario ? ` por ${esc(usuario.nome)}` : ''}</p>
         </div>

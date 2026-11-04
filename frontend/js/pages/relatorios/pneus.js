@@ -96,7 +96,7 @@ export async function render(container) {
       <div class="card overflow-x-auto border-gray-300 p-0">
         <div class="px-4 pt-3"><h2 class="font-semibold text-slate-900">Por pneu</h2></div>
         <table class="mt-2 w-full min-w-max border-collapse">
-          <thead class="bg-brand-black"><tr>
+          <thead class="bg-elevated"><tr>
             <th class="table-th">Numero de fogo</th><th class="table-th text-right">Eventos</th><th class="table-th text-right">Km rodado (no filtro)</th><th class="table-th text-right">Custo total</th>
           </tr></thead>
           <tbody>

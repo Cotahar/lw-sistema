@@ -14,7 +14,6 @@ import { esc } from '../html.js';
 
 const TIPOS_TRATORA = ['Cavalo', 'Truck', 'Toco'];
 
-
 function linha(label, valor, destaque = false, chave = null) {
   return `<div class="flex items-center justify-between py-1.5 ${destaque ? 'text-base font-semibold text-slate-900' : 'text-sm text-slate-600'}"${chave ? ` data-linha="${chave}"` : ''}><span>${label}</span><span>${valor}</span></div>`;
 }
@@ -27,7 +26,7 @@ function linhaItem(label, valor) {
 
 // Resultado da viagem (Receitas - Despesas), com cor pelo sinal.
 function valorResultado(valor) {
-  return `<span class="${valor >= 0 ? 'text-emerald-500' : 'text-red-500'}">${formatarMoeda(valor)}</span>`;
+  return `<span class="${valor >= 0 ? 'text-success' : 'text-danger'}">${formatarMoeda(valor)}</span>`;
 }
 
 function chaveRascunho(viagemId) {
@@ -63,7 +62,7 @@ function tabelaSecao({ colunas, linhas, vazio, rodape = '' }) {
   return `
     <div class="card overflow-x-auto border-gray-300 p-0">
       <table class="w-full min-w-max border-collapse">
-        <thead class="bg-brand-black"><tr>${colunas.map((c) => `<th class="table-th ${c.direita ? 'text-right' : ''}">${c.titulo}</th>`).join('')}</tr></thead>
+        <thead class="bg-elevated"><tr>${colunas.map((c) => `<th class="table-th ${c.direita ? 'text-right' : ''}">${c.titulo}</th>`).join('')}</tr></thead>
         <tbody>
           ${linhas.map((cel) => `<tr class="border-b border-slate-100">${cel.map((c, i) => `<td class="table-td ${colunas[i] && colunas[i].direita ? 'text-right' : ''}">${c}</td>`).join('')}</tr>`).join('')
             || `<tr><td colspan="${colunas.length}" class="table-td py-6 text-center text-slate-400">${vazio}</td></tr>`}
@@ -79,7 +78,7 @@ function linhaTotal(colspan, rotulo, valor) {
 }
 
 function botoesAcao(acoes, id) {
-  return acoes.map((a) => `<button type="button" class="mr-3 text-xs ${a.perigo ? 'text-red-600' : 'text-gray-900'} hover:underline" data-acao="${esc(a.acao)}" data-id="${id}">${a.rotulo}</button>`).join('');
+  return acoes.map((a) => `<button type="button" class="mr-3 text-xs ${a.perigo ? 'text-danger' : 'text-gray-900'} hover:underline" data-acao="${esc(a.acao)}" data-id="${id}">${a.rotulo}</button>`).join('');
 }
 
 // Modal de reembolso/desconto ("caixinha: 50,00", "avaria na lona: 20,00").
@@ -90,7 +89,7 @@ function abrirModalItem({ viagemId, tipo, item = null, aoSalvar }) {
   form.innerHTML = `
     <div><label class="label">Descricao *</label><input type="text" name="descricao" class="input" required placeholder="${tipo === 'Reembolso' ? 'Ex.: caixinha, reaperto de rodas' : 'Ex.: avaria na lona, multa'}" /></div>
     <div><label class="label">Valor *</label><input type="text" name="valor" class="input" required /></div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">${item ? 'Salvar alteracoes' : `Adicionar ${rotulo}`}</button></div>
   `;
   form.descricao.value = item ? item.descricao : '';
@@ -121,10 +120,11 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
   let debounceId = null;
 
   container.innerHTML = `
-    <h1 class="mb-1 text-xl font-bold text-slate-900">Acerto - Viagem #${viagem.id}</h1>
+    <nav class="mb-1 text-sm text-slate-400"><a href="#/acertos" class="hover:text-slate-900 hover:underline">Acertos</a> / <a href="#/viagens/${viagem.id}" class="hover:text-slate-900 hover:underline">Viagem #${viagem.id}</a> / Acerto</nav>
+    <h1 class="mb-1 text-2xl font-bold text-slate-900">Acerto - Viagem #${viagem.id}</h1>
     <p class="mb-4 text-sm text-slate-500">${esc(motorista.nome)} · ${formatarDataBr(viagem.data_inicio)} a ${formatarDataBr(viagem.data_fim)} · ${(viagem.km_final - viagem.km_inicial).toLocaleString('pt-BR')} km</p>
-    <div class="mb-4 hidden rounded-lg border border-amber-800 bg-amber-950/40 p-3 text-sm text-amber-400" data-aviso-pendentes></div>
-    <div class="mb-4 hidden rounded-lg border border-amber-800 bg-amber-950/40 p-3 text-sm text-amber-400" data-aviso-comissao></div>
+    <div class="mb-4 hidden rounded-lg border border-warning/40 bg-warning-soft p-3 text-sm text-warning" data-aviso-pendentes></div>
+    <div class="mb-4 hidden rounded-lg border border-warning/40 bg-warning-soft p-3 text-sm text-warning" data-aviso-comissao></div>
     <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
       <div class="card p-4">
         <h2 class="mb-3 font-semibold text-slate-900">Dados calculados</h2>
@@ -142,8 +142,8 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
           <div><label class="label">Observacoes do ajuste</label><textarea name="observacoes" class="input" rows="2"></textarea></div>
         </form>
         <p class="mt-3 text-xs text-slate-400">Reembolsos, descontos, fretes, despesas e adiantamentos sao lancados nas secoes abaixo.</p>
-        ${gerenciar ? '<button type="button" class="btn-primary mt-4 w-full" data-fechar>Fechar Acerto</button>' : ''}
-        <p class="hidden text-sm text-red-600" data-erro></p>
+        ${gerenciar ? '<button type="button" class="btn-primary mt-4 w-full" data-fechar>Fechar Acerto</button><p class="mt-2 hidden text-sm text-warning" data-motivo-fechar></p>' : ''}
+        <p class="hidden text-sm text-danger" data-erro></p>
       </div>
     </div>
     <div class="mt-6 space-y-6" data-secoes></div>
@@ -192,6 +192,11 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
       btnFecharEl.disabled = bloqueado;
       btnFecharEl.classList.toggle('opacity-50', bloqueado);
       btnFecharEl.classList.toggle('cursor-not-allowed', bloqueado);
+      const motivoEl = container.querySelector('[data-motivo-fechar]');
+      if (motivoEl) {
+        motivoEl.classList.toggle('hidden', !bloqueado);
+        motivoEl.textContent = bloqueado ? `Valide ${p.despesasPendentes === 1 ? 'a despesa pendente' : `as ${p.despesasPendentes} despesas pendentes`} para liberar o fechamento.` : '';
+      }
     }
     // Sem nenhuma faixa de comissao configurada (ou nenhuma que cubra essa
     // media de consumo), o percentual aplicado cai pra 0% em silencio - achado
@@ -203,27 +208,35 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
     if (semFaixaEComSemAjuste) {
       avisoComissaoEl.innerHTML = 'Nenhuma faixa de comissao cadastrada cobre a media de consumo desta viagem - a comissao vai ficar em <strong>0%</strong> a nao ser que voce digite um percentual manual ao lado, ou <a href="#/config/comissao-faixas" class="font-medium underline">cadastre uma faixa</a> antes de fechar.';
     }
-    resumoEl.innerHTML = [
+    const grupo = (titulo, linhas) => `<div class="mt-3 border-t border-line pt-3"><p class="mb-1 text-xs font-semibold uppercase tracking-wider text-accent-fg">${titulo}</p>${linhas.join('')}</div>`;
+    const aPagar = p.saldoFinal >= 0;
+    resumoEl.innerHTML = `
+      <div data-linha="saldoFinal">
+        <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Saldo final</p>
+        <div class="mt-1 flex flex-wrap items-center gap-3">
+          <span class="font-display text-4xl font-bold text-slate-900">${formatarMoeda(Math.abs(p.saldoFinal))}</span>
+          <span class="${aPagar ? 'badge-info' : 'badge-atencao'}">${aPagar ? 'A pagar ao motorista' : 'Fica em conta corrente'}</span>
+        </div>
+      </div>` + grupo('Resultado da viagem', [
       linha('Receitas (frete bruto total)', formatarMoeda(p.freteBrutoTotal)),
       linha('Despesas lancadas', formatarMoeda(p.despesasLancadasTotal)),
       p.valorPedagio > 0 ? linha('Pedagio da viagem (custo; nao altera o saldo do motorista)', formatarMoeda(p.valorPedagio)) : '',
       linha('Comissao do motorista (custo da viagem)', formatarMoeda(p.valorComissao), false, 'comissaoDespesa'),
       linha('Despesas da viagem (total)', formatarMoeda(p.despesasTotal), false, 'despesasTotal'),
       linha('Receitas &minus; Despesas', valorResultado(p.receitasMenosDespesas), true, 'resultado'),
-      linha('% de sobra (do faturamento)', p.percentualSobra !== null ? `<span class="${p.percentualSobra >= 0 ? 'text-emerald-500' : 'text-red-500'}">${p.percentualSobra.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</span>` : '-'),
-      '<hr class="my-2 border-slate-200" />',
+      linha('% de sobra (do faturamento)', p.percentualSobra !== null ? `<span class="${p.percentualSobra >= 0 ? 'text-success' : 'text-danger'}">${p.percentualSobra.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</span>` : '-'),
+    ]) + grupo('Comissao', [
       p.valorImposto > 0 ? linha(`Imposto (${p.empresa.razao_social})`, `- ${formatarMoeda(p.valorImposto)}`) : '',
       p.valorImposto > 0 ? linha('Base de calculo da comissao (bruto - imposto)', formatarMoeda(p.baseCalculoComissao)) : '',
       linha('Media de consumo', p.mediaConsumoKmL ? `${p.mediaConsumoKmL.toFixed(2)} km/l` : '-'),
       linha('% comissao sugerido', p.percentualSugerido !== null ? `${p.percentualSugerido}%` : '-'),
       linha('Valor da comissao', formatarMoeda(p.valorComissao), false, 'comissao'),
+    ]) + grupo('Conta do motorista', [
       linha('Reembolsos ao motorista', formatarMoeda(p.valorReembolsos), false, 'reembolsos'),
       linha('Adiantamentos tomados', formatarMoeda(p.adiantamentosTotal)),
       linha('Descontos (despesas do motorista + lancados)', formatarMoeda(p.valorDescontos), false, 'descontos'),
       linha('Saldo conta corrente anterior', formatarMoeda(p.saldoContaCorrenteAnterior)),
-      '<hr class="my-2 border-slate-200" />',
-      linha('Saldo final', `${formatarMoeda(Math.abs(p.saldoFinal))} ${p.saldoFinal >= 0 ? '(a pagar)' : '(fica em conta corrente)'}`, true, 'saldoFinal'),
-    ].join('');
+    ]);
 
     // Destaca (flash amarelo) so os valores que dependem do que o usuario
     // acabou de digitar - da pra ver de relance o que mudou sem reler o
@@ -241,18 +254,36 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
 
   // ---- Secoes editaveis (fretes, despesas, adiantamentos, reembolsos, descontos) ----
 
-  function secao(titulo, botaoAcao, rotuloBotao, conteudo, dica = '') {
+  // Resumo primeiro, detalhe depois: cada secao vem recolhida, com contagem e total no
+  // cabecalho. O estado aberto/fechado sobrevive as re-renderizacoes (a lista e
+  // refeita a cada alteracao). A de Despesas ja abre sozinha se houver pendencia.
+  const secoesAbertas = new Set();
+  let primeiraRenderSecoes = true;
+  secoesEl.addEventListener('toggle', (ev) => {
+    const d = ev.target;
+    if (!d.dataset || !d.dataset.secao) return;
+    if (d.open) secoesAbertas.add(d.dataset.secao); else secoesAbertas.delete(d.dataset.secao);
+  }, true);
+
+  function secao(titulo, botaoAcao, rotuloBotao, conteudo, dica = '', meta = {}) {
     return `
-      <section class="card p-4">
+      <details class="group card" data-secao="${titulo}" ${secoesAbertas.has(titulo) ? 'open' : ''}>
+        <summary class="flex cursor-pointer list-none flex-wrap items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+          <svg class="h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-90" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+          <h2 class="font-semibold text-slate-900">${titulo}${meta.contagem != null ? ` <span class="font-normal text-slate-400">(${meta.contagem})</span>` : ''}</h2>
+          ${meta.pendentes ? `<span class="badge-atencao">${meta.pendentes} pendente(s)</span>` : ''}
+          <span class="ml-auto text-sm font-semibold text-slate-900">${meta.total || ''}</span>
+        </summary>
+        <div class="border-t border-line p-4">
         <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 class="font-semibold text-slate-900">${titulo}</h2>
             ${dica ? `<p class="text-xs text-slate-400">${dica}</p>` : ''}
           </div>
           ${gerenciar ? `<button type="button" class="btn-primary btn-sm" data-acao="${botaoAcao}">${rotuloBotao}</button>` : ''}
         </div>
         ${conteudo}
-      </section>
+        </div>
+      </details>
     `;
   }
 
@@ -271,7 +302,7 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
       linhas,
       vazio: 'Nenhum frete lancado nesta viagem.',
       rodape: linhaTotal(4, 'Total (Receitas)', formatarMoeda(p.freteBrutoTotal)),
-    }));
+    }), '', { contagem: p.fretes.length, total: formatarMoeda(p.freteBrutoTotal) });
   }
 
   // Despesas de Arla ficam vinculadas a abastecida (diesel) via
@@ -313,7 +344,7 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
         + (p.valorPedagio > 0 ? linhaTotal(7, 'Pedagio da viagem (informativo no saldo)', formatarMoeda(p.valorPedagio)) : '')
         + linhaTotal(7, 'Comissao do motorista', formatarMoeda(p.valorComissao))
         + linhaTotal(7, 'Total das despesas do acerto', formatarMoeda(p.despesasTotal)),
-    }), 'Despesas pagas pelo motorista viram desconto no acerto.');
+    }), 'Despesas pagas pelo motorista viram desconto no acerto.', { contagem: principais.length, total: formatarMoeda(p.despesasLancadasTotal), pendentes: p.despesasPendentes });
   }
 
   function htmlAdiantamentos(p) {
@@ -328,12 +359,12 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
     const botaoRecibos = p.adiantamentos.length
       ? `<div class="mb-2 flex justify-end"><a href="#/viagens/${viagem.id}/recibos?tipo=adiantamentos" target="_blank" rel="noopener" class="btn-secondary btn-sm">Imprimir recibos de adiantamento (${p.adiantamentos.length}) para assinatura</a></div>`
       : '';
-    return botaoRecibos + secao('Adiantamentos ao motorista', 'novo-adiantamento', '+ Adiantamento', tabelaSecao({
+    return secao('Adiantamentos ao motorista', 'novo-adiantamento', '+ Adiantamento', botaoRecibos + tabelaSecao({
       colunas: [{ titulo: 'Data' }, { titulo: 'Descricao' }, { titulo: 'Saiu de' }, { titulo: 'Valor', direita: true }, { titulo: '' }],
       linhas,
       vazio: 'Nenhum adiantamento lancado.',
       rodape: linhaTotal(3, 'Total (Adiantamentos)', formatarMoeda(p.adiantamentosTotal)),
-    }));
+    }), '', { contagem: p.adiantamentos.length, total: formatarMoeda(p.adiantamentosTotal) });
   }
 
   function htmlItens(p, tipo) {
@@ -360,10 +391,15 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
         rodape: linhaTotal(1, ehReembolso ? 'Total (Reembolsos)' : 'Total (Descontos)', formatarMoeda(total)),
       }),
       ehReembolso ? 'Somam ao que o motorista recebe.' : 'Reduzem o que o motorista recebe.',
+      { contagem: linhasDespesa.length + linhasManuais.length, total: formatarMoeda(total) },
     );
   }
 
   function renderSecoes(p) {
+    if (primeiraRenderSecoes) {
+      primeiraRenderSecoes = false;
+      if (p.despesasPendentes > 0) secoesAbertas.add('Despesas');
+    }
     secoesEl.innerHTML = [htmlFretes(p), htmlDespesas(p), htmlAdiantamentos(p), htmlItens(p, 'Reembolso'), htmlItens(p, 'Desconto')].join('');
   }
 
@@ -588,7 +624,7 @@ async function renderSituacaoPagamento(el, acerto) {
       <a href="#/contas-pagar?acerto_id=${acerto.id}" class="mt-3 inline-block text-sm text-gray-900 hover:underline">Ir para Contas a Pagar &rarr;</a>
     `;
   } catch (err) {
-    el.innerHTML = '<p class="text-sm text-red-600">Erro ao carregar a situacao do pagamento.</p>';
+    el.innerHTML = '<p class="text-sm text-danger">Erro ao carregar a situacao do pagamento.</p>';
   }
 }
 
@@ -657,7 +693,7 @@ async function renderFechado(container, viagem, motorista, acerto, gerenciar) {
       ${linha('Comissao do motorista (custo da viagem)', formatarMoeda(acerto.valor_comissao))}
       ${linha('Despesas da viagem (total)', formatarMoeda(despesasTotal))}
       ${linha('Receitas &minus; Despesas', valorResultado(freteBrutoTotal - despesasTotal), true)}
-      ${linha('% de sobra (do faturamento)', percentualSobra !== null ? `<span class="${percentualSobra >= 0 ? 'text-emerald-500' : 'text-red-500'}">${percentualSobra.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</span>` : '-')}
+      ${linha('% de sobra (do faturamento)', percentualSobra !== null ? `<span class="${percentualSobra >= 0 ? 'text-success' : 'text-danger'}">${percentualSobra.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</span>` : '-')}
       ${acerto.valor_imposto > 0 ? linha(`Imposto (${acerto.percentual_imposto_aplicado}%)`, `- ${formatarMoeda(acerto.valor_imposto)}`) : ''}
       ${acerto.valor_imposto > 0 ? linha('Base de calculo da comissao (bruto - imposto)', formatarMoeda(baseCalculoComissao)) : ''}
       <div class="flex flex-wrap items-center justify-between gap-2 py-1.5 text-sm text-slate-600" data-linha-pedagio>
@@ -670,7 +706,7 @@ async function renderFechado(container, viagem, motorista, acerto, gerenciar) {
     </div>
     <div class="grid grid-cols-1 gap-6 border-t border-slate-200 pt-4 sm:grid-cols-2">
       <div>
-        <h3 class="mb-2 text-sm font-semibold uppercase text-emerald-600">Creditos ao motorista</h3>
+        <h3 class="mb-2 text-sm font-semibold uppercase text-success">Creditos ao motorista</h3>
         <div class="space-y-1">
           ${linha(`Comissao (${acerto.percentual_comissao_aplicado}%)`, formatarMoeda(acerto.valor_comissao))}
           ${acerto.valor_reembolsos > 0 ? linha('Reembolsos', formatarMoeda(acerto.valor_reembolsos)) : ''}
@@ -680,7 +716,7 @@ async function renderFechado(container, viagem, motorista, acerto, gerenciar) {
         ${linha('Total creditos', formatarMoeda(totalCreditos), true)}
       </div>
       <div>
-        <h3 class="mb-2 text-sm font-semibold uppercase text-red-600">Debitos do motorista</h3>
+        <h3 class="mb-2 text-sm font-semibold uppercase text-danger">Debitos do motorista</h3>
         <div class="space-y-1">
           ${acerto.valor_adiantamentos > 0 ? linha('Adiantamentos tomados na viagem', formatarMoeda(acerto.valor_adiantamentos)) : ''}
           ${acerto.valor_descontos > 0 ? linha('Descontos (multas/avarias/despesas)', formatarMoeda(acerto.valor_descontos)) : ''}
@@ -707,7 +743,7 @@ async function renderFechado(container, viagem, motorista, acerto, gerenciar) {
       form.innerHTML = `
         <p class="text-sm text-slate-500">Valor do pedagio desta viagem. Fica so como informacao nos relatorios do acerto - nao gera lancamento nem altera o saldo.</p>
         <div class="max-w-[12rem]"><label class="label">Pedagio da viagem</label><input type="text" name="valor" class="input" /></div>
-        <p class="hidden text-sm text-red-600" data-erro></p>
+        <p class="hidden text-sm text-danger" data-erro></p>
         <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Salvar pedagio</button></div>
       `;
       attachMoedaMaskReais(form.valor, detalhamento.valorPedagio || 0);

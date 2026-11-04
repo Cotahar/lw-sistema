@@ -70,7 +70,7 @@ export async function render(container) {
     <div class="card mb-4 p-4">
       <label class="label">Arquivo da fatura (.xlsx)</label>
       <input type="file" accept=".xlsx,.xls" class="input" data-arquivo />
-      <p class="mt-2 hidden text-sm text-red-600" data-erro></p>
+      <p class="mt-2 hidden text-sm text-danger" data-erro></p>
     </div>
     <div data-resultado></div>
   `;
@@ -113,10 +113,10 @@ async function mostrarAnalise(resultadoEl, abas, analise) {
       <div><p class="text-xs uppercase tracking-wide text-slate-500">Fatura</p><p class="font-semibold text-slate-900">${esc(fatura.numero)}</p></div>
       <div><p class="text-xs uppercase tracking-wide text-slate-500">Emissao</p><p class="font-semibold text-slate-900">${formatarDataBr(fatura.emissao) || '-'}</p></div>
       <div><p class="text-xs uppercase tracking-wide text-slate-500">Vencimento</p><p class="font-semibold text-slate-900">${formatarDataBr(fatura.vencimento) || '-'}</p></div>
-      <div><p class="text-xs uppercase tracking-wide text-slate-500">Valor total da fatura</p><p class="text-lg font-bold text-brand-yellow">${formatarMoeda(fatura.total)}</p></div>
+      <div><p class="text-xs uppercase tracking-wide text-slate-500">Valor total da fatura</p><p class="text-lg font-bold text-accent-fg">${formatarMoeda(fatura.total)}</p></div>
     </div>
-    ${jaImportada ? `<div class="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-400">Esta fatura ja foi importada${jaImportada.conta_pagar_id ? ` (conta a pagar #${jaImportada.conta_pagar_id}, ${esc(jaImportada.conta_status || '')})` : ''}. Para importar de novo, exclua antes o lancamento rateado em Despesas Fixas.</div>` : ''}
-    ${avisos.length ? `<div class="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-400"><ul class="list-disc pl-5">${avisos.map((a) => `<li>${esc(a)}</li>`).join('')}</ul></div>` : ''}
+    ${jaImportada ? `<div class="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-danger">Esta fatura ja foi importada${jaImportada.conta_pagar_id ? ` (conta a pagar #${jaImportada.conta_pagar_id}, ${esc(jaImportada.conta_status || '')})` : ''}. Para importar de novo, exclua antes o lancamento rateado em Despesas Fixas.</div>` : ''}
+    ${avisos.length ? `<div class="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-warning"><ul class="list-disc pl-5">${avisos.map((a) => `<li>${esc(a)}</li>`).join('')}</ul></div>` : ''}
     <div class="card mb-4 overflow-x-auto">
       <p class="px-4 pt-3 text-sm font-semibold text-slate-900">Rateio por placa / centro de custo</p>
       <table class="min-w-full divide-y divide-slate-200">
@@ -154,12 +154,12 @@ async function mostrarAnalise(resultadoEl, abas, analise) {
       </div>
       <label class="flex items-start gap-2 text-sm"><input type="checkbox" name="ja_paga" class="mt-0.5 h-4 w-4" /><span>Fatura <strong>ja paga</strong> (de um mes anterior): baixar sem lancar movimento de caixa, na data do vencimento. O custo continua entrando no DRE.</span></label>
       ${temDiferenca ? `<label class="flex items-start gap-2 text-sm"><input type="checkbox" name="ratear_diferenca" class="mt-0.5 h-4 w-4" /><span>Ratear a diferenca de ${formatarMoeda(analise.diferenca)} (total da fatura menos a soma das placas) proporcionalmente entre as placas.</span></label>` : ''}
-      <p class="hidden text-sm text-red-600" data-erro-form></p>
+      <p class="hidden text-sm text-danger" data-erro-form></p>
       <div class="flex items-center justify-between gap-3">
         <p class="text-xs text-slate-500">Cria 1 conta a pagar de ${formatarMoeda(fatura.total)} e ${comValor.filter((p) => p.liquido > 0).length} lancamentos de despesa (um por centro de custo).</p>
         <button type="submit" class="btn-primary" ${bloqueios.length ? 'disabled' : ''}>Importar e lancar</button>
       </div>
-      ${bloqueios.length ? `<p class="text-xs text-amber-400">Importacao bloqueada: ${esc(bloqueios.join('; '))}.</p>` : ''}
+      ${bloqueios.length ? `<p class="text-xs text-warning">Importacao bloqueada: ${esc(bloqueios.join('; '))}.</p>` : ''}
     </form>
   `;
 
@@ -204,7 +204,7 @@ async function mostrarAnalise(resultadoEl, abas, analise) {
       mostrarToast(`Fatura ${fatura.numero} importada: ${formatarMoeda(r.valor_total)} rateados em ${r.despesas.length} centros de custo.`);
       resultadoEl.innerHTML = `
         <div class="card space-y-3 p-4">
-          <p class="font-semibold text-emerald-500">Fatura importada com sucesso.</p>
+          <p class="font-semibold text-success">Fatura importada com sucesso.</p>
           <p class="text-sm text-slate-600">Conta a pagar #${r.conta_pagar_id} de ${formatarMoeda(r.valor_total)}, rateada entre: ${r.rateio.map((x) => `${esc(x.centro_custo_nome)} (${formatarMoeda(x.valor)})`).join(', ')}.</p>
           <div class="flex gap-2">
             <a href="#/contas-pagar" class="btn-primary btn-sm">Ver em Contas a Pagar</a>

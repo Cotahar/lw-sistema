@@ -31,7 +31,7 @@ async function abrirNovoFinanciamento(recarregar) {
       <div><label class="label">Data do contrato</label><input type="text" name="data_contrato" class="input" /></div>
       <div><label class="label">1a parcela vence em</label><input type="text" name="primeira_parcela_vencimento" class="input" /></div>
     </div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Cadastrar</button></div>
   `;
   attachMoedaMaskReais(form.valor_total, 0);

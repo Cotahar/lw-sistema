@@ -52,7 +52,7 @@ export async function render(container) {
       { chave: 'dias_restantes', titulo: 'Situacao', render: (r) => `<span class="${corDias(r.dias_restantes)}">${textoDias(r.dias_restantes)}</span>`, exportar: (r) => textoDias(r.dias_restantes) },
     ],
     ordenacaoInicial: { chave: 'dias_restantes', direcao: 'asc' },
-    corLinha: (r) => (r.dias_restantes < 0 ? 'bg-red-950/40' : ''),
+    corLinha: (r) => (r.dias_restantes < 0 ? 'linha-critica' : ''),
     exportar: { nomeArquivo: 'cnh-a-vencer' },
     buscarDados: async (termo) => {
       const dados = await get(`/relatorios/cnh-vencimento?dias=${selectDias.value}`);
@@ -61,7 +61,7 @@ export async function render(container) {
       const vencidas = filtrados.filter((r) => r.dias_restantes < 0).length;
       resumoEl.innerHTML = `
         <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Dentro da janela</p><p class="mt-1 text-2xl font-bold text-slate-900">${filtrados.length}</p></div>
-        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Ja vencidas</p><p class="mt-1 text-2xl font-bold ${vencidas ? 'text-red-600' : 'text-slate-900'}">${vencidas}</p></div>
+        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Ja vencidas</p><p class="mt-1 text-2xl font-bold ${vencidas ? 'text-danger' : 'text-slate-900'}">${vencidas}</p></div>
       `;
       return filtrados;
     },

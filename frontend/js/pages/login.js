@@ -5,14 +5,14 @@ import { ROTA_PAINEL } from '../modulosConfig.js';
 export function renderLogin(root) {
   root.innerHTML = '';
   const wrapper = document.createElement('div');
-  wrapper.className = 'flex min-h-screen items-center justify-center bg-slate-100 px-4';
+  wrapper.className = 'flex min-h-screen items-center justify-center bg-brand-light px-4';
   wrapper.innerHTML = `
     <div class="w-full max-w-sm">
       <div class="mb-6 text-center">
-        <img src="/img/logo-frottex.png" alt="Frottex" class="mx-auto h-24 w-auto" />
+        <div class="flex items-center justify-center gap-3"><span class="logo-mark !h-11 !w-11 !rounded-[10px]" aria-hidden="true"></span><span class="logo-word !text-[40px]">Frottex</span></div>
         <p class="mt-2 text-sm text-slate-500">Gestao de Frota e Transporte Rodoviario</p>
       </div>
-      <form class="card space-y-4 border-t-4 border-brand-yellow p-6">
+      <form class="card space-y-4 border-t-4 border-t-accent-fg p-6">
         <div>
           <label class="label">Usuario</label>
           <input type="text" name="username" class="input" required autofocus autocapitalize="off" />
@@ -21,7 +21,7 @@ export function renderLogin(root) {
           <label class="label">Senha</label>
           <input type="password" name="senha" class="input" required />
         </div>
-        <p class="hidden text-sm text-red-600" data-erro></p>
+        <p class="hidden text-sm text-danger" data-erro></p>
         <button type="submit" class="btn-primary w-full">Entrar</button>
       </form>
     </div>

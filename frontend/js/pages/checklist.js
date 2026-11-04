@@ -51,8 +51,8 @@ function montarCartaoMobile(item) {
     <div class="card p-3" data-item-id="${item.item_id}">
       <p class="mb-2 text-sm font-medium text-slate-900">${esc(item.item_nome)}</p>
       <div class="flex gap-2">
-        <button type="button" data-ok class="flex-1 rounded-lg py-3 text-sm font-bold uppercase tracking-wide text-white ${item.presente ? 'bg-emerald-600' : 'bg-emerald-900/40 text-emerald-500'}">OK</button>
-        <button type="button" data-avaria class="flex-1 rounded-lg py-3 text-sm font-bold uppercase tracking-wide text-white ${item.presente === false ? 'bg-red-600' : 'bg-red-900/40 text-red-500'}">Avaria</button>
+        <button type="button" data-ok class="flex-1 rounded-lg py-3 text-sm font-bold uppercase tracking-wide text-white ${item.presente ? 'bg-emerald-600' : 'bg-emerald-900/40 text-success'}">OK</button>
+        <button type="button" data-avaria class="flex-1 rounded-lg py-3 text-sm font-bold uppercase tracking-wide text-white ${item.presente === false ? 'bg-red-600' : 'bg-red-900/40 text-danger'}">Avaria</button>
       </div>
       ${item.observacao ? `<p class="mt-2 text-xs text-slate-500">Obs.: ${esc(item.observacao)}</p>` : ''}
     </div>
@@ -84,7 +84,7 @@ async function carregarItensVistoria(vistoriaId, container, gerenciar, recarrega
         ${mobile
           ? `<div class="space-y-2">${grupo.itens.map(montarCartaoMobile).join('')}</div>`
           : `<table class="w-full text-sm">
-              <thead><tr class="bg-brand-black text-left text-xs uppercase">
+              <thead><tr class="bg-elevated text-left text-xs uppercase">
                 <th class="table-th">Presente</th><th class="table-th">Item</th><th class="table-th">Observacao</th>
               </tr></thead>
               <tbody>${grupo.itens.map((item) => montarLinhaTabela(item, gerenciar)).join('')}</tbody>
@@ -135,7 +135,7 @@ async function carregarVistorias(conjunto, container, gerenciar) {
 
     container.innerHTML = `
       <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <p class="text-sm ${!ultima || diasDesde(ultima.data_vistoria) >= 30 ? 'text-amber-400' : 'text-slate-500'}">${aviso}</p>
+        <p class="text-sm ${!ultima || diasDesde(ultima.data_vistoria) >= 30 ? 'text-warning' : 'text-slate-500'}">${aviso}</p>
         <div class="flex items-center gap-2">
           <select class="input" data-select-vistoria>
             ${vistorias.map((v) => `<option value="${v.id}">${formatarDataBr(v.data_vistoria)}</option>`).join('')}

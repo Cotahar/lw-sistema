@@ -4,6 +4,7 @@ import { formatarDataBr, formatarMoeda } from '../../masks.js';
 import { listarPendentes, tentarSincronizarTodos, iconeFilaHtml, atualizarIndicadorFila } from './offlineQueue.js';
 import { esqueletoLinhas } from '../../components/skeleton.js';
 import { esc } from '../../html.js';
+import { placaHtml } from '../../components/placa.js';
 
 function formatarKmL(valor) {
   return valor != null ? `${valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km/l` : '-';
@@ -13,7 +14,7 @@ export async function render(appEl) {
   const usuario = getUsuario();
   appEl.innerHTML = `
     <div class="min-h-screen bg-brand-light pb-6">
-      <header class="flex items-center justify-between bg-brand-black px-4 py-3 text-white">
+      <header class="flex items-center justify-between bg-brand-surface px-4 py-3 text-white">
         <div>
           <p class="text-lg font-bold leading-tight">Frottex</p>
           <p class="text-xs leading-tight text-gray-400">Ola, ${usuario ? esc(usuario.nome) : ''}</p>
@@ -63,14 +64,14 @@ async function renderizarViagem(conteudo) {
           <p class="text-xs font-medium uppercase text-slate-500">Viagem atual</p>
           <p class="text-2xl font-bold leading-tight text-gray-900">${esc(viagem.motorista_nome || '')}</p>
           <p class="text-sm text-slate-500">Inicio em ${formatarDataBr(viagem.data_inicio)} - ${viagem.dias_fora} dia(s) fora</p>
-          <p class="text-xs text-slate-400">${viagem.placas.join(' + ')}</p>
+          <div class="mt-1 flex flex-wrap gap-1.5">${viagem.placas.map((p) => placaHtml(p, { pequena: true })).join('')}</div>
 
           <button type="button" data-ver-fretes class="mt-3 w-full rounded-lg border border-slate-200 p-3 text-left hover:bg-slate-50">
             <div class="flex items-center justify-between">
               <span class="text-xs font-medium uppercase text-slate-500">Faturamento (liquido)</span>
               <span class="text-xs font-medium text-gray-900">Ver fretes &rsaquo;</span>
             </div>
-            <p class="text-xl font-bold text-gray-900">${formatarMoeda(viagem.faturamento_liquido)}</p>
+            <p class="font-display text-3xl font-bold text-gray-900">${formatarMoeda(viagem.faturamento_liquido)}</p>
           </button>
 
           <dl class="mt-3 grid grid-cols-2 gap-x-3 gap-y-3 text-sm">
@@ -113,11 +114,11 @@ async function renderizarViagem(conteudo) {
           <button type="button" class="btn-primary" data-lancar>+ Abastecimento</button>
           <button type="button" class="btn-secondary" data-ver-acertos>Meus Acertos</button>
         </div>
-        <button type="button" class="btn-secondary w-full min-h-[48px]" data-ver-postos>★ Postos Favoritos</button>
+        <button type="button" class="btn-secondary w-full min-h-[48px]" data-ver-postos><svg class="h-4 w-4 text-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11.05 2.93a1 1 0 011.9 0l2.06 4.18 4.61.67a1 1 0 01.55 1.7l-3.34 3.25.79 4.59a1 1 0 01-1.45 1.05L12 16.2l-4.12 2.17a1 1 0 01-1.45-1.05l.79-4.59L3.88 9.48a1 1 0 01.55-1.7l4.61-.67 2.01-4.18z"/></svg> Postos Favoritos</button>
       ` : `
         <div class="card p-6 text-center text-slate-500">Nenhuma viagem em andamento no momento.</div>
         <button type="button" class="btn-secondary w-full min-h-[48px]" data-ver-acertos>Meus Acertos</button>
-        <button type="button" class="btn-secondary w-full min-h-[48px]" data-ver-postos>★ Postos Favoritos</button>
+        <button type="button" class="btn-secondary w-full min-h-[48px]" data-ver-postos><svg class="h-4 w-4 text-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11.05 2.93a1 1 0 011.9 0l2.06 4.18 4.61.67a1 1 0 01.55 1.7l-3.34 3.25.79 4.59a1 1 0 01-1.45 1.05L12 16.2l-4.12 2.17a1 1 0 01-1.45-1.05l.79-4.59L3.88 9.48a1 1 0 01.55-1.7l4.61-.67 2.01-4.18z"/></svg> Postos Favoritos</button>
       `}
       <div data-pendentes></div>
     `;
@@ -129,7 +130,7 @@ async function renderizarViagem(conteudo) {
     conteudo.querySelector('[data-ver-postos]').addEventListener('click', () => navegar('/motorista/postos-favoritos'));
   } catch (err) {
     conteudo.innerHTML = `
-      <div class="card p-6 text-center text-red-600">Nao foi possivel carregar a viagem. Confira sua conexao e tente novamente.</div>
+      <div class="card p-6 text-center text-danger">Nao foi possivel carregar a viagem. Confira sua conexao e tente novamente.</div>
       <div data-pendentes></div>
     `;
   }
@@ -152,7 +153,7 @@ async function renderizarPendentes(conteudo) {
             <img src="${p.fotoUrl}" class="h-12 w-12 shrink-0 rounded object-cover" />
             <div class="min-w-0 flex-1 text-sm">
               <p class="font-medium text-slate-900">${formatarMoeda(Number(p.payload.valor))}</p>
-              <p class="truncate text-xs ${p.status === 'erro' ? 'text-red-600' : 'text-slate-500'}">
+              <p class="truncate text-xs ${p.status === 'erro' ? 'text-danger' : 'text-slate-500'}">
                 ${p.status === 'erro' ? (p.ultimoErro || 'Erro ao sincronizar') : p.status === 'enviando' ? 'Enviando...' : 'Aguardando conexao...'}
               </p>
             </div>

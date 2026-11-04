@@ -110,7 +110,7 @@ export async function render(container) {
     container.querySelector('[data-out-despesas]').textContent = formatarMoeda(totalDespesas);
     const resultadoEl = container.querySelector('[data-out-resultado]');
     resultadoEl.textContent = formatarMoeda(resultado);
-    resultadoEl.className = resultado >= 0 ? 'text-emerald-600' : 'text-red-600';
+    resultadoEl.className = resultado >= 0 ? 'text-success' : 'text-danger';
     container.querySelector('[data-out-percentual]').textContent = `${percentual.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`;
 
     // Mesma regra do Acerto: imposto reduz a base da comissao do motorista e

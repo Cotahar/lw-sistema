@@ -37,7 +37,7 @@ export async function render(container) {
       { chave: 'litros_no_historico', titulo: 'Litros no historico', render: (r) => `${formatarLitros(r.litros_no_historico)} L` },
     ],
     ordenacaoInicial: { chave: 'media_consumo_km_l', direcao: 'asc' },
-    corLinha: (r) => (r.media_consumo_km_l === null ? '' : r.media_consumo_km_l < 2 ? 'bg-red-950/40' : ''),
+    corLinha: (r) => (r.media_consumo_km_l === null ? '' : r.media_consumo_km_l < 2 ? 'linha-critica' : ''),
     exportar: { nomeArquivo: 'comparativo-consumo' },
     buscarDados: async (termo) => {
       const params = new URLSearchParams();

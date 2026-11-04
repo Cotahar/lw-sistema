@@ -121,7 +121,7 @@ export async function renderRecibos(root, params, query) {
         <button type="button" class="btn-primary btn-sm" data-imprimir>Imprimir / Salvar PDF</button>
       </div>
       <div class="rounded-xl border border-zinc-200 bg-white p-6 text-zinc-900 print:border-0 print:p-0">
-        <div class="mb-4 flex items-end justify-between border-b-4 border-brand-yellow pb-2 print:hidden">
+        <div class="mb-4 flex items-end justify-between border-b-4 border-accent pb-2 print:hidden">
           <h1 class="text-lg font-extrabold">Recibos &middot; Viagem #${dados.viagem.id}</h1>
           <p class="text-xs text-zinc-500">Gerado em ${formatarDataBr(hojeIsoLocal())}${usuario ? ` por ${esc(usuario.nome)}` : ''}</p>
         </div>

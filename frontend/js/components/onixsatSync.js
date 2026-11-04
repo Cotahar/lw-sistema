@@ -27,7 +27,7 @@ export function criarBotaoSincronizarOnixsat({ onAtualizar, rotulo = 'Atualizar 
 
   botao.addEventListener('click', async () => {
     botao.disabled = true;
-    resumoEl.classList.remove('hidden', 'text-red-600');
+    resumoEl.classList.remove('hidden', 'text-danger');
     resumoEl.textContent = 'Sincronizando...';
     try {
       const r = await post('/onixsat/sincronizar', {});
@@ -39,7 +39,7 @@ export function criarBotaoSincronizarOnixsat({ onAtualizar, rotulo = 'Atualizar 
       }
     } catch (err) {
       resumoEl.textContent = err.message;
-      resumoEl.classList.add('text-red-600');
+      resumoEl.classList.add('text-danger');
     } finally {
       botao.disabled = false;
     }

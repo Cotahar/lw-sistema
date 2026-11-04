@@ -89,7 +89,7 @@ export async function render(container) {
         : todos;
       const total = dados.reduce((t, r) => t + r.valor_original, 0);
       resumoEl.innerHTML = `
-        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Total em multas</p><p class="mt-1 text-2xl font-bold text-red-500">${formatarMoeda(total)}</p></div>
+        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Total em multas</p><p class="mt-1 text-2xl font-bold text-danger">${formatarMoeda(total)}</p></div>
         <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Quantidade</p><p class="mt-1 text-2xl font-bold text-slate-900">${dados.length}</p></div>
       `;
       return dados;

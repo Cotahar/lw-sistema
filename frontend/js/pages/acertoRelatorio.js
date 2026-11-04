@@ -33,7 +33,6 @@ function estatistica(label, valor, { destaque = false, corValor = 'text-zinc-900
   `;
 }
 
-
 function linha(label, valor, destaque = false) {
   return `<div class="flex items-center justify-between py-1 ${destaque ? 'text-base font-bold text-zinc-900' : 'text-sm text-zinc-600'}"><span>${label}</span><span class="${destaque ? '' : 'font-medium text-zinc-900'}">${valor}</span></div>`;
 }
@@ -312,7 +311,7 @@ export async function renderRelatorio(root, params, query) {
       </div>
 
       <div class="rounded-xl border border-zinc-200 bg-white p-8 text-zinc-900 print:border-0 print:p-0">
-        <div class="mb-5 flex items-start justify-between border-b-4 border-brand-yellow pb-4">
+        <div class="mb-5 flex items-start justify-between border-b-4 border-accent pb-4">
           <div>
             <h1 class="text-2xl font-extrabold text-zinc-900">Relatorio de Acerto <span class="text-zinc-400">&middot; Viagem #${viagem.id}</span></h1>
             <p class="mt-1 text-sm font-medium text-zinc-500">${tipo === 'detalhado' ? 'Detalhado' : 'Resumido'} &middot; Gerado em ${formatarDataBr(hojeIsoLocal())}${usuario ? ` por ${esc(usuario.nome)}` : ''}</p>

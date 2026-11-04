@@ -7,6 +7,7 @@ import { mostrarToast, mostrarErro } from '../../components/toast.js';
 import { criarOcorrencias } from '../../components/ocorrencias.js';
 import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, setMoedaValue, attachDataMask, parseDataBrParaIso, formatarDataBr, hojeIsoLocal, attachUppercaseInput } from '../../masks.js';
 import { esc } from '../../html.js';
+import { placaHtml } from '../../components/placa.js';
 import { badgePrazoVencimento } from '../../components/statusIcons.js';
 
 const STATUS_BADGE = { Pendente: 'badge-atencao', Parcial: 'badge-atencao', Pago: 'badge-sucesso', Atrasado: 'badge-critico' };
@@ -43,7 +44,7 @@ function abrirEditarVencimento(conta, recarregar) {
   form.innerHTML = `
     <p class="text-sm text-slate-500">${esc(conta.descricao)}</p>
     <div class="max-w-[12rem]"><label class="label">Vencimento *</label><input type="text" name="data_vencimento" class="input" required /></div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Salvar vencimento</button></div>
   `;
   attachDataMask(form.data_vencimento, conta.data_vencimento);
@@ -112,7 +113,7 @@ async function abrirBaixaLote(contas, recarregar) {
         </tfoot>
       </table>
     </div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Confirmar pagamentos</button></div>
   `;
   attachDataMask(corpo.data_pagamento, hojeIsoLocal());
@@ -306,7 +307,7 @@ async function abrirNovaConta(recarregar) {
     <p class="text-xs text-slate-500" data-previa-parcelas></p>
     <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="recorrente" class="h-4 w-4" />Despesa recorrente (todo mes) <span class="text-xs text-slate-500">- so marca a despesa; os proximos meses sao lancados por voce</span></label>
     <div><label class="label">Observacoes</label><textarea name="observacao" rows="2" class="input"></textarea></div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Lancar despesa</button></div>
   `;
   attachMoedaMaskReais(form.valor, 0);
@@ -401,7 +402,7 @@ function abrirBaixaContaZerada(conta, recarregar) {
   form.innerHTML = `
     <p class="text-sm text-slate-600">Esta conta tem valor <span class="font-medium">R$ 0,00</span> (por exemplo, um item que ja estava no estoque, sem custo direto): nao ha nada a pagar. Baixar so a marca como paga - nada sai do caixa.</p>
     <div class="max-w-[12rem]"><label class="label">Data</label><input type="text" name="data_pagamento" class="input" /></div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Marcar como paga</button></div>
   `;
   attachDataMask(form.data_pagamento, hojeIsoLocal());
@@ -434,7 +435,7 @@ export async function abrirBaixa(conta, recarregar) {
       <div data-bloco-desconto><label class="label">Desconto</label><input type="text" name="desconto" class="input" /></div>
     </div>
     <div><label class="label">Data do pagamento</label><input type="text" name="data_pagamento" class="input" /></div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary">Baixar</button></div>
   `;
   attachMoedaMaskReais(form.valor_pago, restante);
@@ -520,8 +521,8 @@ async function abrirDetalhes(conta, recarregar, gerenciar) {
       </div>
       ${contaAtual.observacao ? `<p class="mb-4 rounded-lg border border-slate-200 p-3 text-sm text-slate-600"><span class="font-medium text-slate-900">Observacoes:</span> ${esc(contaAtual.observacao)}</p>` : ''}
       ${contaAtual.despesa_info && contaAtual.despesa_info.valor_pago_dinheiro > 0 ? `
-        <div class="mb-4 rounded-lg border border-amber-800 bg-amber-950/30 p-3 text-sm">
-          <p class="font-medium text-amber-400">Este valor e so o restante do abastecimento (despesa #${contaAtual.despesa_info.despesa_id})</p>
+        <div class="mb-4 rounded-lg border border-warning/40 bg-warning-soft p-3 text-sm">
+          <p class="font-medium text-warning">Este valor e so o restante do abastecimento (despesa #${contaAtual.despesa_info.despesa_id})</p>
           <p class="mt-1 text-slate-600">Total do abastecimento${contaAtual.despesa_info.valor_arla > 0 ? ' + Arla' : ''}: <span class="font-medium text-slate-900">${formatarMoeda(contaAtual.despesa_info.valor_total_abastecimento)}</span></p>
           <p class="text-slate-600">Pago em dinheiro pelo motorista: <span class="font-medium text-slate-900">${formatarMoeda(contaAtual.despesa_info.valor_pago_dinheiro)}</span></p>
         </div>
@@ -540,7 +541,7 @@ async function abrirDetalhes(conta, recarregar, gerenciar) {
         </tbody>
       </table>
       ${contaAtual.valor_descontado > 0 ? `<p class="mt-2 text-xs text-slate-500">+ ${formatarMoeda(contaAtual.valor_descontado)} em desconto ou baixa sem pagamento (nao movimenta caixa; veja as Ocorrencias).</p>` : ''}
-      <p class="mt-3 hidden text-sm text-red-600" data-erro></p>
+      <p class="mt-3 hidden text-sm text-danger" data-erro></p>
       ${podeEstornar ? '<div class="mt-4 flex justify-end"><button type="button" class="btn-danger btn-sm" data-estornar>Estornar baixa</button></div>' : ''}
     `;
     const btnEstornar = corpo.querySelector('[data-estornar]');
@@ -595,7 +596,7 @@ async function abrirConsolidarFatura(recarregar) {
       <div><label class="label">Vencimento *</label><input type="text" name="data_vencimento" class="input" required /></div>
     </div>
     <div><label class="label">Descricao (opcional)</label><input type="text" name="descricao" class="input" placeholder="Ex.: Fatura Posto Aldo - 07/2026" /></div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2"><button type="submit" class="btn-primary" data-btn-submit disabled>Consolidar</button></div>
   `;
   attachMoedaMaskReais(form.valor_boleto, 0);
@@ -705,7 +706,7 @@ export async function render(container, params, query) {
       ${podeGerenciar('contas_pagar') ? '<div class="flex gap-2"><button type="button" class="btn-secondary btn-sm hidden" data-baixar-zeradas title="Marca como pagas todas as contas de valor R$ 0,00 da lista (nada sai do caixa)">Baixar contas zeradas</button><button type="button" class="btn-secondary btn-sm" data-consolidar-fatura>Consolidar em fatura</button></div>' : ''}
     </div>
     ${origemFiltrada ? `
-      <div class="card mb-4 flex items-center justify-between border-yellow-800 bg-yellow-950/40 p-3 text-sm">
+      <div class="card mb-4 flex items-center justify-between border-warning/40 bg-warning-soft p-3 text-sm">
         <span>Filtrado pelas parcelas do ${origemFiltrada.label}.</span>
         <a href="#/contas-pagar" class="text-gray-900 hover:underline">Limpar filtro</a>
       </div>
@@ -809,7 +810,7 @@ export async function render(container, params, query) {
       { chave: 'tipo', titulo: 'Tipo', render: (r) => tipoDaConta(r), exportar: (r) => tipoDaConta(r) },
       { chave: 'centro_custo_nome', titulo: 'Centro de custo', render: (r) => r.centro_custo_nome || (r.rateio_qtd ? `Rateio (${r.rateio_qtd} centros)` : '-'), exportar: (r) => r.centro_custo_nome || (r.rateio_qtd ? `Rateio (${r.rateio_qtd} centros)` : '') },
       { chave: 'fornecedor_nome', titulo: 'Fornecedor', render: (r) => esc(r.fornecedor_nome || '-') },
-      { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => esc(r.veiculo_placa || '-') },
+      { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => placaHtml(r.veiculo_placa, { pequena: true }) },
       { chave: 'valor', titulo: 'Valor', render: (r) => formatarMoeda(r.valor), exportar: (r) => r.valor / 100 },
       { chave: 'valor_pago', titulo: 'Pago', render: (r) => formatarMoeda(r.valor_pago + r.valor_descontado), exportar: (r) => (r.valor_pago + r.valor_descontado) / 100 },
       { chave: 'criado_em', titulo: 'Cadastro', render: (r) => formatarDataBr(r.criado_em) },
@@ -817,7 +818,7 @@ export async function render(container, params, query) {
       { chave: 'status', titulo: 'Status', render: (r) => `<span class="${STATUS_BADGE[r.status]}">${esc(r.status)}</span>`, exportar: (r) => r.status },
     ],
     ordenacaoInicial: { chave: 'data_vencimento', direcao: 'asc' },
-    corLinha: (r) => (r.status !== 'Pago' && r.data_vencimento < hojeIsoLocal() ? 'bg-red-950/40' : ''),
+    corLinha: (r) => (r.status !== 'Pago' && r.data_vencimento < hojeIsoLocal() ? 'linha-critica' : ''),
     exportar: { nomeArquivo: 'contas-a-pagar' },
     buscarDados: async (termo) => {
       const params = new URLSearchParams();
@@ -840,6 +841,7 @@ export async function render(container, params, query) {
     },
     onNovo: gerenciar ? () => abrirNovaConta(tabela.recarregar) : undefined,
     // Marque varias contas e pague todas numa tabela so (so contas ainda com saldo a pagar).
+    somaLote: (linhas) => formatarMoeda(linhas.reduce((s, l) => s + (l.valor - l.valor_pago), 0)),
     acoesLote: gerenciar ? [{ label: 'Baixar selecionadas', onClick: (linhas) => abrirBaixaLote(linhas, tabela.recarregar) }] : undefined,
     selecionavel: (r) => r.status === 'Pendente' || r.status === 'Parcial',
     acoesExtras: (r) => {

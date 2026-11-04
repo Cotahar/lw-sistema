@@ -19,7 +19,7 @@ function abrirFormEmpresa(registro, recarregar) {
         <input type="text" name="cnpj" class="input flex-1" required />
         <button type="button" class="btn-secondary shrink-0" data-buscar-cnpj>Buscar CNPJ</button>
       </div>
-      <p class="mt-1 hidden text-xs text-red-600" data-erro-cnpj></p>
+      <p class="mt-1 hidden text-xs text-danger" data-erro-cnpj></p>
     </div>
     <div><label class="label">Razão Social *</label><input type="text" name="razao_social" class="input" required /></div>
     <div><label class="label">Nome Fantasia</label><input type="text" name="nome_fantasia" class="input" /></div>
@@ -61,7 +61,7 @@ function abrirFormEmpresa(registro, recarregar) {
       <input type="checkbox" id="empresa-ativo" class="h-4 w-4 rounded border-slate-300" ${registro && !registro.ativo ? '' : 'checked'} />
       <label for="empresa-ativo" class="text-sm text-slate-700">Ativa</label>
     </div>
-    <p class="hidden text-sm text-red-600" data-erro></p>
+    <p class="hidden text-sm text-danger" data-erro></p>
     <div class="flex justify-end gap-2 pt-2">
       <button type="submit" class="btn-primary">${registro ? 'Salvar alterações' : 'Cadastrar'}</button>
     </div>

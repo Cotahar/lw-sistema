@@ -58,7 +58,7 @@ export async function render(container) {
       { chave: 'saida_periodo', titulo: 'Saida no periodo', render: (r) => `${r.saida_periodo} ${esc(r.unidade_medida)}` },
     ],
     ordenacaoInicial: { chave: 'valor_em_estoque', direcao: 'desc' },
-    corLinha: (r) => (r.abaixo_minimo ? 'bg-red-950/40' : ''),
+    corLinha: (r) => (r.abaixo_minimo ? 'linha-critica' : ''),
     exportar: { nomeArquivo: 'posicao-estoque' },
     buscarDados: async (termo) => {
       const params = new URLSearchParams();
@@ -74,7 +74,7 @@ export async function render(container) {
       const qtdAbaixoMinimo = dados.filter((r) => r.abaixo_minimo).length;
       resumoEl.innerHTML = `
         <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Valor total em estoque</p><p class="mt-1 text-2xl font-bold text-slate-900">${formatarMoeda(totalValor)}</p></div>
-        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Itens abaixo do minimo</p><p class="mt-1 text-2xl font-bold ${qtdAbaixoMinimo ? 'text-red-600' : 'text-slate-900'}">${qtdAbaixoMinimo}</p></div>
+        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Itens abaixo do minimo</p><p class="mt-1 text-2xl font-bold ${qtdAbaixoMinimo ? 'text-danger' : 'text-slate-900'}">${qtdAbaixoMinimo}</p></div>
       `;
       return dados;
     },

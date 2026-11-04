@@ -108,7 +108,7 @@ export async function render(container) {
       { chave: 'tipo', titulo: 'Tipo', render: (r) => `<span class="${r.tipo === 'Entrada' ? 'badge-sucesso' : 'badge-critico'}">${esc(r.tipo)}</span>`, exportar: (r) => r.tipo },
       { chave: 'descricao', titulo: 'Descricao', render: (r) => esc(r.descricao || '-'), truncar: true },
       { chave: 'origem_tipo', titulo: 'Origem', render: (r) => ORIGEM_LABEL[r.origem_tipo] || r.origem_tipo || '-' },
-      { chave: 'valor', titulo: 'Valor', render: (r) => `<span class="${r.tipo === 'Entrada' ? 'text-emerald-500' : 'text-red-500'} font-semibold">${r.tipo === 'Entrada' ? '+' : '-'}${formatarMoeda(r.valor)}</span>`, exportar: (r) => (r.tipo === 'Entrada' ? r.valor / 100 : -r.valor / 100) },
+      { chave: 'valor', titulo: 'Valor', render: (r) => `<span class="${r.tipo === 'Entrada' ? 'text-success' : 'text-danger'} font-semibold">${r.tipo === 'Entrada' ? '+' : '-'}${formatarMoeda(r.valor)}</span>`, exportar: (r) => (r.tipo === 'Entrada' ? r.valor / 100 : -r.valor / 100) },
     ],
     ordenacaoInicial: { chave: 'data', direcao: 'desc' },
     exportar: { nomeArquivo: 'fluxo-caixa' },
@@ -129,9 +129,9 @@ export async function render(container) {
       const saldo = entradas - saidas;
       const transferencias = contaId ? 0 : dados.filter((r) => r.origem_tipo === 'Transferencia' && r.tipo === 'Saida').reduce((t, r) => t + r.valor, 0);
       resumoEl.innerHTML = `
-        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Entradas</p><p class="mt-1 text-2xl font-bold text-emerald-500">${formatarMoeda(entradas)}</p></div>
-        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Saidas</p><p class="mt-1 text-2xl font-bold text-red-500">${formatarMoeda(saidas)}</p></div>
-        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Saldo do periodo filtrado</p><p class="mt-1 text-2xl font-bold ${saldo >= 0 ? 'text-slate-900' : 'text-red-500'}">${formatarMoeda(saldo)}</p></div>
+        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Entradas</p><p class="mt-1 text-2xl font-bold text-success">${formatarMoeda(entradas)}</p></div>
+        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Saidas</p><p class="mt-1 text-2xl font-bold text-danger">${formatarMoeda(saidas)}</p></div>
+        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Saldo do periodo filtrado</p><p class="mt-1 text-2xl font-bold ${saldo >= 0 ? 'text-slate-900' : 'text-danger'}">${formatarMoeda(saldo)}</p></div>
         ${transferencias > 0 ? `<p class="text-xs text-slate-400 sm:col-span-3">Transferencias entre contas no periodo (${formatarMoeda(transferencias)}) aparecem na lista mas nao entram nos totais; filtre por uma conta para inclui-las.</p>` : ''}
       `;
       atualizarComparativo(dados);

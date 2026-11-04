@@ -64,7 +64,7 @@ export async function render(container) {
       { chave: 'resolvido_em', titulo: 'Resolvido em', render: (r) => (r.resolvido_em ? formatarDataHoraBr(r.resolvido_em) : '-') },
     ],
     ordenacaoInicial: { chave: 'data_disparo', direcao: 'desc' },
-    corLinha: (r) => (r.status === 'Pendente' ? 'bg-amber-950/20' : ''),
+    corLinha: (r) => (r.status === 'Pendente' ? 'linha-atencao' : ''),
     exportar: { nomeArquivo: 'alertas-manutencao' },
     buscarDados: async (termo) => {
       const params = new URLSearchParams();

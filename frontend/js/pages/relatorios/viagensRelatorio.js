@@ -105,7 +105,7 @@ export async function render(container) {
       { chave: 'media_consumo_km_l', titulo: 'Media consumo', render: (r) => (r.media_consumo_km_l !== null ? `${r.media_consumo_km_l.toFixed(2)} km/l` : '-') },
       { chave: 'faturamento', titulo: 'Faturamento', render: (r) => formatarMoeda(r.faturamento), exportar: (r) => r.faturamento / 100 },
       { chave: 'despesas', titulo: 'Despesas', render: (r) => formatarMoeda(r.despesas), exportar: (r) => r.despesas / 100 },
-      { chave: 'lucro', titulo: 'Lucro', render: (r) => `<span class="font-semibold ${r.lucro >= 0 ? 'text-emerald-500' : 'text-red-500'}">${formatarMoeda(r.lucro)}</span>`, exportar: (r) => r.lucro / 100 },
+      { chave: 'lucro', titulo: 'Lucro', render: (r) => `<span class="font-semibold ${r.lucro >= 0 ? 'text-success' : 'text-danger'}">${formatarMoeda(r.lucro)}</span>`, exportar: (r) => r.lucro / 100 },
     ],
     ordenacaoInicial: { chave: 'data_inicio', direcao: 'desc' },
     exportar: { nomeArquivo: 'relatorio-viagens' },
@@ -126,8 +126,8 @@ export async function render(container) {
       const lucroTotal = dados.reduce((t, r) => t + r.lucro, 0);
       resumoEl.innerHTML = `
         <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Viagens</p><p class="mt-1 text-2xl font-bold text-slate-900">${dados.length}</p></div>
-        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Faturamento total</p><p class="mt-1 text-2xl font-bold text-emerald-500">${formatarMoeda(faturamentoTotal)}</p></div>
-        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Lucro total</p><p class="mt-1 text-2xl font-bold ${lucroTotal >= 0 ? 'text-emerald-500' : 'text-red-500'}">${formatarMoeda(lucroTotal)}</p></div>
+        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Faturamento total</p><p class="mt-1 text-2xl font-bold text-success">${formatarMoeda(faturamentoTotal)}</p></div>
+        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Lucro total</p><p class="mt-1 text-2xl font-bold ${lucroTotal >= 0 ? 'text-success' : 'text-danger'}">${formatarMoeda(lucroTotal)}</p></div>
       `;
       atualizarComparativo(dados);
       return dados;

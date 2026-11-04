@@ -65,7 +65,7 @@ export async function render(container) {
       { chave: 'desvio_pct', titulo: 'Desvio', render: (r) => `<span class="${r.divergente ? 'badge-critico' : 'badge-neutro'}">${r.desvio_pct > 0 ? '+' : ''}${r.desvio_pct.toFixed(1)}%</span>`, exportar: (r) => `${r.desvio_pct.toFixed(1)}%` },
     ],
     ordenacaoInicial: { chave: 'desvio_pct', direcao: 'asc' },
-    corLinha: (r) => (r.divergente ? 'bg-red-950/40' : ''),
+    corLinha: (r) => (r.divergente ? 'linha-critica' : ''),
     exportar: { nomeArquivo: 'divergencia-consumo' },
     buscarDados: async (termo) => {
       const params = new URLSearchParams();
@@ -82,7 +82,7 @@ export async function render(container) {
       const qtdDivergentes = dados.filter((r) => r.divergente).length;
       resumoEl.innerHTML = `
         <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Viagens analisadas</p><p class="mt-1 text-2xl font-bold text-slate-900">${dados.length}</p></div>
-        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Divergentes (acima do limite)</p><p class="mt-1 text-2xl font-bold ${qtdDivergentes ? 'text-red-600' : 'text-slate-900'}">${qtdDivergentes}</p></div>
+        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Divergentes (acima do limite)</p><p class="mt-1 text-2xl font-bold ${qtdDivergentes ? 'text-danger' : 'text-slate-900'}">${qtdDivergentes}</p></div>
       `;
       return dados;
     },

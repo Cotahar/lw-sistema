@@ -29,7 +29,7 @@ export function criarMultiSearchableSelect({ buscar, placeholder = 'Pesquisar...
     chipsEl.innerHTML = selecionados.map((s, i) => `
       <span class="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-xs text-slate-700">
         ${s.label}
-        <button type="button" data-remover="${i}" class="text-slate-400 hover:text-red-500">&times;</button>
+        <button type="button" data-remover="${i}" class="text-slate-400 hover:text-danger">&times;</button>
       </span>
     `).join('');
     chipsEl.querySelectorAll('[data-remover]').forEach((btn) => {
