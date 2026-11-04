@@ -4,6 +4,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const { requerAcessoModulo } = require('../middleware/auth');
 const { exigirEmpresaOuTodas } = require('../middleware/empresa');
 const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
+const { anexarRota } = require('../utils/progressoViagem');
 
 const router = express.Router();
 
@@ -63,6 +64,7 @@ router.get('/resumo', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaOuTo
     SELECT vg.id AS viagem_id, vg.data_inicio, vg.km_inicial, vg.empresa_id,
            e.razao_social AS empresa_razao_social, mo.nome AS motorista_nome,
            vc.placa, vc.hodometro_atual, vc.localizacao_cidade, vc.localizacao_uf, vc.localizacao_atualizado_em,
+           vc.localizacao_lat, vc.localizacao_lng,
            cc.id AS centro_custo_id
     FROM viagens vg
     JOIN empresas e ON e.id = vg.empresa_id
@@ -108,6 +110,9 @@ router.get('/resumo', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaOuTo
       v.faturamento_total = fat.faturamento_total;
     }
   }
+
+  // Barra de progresso (roteirizador): acrescenta v.rota; calcula em segundo plano, sem atrasar a resposta.
+  anexarRota(viagensAtivas);
 
   res.json({
     alertasPendentes,

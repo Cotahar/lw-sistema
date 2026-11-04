@@ -597,9 +597,23 @@ CREATE TABLE fretes (
     frete_bruto                 INTEGER NOT NULL,  -- centavos; valor base do recebivel (ver contas_receber_baixas)
     data_carregamento           TEXT,  -- data em que a carga foi carregada (distinta de criado_em)
     data_descarga               TEXT,  -- data em que a carga foi descarregada/entregue no destino
+    -- Rota prevista origem->destino (roteirizador; ver backend/src/utils/roteirizador.js). NULL = ainda nao calculada
+    -- ou roteirizador desligado; e a base da barra de progresso da viagem no Painel.
+    distancia_prevista_km       REAL,
+    duracao_prevista_min        INTEGER,
+    rota_calculada_em           TEXT,
     criado_em                    TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
 );
 CREATE INDEX idx_fretes_viagem ON fretes(viagem_id);
+
+-- Cidade/UF -> coordenadas (geocodificacao do roteirizador), guardadas pra nao consultar a mesma cidade de novo.
+-- chave = cidade sem acento/minuscula + '|' + UF. Nao tem empresa_id de proposito: cidade e dado publico.
+CREATE TABLE geocodificacao_cache (
+    chave       TEXT PRIMARY KEY,
+    lat         REAL NOT NULL,
+    lng         REAL NOT NULL,
+    criado_em   TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
+);
 
 -- Adiantamentos tomados PELO MOTORISTA a qualquer momento durante a viagem
 -- (nao mais atrelados a um frete especifico - podem ocorrer antes de existir

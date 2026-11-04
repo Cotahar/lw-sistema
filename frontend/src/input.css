@@ -110,6 +110,11 @@ body {
   .logo-mark { @apply relative inline-block h-7 w-7 shrink-0 overflow-hidden rounded-[7px] bg-accent; }
   .logo-mark::before { content: ''; @apply absolute -bottom-0.5 -top-0.5 left-1/2 w-0.5 -translate-x-1/2 opacity-90; background: repeating-linear-gradient(to bottom, #fff 0 5px, transparent 5px 9px); }
   .logo-word { @apply font-display text-[22px] font-bold uppercase leading-none tracking-[0.04em] text-slate-900; }
+  /* Barra de progresso da viagem: trilho tracejado de pista + trecho percorrido + caminhao (ver dashboard.js) */
+  .estrada { @apply relative h-6; }
+  .estrada-trilho { @apply absolute inset-x-0 top-[11px] h-0.5; background: repeating-linear-gradient(to right, #343945 0 8px, transparent 8px 14px); }
+  .estrada-feito { @apply absolute left-0 top-[10px] h-1 rounded-sm bg-accent; }
+  .estrada-caminhao { @apply absolute top-1 -ml-2 h-4 w-4 rounded-full border-[3px] border-accent-fg bg-brand-surface; box-shadow: 0 0 0 4px rgb(43 99 240 / 0.2); }
   /* Placa Mercosul (assinatura visual): ver js/components/placa.js */
   .placa { @apply inline-flex w-[84px] flex-col overflow-hidden rounded-[5px] bg-[#f3f2ec] align-middle text-[#16181c] shadow-[0_0_0_1px_rgba(0,0,0,0.4)]; }
   .placa > i { @apply block h-[9px] bg-[#1f4fd0] text-center text-[6px] font-bold not-italic leading-[9px] tracking-[0.3em] text-white; }
