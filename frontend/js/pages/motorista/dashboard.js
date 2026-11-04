@@ -5,6 +5,7 @@ import { listarPendentes, tentarSincronizarTodos, iconeFilaHtml, atualizarIndica
 import { esqueletoLinhas } from '../../components/skeleton.js';
 import { esc } from '../../html.js';
 import { placaHtml } from '../../components/placa.js';
+import { barraEstradaHtml } from '../../components/barraEstrada.js';
 
 function formatarKmL(valor) {
   return valor != null ? `${valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km/l` : '-';
@@ -55,7 +56,7 @@ export async function render(appEl) {
   window.addEventListener('online', sincronizarEAtualizar);
 }
 
-async function renderizarViagem(conteudo) {
+async function renderizarViagem(conteudo, tentativaRota = 0) {
   try {
     const { viagem } = await get('/motorista/viagem-atual');
     conteudo.innerHTML = `
@@ -102,6 +103,7 @@ async function renderizarViagem(conteudo) {
           <button type="button" data-ver-fretes class="card block w-full p-4 text-left">
             <p class="text-xs font-medium uppercase text-slate-500">Frete atual</p>
             <p class="mt-1 font-semibold text-gray-900">${esc(viagem.frete_atual.origem_cidade)}/${esc(viagem.frete_atual.origem_uf)} &rarr; ${esc(viagem.frete_atual.destino_cidade)}/${esc(viagem.frete_atual.destino_uf)}</p>
+            <div class="mt-3">${barraEstradaHtml(viagem.rota, { compacto: true })}</div>
             <dl class="mt-2 grid grid-cols-2 gap-3 text-sm">
               <div><dt class="text-slate-500">Transportadora</dt><dd class="font-medium text-slate-900">${esc(viagem.frete_atual.transportadora_nome || '-')}</dd></div>
               <div><dt class="text-slate-500">Peso</dt><dd class="font-medium text-slate-900">${viagem.frete_atual.peso_carga_kg != null ? `${viagem.frete_atual.peso_carga_kg.toLocaleString('pt-BR')} kg` : '-'}</dd></div>
@@ -122,6 +124,15 @@ async function renderizarViagem(conteudo) {
       `}
       <div data-pendentes></div>
     `;
+    // A rota e calculada em segundo plano no servidor: na primeira vez vem "calculando"; busca de novo em 20 s (ate 3x).
+    if (viagem && viagem.rota && viagem.rota.calculando && tentativaRota < 3) {
+      const hash = window.location.hash;
+      setTimeout(async () => {
+        if (window.location.hash !== hash) return;
+        await renderizarViagem(conteudo, tentativaRota + 1);
+        await renderizarPendentes(conteudo);
+      }, 20000);
+    }
     if (viagem) {
       conteudo.querySelector('[data-lancar]').addEventListener('click', () => navegar('/motorista/abastecimento'));
       conteudo.querySelectorAll('[data-ver-fretes]').forEach((el) => el.addEventListener('click', () => navegar('/motorista/fretes')));

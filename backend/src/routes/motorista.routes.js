@@ -18,6 +18,7 @@ const { somar } = require('../utils/formatacao');
 const { percentualComissaoPorMedia } = require('../utils/comissaoHelper');
 const { SELECT_STATUS_PAGAMENTO, comStatusPagamento } = require('../utils/acertoPagamentoHelper');
 const { montarDetalhamentoAcerto } = require('../utils/acertoDetalhamentoHelper');
+const { anexarRota } = require('../utils/progressoViagem');
 
 const router = express.Router();
 router.use(requerMotorista, exigirEmpresaEspecifica);
@@ -110,9 +111,19 @@ router.get('/viagem-atual', asyncHandler(async (req, res) => {
     ? Math.round(faturamentoLiquido * (percentualComissao / 100)) - adiantamentosTotal
     : null;
 
+  // Barra de progresso (roteirizador): mesmo calculo do Painel do escritorio; sem rota (roteirizador desligado,
+  // viagem sem frete) o campo vem null e a tela simplesmente nao mostra a barra.
+  const itemRota = {
+    viagem_id: viagem.id,
+    localizacao_lat: tratora ? tratora.localizacao_lat : null,
+    localizacao_lng: tratora ? tratora.localizacao_lng : null,
+  };
+  anexarRota([itemRota]);
+
   res.json({
     viagem: {
       id: viagem.id,
+      rota: itemRota.rota || null,
       data_inicio: viagem.data_inicio,
       status: viagem.status,
       motorista_nome: motorista ? motorista.nome : null,
