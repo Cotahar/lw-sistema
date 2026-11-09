@@ -9,6 +9,7 @@ const { withTransaction } = require('../utils/transaction');
 const { hojeIsoBrasilia, agoraDataHoraIsoBrasilia, somarDiasIso } = require('../utils/dataHora');
 const { buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 const { criarDespesaVinculada, removerDespesaVinculada } = require('../utils/custoVinculadoHelper');
+const { removerAnexosDaEntidade } = require('../utils/anexosHelper');
 
 const router = express.Router();
 
@@ -54,6 +55,7 @@ router.post('/', requerAcessoModulo('multas', 'Gerenciar'), exigirEmpresaEspecif
   const {
     veiculo_id, motorista_id, orgao_autuador, numero_ait, descricao,
     valor_original, data_infracao, data_notificacao, observacoes,
+    codigo_orgao, codigo_infracao, renainf, local_infracao,
   } = req.body;
   if (!veiculo_id || !descricao || !valor_original || !data_notificacao) {
     throw new ApiError(400, 'Preencha veiculo_id, descricao, valor_original e data_notificacao.');
@@ -70,13 +72,15 @@ router.post('/', requerAcessoModulo('multas', 'Gerenciar'), exigirEmpresaEspecif
   const info = db.prepare(`
     INSERT INTO multas (
       empresa_id, veiculo_id, motorista_id, orgao_autuador, numero_ait, descricao,
-      valor_original, data_infracao, data_notificacao, prazo_indicacao, status, condutor_indicado_em, observacoes, criado_por
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      valor_original, data_infracao, data_notificacao, prazo_indicacao, status, condutor_indicado_em, observacoes, criado_por,
+      codigo_orgao, codigo_infracao, renainf, local_infracao
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     req.empresaId, veiculo_id, motorista_id || null, orgao_autuador ? orgao_autuador.toUpperCase() : null, numero_ait ? numero_ait.toUpperCase() : null, descricao.toUpperCase(),
     valor_original, data_infracao || null, data_notificacao, prazoIndicacao,
     motorista_id ? 'CondutorIndicado' : 'AguardandoIndicacao', motorista_id ? agoraDataHoraIsoBrasilia() : null,
     observacoes ? observacoes.toUpperCase() : null, req.usuario.id,
+    codigo_orgao || null, codigo_infracao || null, renainf || null, local_infracao ? String(local_infracao).toUpperCase() : null,
   );
   const multa = db.prepare(`${SELECT_LISTA} WHERE m.id = ?`).get(info.lastInsertRowid);
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'multas', registroId: multa.id, acao: 'INSERT', depois: multa });
@@ -87,8 +91,8 @@ router.put('/:id', requerAcessoModulo('multas', 'Gerenciar'), exigirEmpresaEspec
   const antes = db.prepare('SELECT * FROM multas WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
   if (!antes) throw new ApiError(404, 'Multa nao encontrada.');
 
-  const campos = ['orgao_autuador', 'numero_ait', 'descricao', 'valor_original', 'data_infracao', 'data_notificacao', 'observacoes'];
-  const camposTexto = ['orgao_autuador', 'numero_ait', 'descricao', 'observacoes'];
+  const campos = ['orgao_autuador', 'numero_ait', 'descricao', 'valor_original', 'data_infracao', 'data_notificacao', 'observacoes', 'codigo_orgao', 'codigo_infracao', 'renainf', 'local_infracao'];
+  const camposTexto = ['orgao_autuador', 'numero_ait', 'descricao', 'observacoes', 'local_infracao'];
   const sets = [];
   const valores = [];
   for (const campo of campos) {
@@ -187,7 +191,10 @@ router.delete('/:id', requerAcessoModulo('multas', 'Gerenciar'), exigirEmpresaEs
   const antes = db.prepare('SELECT * FROM multas WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
   if (!antes) throw new ApiError(404, 'Multa nao encontrada.');
   if (antes.status !== 'AguardandoIndicacao') throw new ApiError(400, 'So e possivel excluir multas ainda aguardando indicacao do condutor.');
-  db.prepare('DELETE FROM multas WHERE id = ?').run(req.params.id);
+  withTransaction(db, () => {
+    db.prepare('DELETE FROM multas WHERE id = ?').run(req.params.id);
+    removerAnexosDaEntidade('Multa', [antes.id]);
+  });
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'multas', registroId: antes.id, acao: 'DELETE', antes });
   res.status(204).send();
 }));
@@ -206,6 +213,7 @@ router.post('/batch-delete', requerAcessoModulo('multas', 'Gerenciar'), exigirEm
   withTransaction(db, () => {
     for (const antes of registros) {
       db.prepare('DELETE FROM multas WHERE id = ?').run(antes.id);
+      removerAnexosDaEntidade('Multa', [antes.id]);
       registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'multas', registroId: antes.id, acao: 'DELETE', antes });
     }
   });

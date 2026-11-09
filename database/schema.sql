@@ -1019,7 +1019,11 @@ CREATE TABLE multas (
     criado_por              INTEGER REFERENCES usuarios(id),
     criado_em               TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     despesa_fixa_id         INTEGER,  -- despesas_fixas.id do custo da multa paga pela empresa
-    atualizado_em           TEXT
+    atualizado_em           TEXT,
+    codigo_orgao            TEXT,     -- chave do auto no Senatran: codigo_orgao + numero_ait + codigo_infracao
+    codigo_infracao         TEXT,     -- ex.: 5746-3
+    renainf                 TEXT,
+    local_infracao          TEXT
 );
 CREATE INDEX idx_multas_veiculo ON multas(veiculo_id);
 CREATE INDEX idx_multas_prazo ON multas(prazo_indicacao) WHERE status = 'AguardandoIndicacao';
@@ -1051,7 +1055,7 @@ CREATE INDEX idx_ocorrencias_entidade ON ocorrencias(entidade_tipo, entidade_id)
 CREATE TABLE anexos (
     id              INTEGER PRIMARY KEY,
     empresa_id      INTEGER NOT NULL REFERENCES empresas(id),
-    entidade_tipo   TEXT NOT NULL CHECK (entidade_tipo IN ('Frete', 'DespesaViagem', 'OrdemServico')),
+    entidade_tipo   TEXT NOT NULL CHECK (entidade_tipo IN ('Frete', 'DespesaViagem', 'OrdemServico', 'Multa')),
     entidade_id     INTEGER NOT NULL,
     nome_arquivo    TEXT NOT NULL,   -- nome unico salvo em disco
     nome_original   TEXT NOT NULL,   -- nome original do arquivo (exibicao/download)

@@ -7,6 +7,7 @@ import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, attachDataMask, par
 
 import { ICONE_SUCESSO, ICONE_ATENCAO, ICONE_CRITICO, ICONE_NEUTRO } from '../components/statusIcons.js';
 import { esc } from '../html.js';
+import { criarAnexos } from '../components/anexos.js';
 
 const STATUS_LABEL = {
   AguardandoIndicacao: 'Aguardando indicacao',
@@ -230,6 +231,41 @@ async function verNotificacao(registro) {
   }
 }
 
+function linhaDetalhe(rotulo, valor) {
+  const v = valor === null || valor === undefined || valor === '' ? '-' : valor;
+  return `<div><dt class="text-xs text-slate-500">${rotulo}</dt><dd class="text-sm text-slate-900">${v}</dd></div>`;
+}
+
+// Detalhes da multa: dados do auto (como constam na notificacao) + anexos (PDF da notificacao de autuacao/penalidade, fotos).
+function abrirDetalhes(registro, gerenciar) {
+  const corpo = document.createElement('div');
+  corpo.className = 'space-y-5';
+  const codigoInfracao = registro.codigo_infracao ? esc(registro.codigo_infracao) : null;
+  corpo.innerHTML = `
+    <dl class="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
+      ${linhaDetalhe('Veiculo', esc(registro.veiculo_placa))}
+      ${linhaDetalhe('Motorista', esc(registro.motorista_nome))}
+      ${linhaDetalhe('Status', STATUS_LABEL[registro.status] || esc(registro.status))}
+      ${linhaDetalhe('Orgao autuador', esc([registro.codigo_orgao, registro.orgao_autuador].filter(Boolean).join(' - ')))}
+      ${linhaDetalhe('N. do auto (AIT)', esc(registro.numero_ait))}
+      ${linhaDetalhe('Codigo da infracao', codigoInfracao)}
+      ${linhaDetalhe('RENAINF', esc(registro.renainf))}
+      ${linhaDetalhe('Data da infracao', registro.data_infracao ? formatarDataBr(registro.data_infracao) : null)}
+      ${linhaDetalhe('Data da notificacao', formatarDataBr(registro.data_notificacao))}
+      ${linhaDetalhe('Prazo p/ indicar condutor', formatarDataBr(registro.prazo_indicacao))}
+      ${linhaDetalhe('Valor', formatarMoeda(registro.status === 'NaoIndicado' && registro.valor_nao_indicacao ? registro.valor_nao_indicacao : registro.valor_original))}
+    </dl>
+    <dl class="space-y-3">
+      ${linhaDetalhe('Infracao', esc(registro.descricao))}
+      ${linhaDetalhe('Local', esc(registro.local_infracao))}
+      ${linhaDetalhe('Observacoes', esc(registro.observacoes))}
+    </dl>
+    <div data-anexos></div>
+  `;
+  corpo.querySelector('[data-anexos]').appendChild(criarAnexos({ entidadeTipo: 'Multa', entidadeId: registro.id, podeGerenciar: gerenciar }).el);
+  abrirModal({ titulo: `Multa - ${registro.veiculo_placa}`, conteudo: corpo, largura: 'max-w-3xl' });
+}
+
 export async function render(container) {
   container.innerHTML = `
     <h1 class="mb-1 text-xl font-bold text-slate-900">Multas de Transito</h1>
@@ -252,8 +288,9 @@ export async function render(container) {
     onEditar: gerenciar ? (r) => abrirFormulario(r, tabela.recarregar) : undefined,
     onExcluir: gerenciar ? (r) => del(`/multas/${r.id}`) : undefined,
     onExcluirLote: gerenciar ? (ids) => post('/multas/batch-delete', { ids }) : undefined,
-    acoesExtras: gerenciar ? (r) => {
-      const acoes = [];
+    acoesExtras: (r) => {
+      const acoes = [{ label: 'Detalhes', onClick: (reg) => abrirDetalhes(reg, gerenciar) }];
+      if (!gerenciar) return acoes;
       if (r.status === 'AguardandoIndicacao' || r.status === 'CondutorIndicado') {
         acoes.push({ label: 'Indicar condutor', onClick: (reg) => abrirIndicarCondutor(reg, tabela.recarregar) });
       }
@@ -267,7 +304,7 @@ export async function render(container) {
         acoes.push({ label: 'Marcar paga', onClick: (reg) => marcarPaga(reg, tabela.recarregar) });
       }
       return acoes;
-    } : undefined,
+    },
     tituloNovo: 'Multa',
     vazio: 'Nenhuma multa lancada.',
   });

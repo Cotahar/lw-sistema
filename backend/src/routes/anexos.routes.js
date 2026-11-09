@@ -16,8 +16,8 @@ const RANK_NIVEL = { Nenhum: 0, Visualizar: 1, Gerenciar: 2 };
 
 // Frete/DespesaViagem pertencem ao modulo 'viagens' na matriz de permissoes,
 // mesmo padrao de ocorrencias.routes.js; OrdemServico ao modulo 'manutencao'.
-const MODULO_POR_ENTIDADE = { Frete: 'viagens', DespesaViagem: 'viagens', OrdemServico: 'manutencao' };
-const TABELA_POR_ENTIDADE = { Frete: 'fretes', DespesaViagem: 'despesas_viagem', OrdemServico: 'ordens_servico' };
+const MODULO_POR_ENTIDADE = { Frete: 'viagens', DespesaViagem: 'viagens', OrdemServico: 'manutencao', Multa: 'multas' };
+const TABELA_POR_ENTIDADE = { Frete: 'fretes', DespesaViagem: 'despesas_viagem', OrdemServico: 'ordens_servico', Multa: 'multas' };
 // Limite maximo de anexos por entidade (pedido explicito do usuario pra OS:
 // "ate 3 anexos") - checado tambem aqui no servidor (nao so escondendo o
 // botao no frontend), senao um upload direto na API furaria o limite.
