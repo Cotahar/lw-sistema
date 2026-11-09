@@ -88,3 +88,20 @@ test('migracao 039: banco antigo ganha as colunas e anexos passa a aceitar Multa
   assert.ok(antigo.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_anexos_entidade'").get());
   assert.throws(() => antigo.exec("INSERT INTO anexos (empresa_id, entidade_tipo, entidade_id, nome_arquivo, nome_original) VALUES (1, 'Outra', 1, 'c.pdf', 'C.PDF')"));
 });
+
+test('motorista sugerido por dados antigos: ao indicar o condutor pela tela, a marca e a fonte somem', async () => {
+  const criada = await admin().post('/api/multas').send({ veiculo_id: veiculoId, descricao: 'Teste dados antigos', valor_original: 13016, data_infracao: '2026-06-16', data_notificacao: '2026-09-23' });
+  assert.equal(criada.status, 201, JSON.stringify(criada.body));
+  const motorista = await admin().post('/api/motoristas').send({ nome: 'Motorista Dados Antigos', cpf: `${Date.now()}`.slice(-11), cnh: '1', cnh_validade: '2030-01-01' });
+  assert.equal(motorista.status, 201, JSON.stringify(motorista.body));
+  db.prepare("UPDATE multas SET motorista_id = ?, condutor_origem = 'DadosAntigos', condutor_fonte = 'Acerto X. Confianca ALTA.' WHERE id = ?").run(motorista.body.id, criada.body.id);
+  const antes = await admin().get(`/api/multas/${criada.body.id}`);
+  assert.equal(antes.body.condutor_origem, 'DadosAntigos');
+  assert.equal(antes.body.status, 'AguardandoIndicacao');
+
+  const indicada = await admin().post(`/api/multas/${criada.body.id}/indicar-condutor`).send({ motorista_id: motorista.body.id });
+  assert.equal(indicada.status, 200, JSON.stringify(indicada.body));
+  assert.equal(indicada.body.condutor_origem, null);
+  assert.equal(indicada.body.condutor_fonte, null);
+  assert.equal(indicada.body.status, 'CondutorIndicado');
+});

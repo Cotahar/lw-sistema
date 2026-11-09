@@ -1023,7 +1023,9 @@ CREATE TABLE multas (
     codigo_orgao            TEXT,     -- chave do auto no Senatran: codigo_orgao + numero_ait + codigo_infracao
     codigo_infracao         TEXT,     -- ex.: 5746-3
     renainf                 TEXT,
-    local_infracao          TEXT
+    local_infracao          TEXT,
+    condutor_origem         TEXT,     -- NULL = normal; 'DadosAntigos' = motorista sugerido por registros fora do Frottex
+    condutor_fonte          TEXT      -- de onde saiu e o grau de confianca
 );
 CREATE INDEX idx_multas_veiculo ON multas(veiculo_id);
 CREATE INDEX idx_multas_prazo ON multas(prazo_indicacao) WHERE status = 'AguardandoIndicacao';

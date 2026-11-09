@@ -126,7 +126,7 @@ router.post('/:id/indicar-condutor', requerAcessoModulo('multas', 'Gerenciar'), 
   if (!motorista) throw new ApiError(400, 'Motorista nao encontrado nesta empresa.');
 
   db.prepare(`
-    UPDATE multas SET motorista_id = ?, condutor_indicado_em = datetime('now', '-3 hours'), status = 'CondutorIndicado', atualizado_em = datetime('now', '-3 hours')
+    UPDATE multas SET motorista_id = ?, condutor_indicado_em = datetime('now', '-3 hours'), status = 'CondutorIndicado', condutor_origem = NULL, condutor_fonte = NULL, atualizado_em = datetime('now', '-3 hours')
     WHERE id = ?
   `).run(motorista_id, req.params.id);
   const depois = db.prepare(`${SELECT_LISTA} WHERE m.id = ?`).get(req.params.id);

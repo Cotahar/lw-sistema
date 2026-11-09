@@ -244,7 +244,7 @@ function abrirDetalhes(registro, gerenciar) {
   corpo.innerHTML = `
     <dl class="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
       ${linhaDetalhe('Veiculo', esc(registro.veiculo_placa))}
-      ${linhaDetalhe('Motorista', esc(registro.motorista_nome))}
+      ${linhaDetalhe('Motorista', registro.condutor_origem === 'DadosAntigos' && registro.motorista_nome ? `<span class="font-semibold text-warning">${esc(registro.motorista_nome)}</span> <span class="badge-atencao ml-1">dados antigos</span>` : esc(registro.motorista_nome))}
       ${linhaDetalhe('Status', STATUS_LABEL[registro.status] || esc(registro.status))}
       ${linhaDetalhe('Orgao autuador', esc([registro.codigo_orgao, registro.orgao_autuador].filter(Boolean).join(' - ')))}
       ${linhaDetalhe('N. do auto (AIT)', esc(registro.numero_ait))}
@@ -255,6 +255,7 @@ function abrirDetalhes(registro, gerenciar) {
       ${linhaDetalhe('Prazo p/ indicar condutor', formatarDataBr(registro.prazo_indicacao))}
       ${linhaDetalhe('Valor', formatarMoeda(registro.status === 'NaoIndicado' && registro.valor_nao_indicacao ? registro.valor_nao_indicacao : registro.valor_original))}
     </dl>
+    ${registro.condutor_origem === 'DadosAntigos' && registro.motorista_nome ? `<div class="rounded-lg border border-warning/40 bg-warning-soft px-3 py-2 text-sm text-warning-text"><strong>Motorista sugerido por dados antigos</strong> (nao veio de viagem do Frottex): ${esc(registro.condutor_fonte || '')}<br><span class="text-xs">Confira e use "Indicar condutor" para confirmar - a marca some ao confirmar.</span></div>` : ''}
     <dl class="space-y-3">
       ${linhaDetalhe('Infracao', esc(registro.descricao))}
       ${linhaDetalhe('Local', esc(registro.local_infracao))}
@@ -277,7 +278,9 @@ export async function render(container) {
   const tabela = criarDataTable({
     colunas: [
       { chave: 'veiculo_placa', titulo: 'Veiculo' },
-      { chave: 'motorista_nome', titulo: 'Motorista', render: (r) => esc(r.motorista_nome || '-') },
+      { chave: 'motorista_nome', titulo: 'Motorista', render: (r) => (r.condutor_origem === 'DadosAntigos' && r.motorista_nome
+        ? `<span class="font-semibold text-warning" title="${esc(r.condutor_fonte || 'Sugerido a partir de dados antigos')}">${esc(r.motorista_nome)}</span> <span class="badge-atencao ml-1" title="${esc(r.condutor_fonte || '')}">dados antigos</span>`
+        : esc(r.motorista_nome || '-')) },
       { chave: 'descricao', titulo: 'Infracao', truncar: true },
       { chave: 'valor_original', titulo: 'Valor', render: (r) => formatarMoeda(r.status === 'NaoIndicado' && r.valor_nao_indicacao ? r.valor_nao_indicacao : r.valor_original) },
       { chave: 'prazo_indicacao', titulo: 'Prazo indicacao', render: (r) => `${formatarDataBr(r.prazo_indicacao)}${badgePrazo(r)}` },
