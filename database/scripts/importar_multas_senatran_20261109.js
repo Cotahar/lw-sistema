@@ -87,6 +87,7 @@ try {
         const obs = [
           'IMPORTADA DO PORTAL SENATRAN EM 09/11/2026 (NAO PAGA NA CONSULTA).',
           ehNic ? 'PENALIDADE POR NAO IDENTIFICACAO DO CONDUTOR - JA APLICADA A EMPRESA.' : null,
+          !ehNic && !r.prazo_condutor ? 'A NOTIFICACAO NAO TRAZ PRAZO DE INDICACAO DO CONDUTOR: USADO O PRAZO DE DEFESA PREVIA.' : null,
           r.observacoes_pdf && !/n[aã]o dispon/i.test(r.observacoes_pdf) ? `OBS. DO AUTO: ${r.observacoes_pdf.toUpperCase()}` : null,
         ].filter(Boolean).join(' ');
         const info = db.prepare(`
