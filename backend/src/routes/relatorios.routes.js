@@ -293,32 +293,50 @@ router.get('/parcelas-financiamento', requerAcessoModulo('dre', 'Visualizar'), e
   })), req.empresaId));
 }));
 
-// Multas por motorista/veiculo - valor, status de indicacao de condutor,
-// filtravel por periodo (usa data_infracao; cai para data_notificacao
-// quando a infracao nao tem data registrada).
+// Multas por motorista/veiculo/conjunto - valor, status de indicacao de condutor, prazo, anexos.
+// Periodo: por padrao a data da infracao (cai para a da notificacao quando a infracao nao tem data); `tipo_data`
+// troca para 'notificacao' ou 'prazo' (prazo de indicacao do condutor). Filtros multi-selecao (veiculo, conjunto,
+// motorista, status) aceitam `?campo=1&campo=2`. Atalhos: sem_motorista=1, prazo_vencido=1 (aguardando indicacao com prazo
+// vencido), dados_antigos=1 (motorista sugerido por registros fora do Frottex).
 router.get('/multas', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const { veiculo_id, motorista_id, status, data_de, data_ate } = req.query;
+  const { veiculo_id, conjunto_id, motorista_id, status, data_de, data_ate, tipo_data, sem_motorista, prazo_vencido, dados_antigos } = req.query;
   const condicoes = ['m.empresa_id = ?'];
   const params = [req.empresaId];
   const veiculoIds = comoLista(veiculo_id);
   if (veiculoIds.length) { condicoes.push(clausulaIn('m.veiculo_id', veiculoIds)); params.push(...veiculoIds); }
+  const veiculosDoConjunto = veiculoIdsDosConjuntos(conjunto_id, req.empresaId);
+  if (veiculosDoConjunto) { condicoes.push(clausulaIn('m.veiculo_id', veiculosDoConjunto)); params.push(...veiculosDoConjunto); }
   const motoristaIds = comoLista(motorista_id);
   if (motoristaIds.length) { condicoes.push(clausulaIn('m.motorista_id', motoristaIds)); params.push(...motoristaIds); }
-  if (status) { condicoes.push('m.status = ?'); params.push(status); }
-  if (data_de) { condicoes.push("COALESCE(m.data_infracao, m.data_notificacao) >= ?"); params.push(data_de); }
-  if (data_ate) { condicoes.push("COALESCE(m.data_infracao, m.data_notificacao) <= ?"); params.push(data_ate); }
+  const statusLista = comoLista(status);
+  if (statusLista.length) { condicoes.push(clausulaIn('m.status', statusLista)); params.push(...statusLista); }
+  const colunaData = tipo_data === 'notificacao' ? 'm.data_notificacao' : tipo_data === 'prazo' ? 'm.prazo_indicacao' : 'COALESCE(m.data_infracao, m.data_notificacao)';
+  if (data_de) { condicoes.push(`${colunaData} >= ?`); params.push(data_de); }
+  if (data_ate) { condicoes.push(`${colunaData} <= ?`); params.push(data_ate); }
+  if (sem_motorista === '1') condicoes.push('m.motorista_id IS NULL');
+  if (dados_antigos === '1') condicoes.push("m.condutor_origem = 'DadosAntigos'");
+  const hoje = hojeIsoBrasilia();
+  if (prazo_vencido === '1') { condicoes.push("m.status = 'AguardandoIndicacao' AND m.prazo_indicacao < ?"); params.push(hoje); }
 
   const linhas = db.prepare(`
-    SELECT m.id, m.data_infracao, m.data_notificacao, m.descricao, m.orgao_autuador, m.numero_ait,
-           m.valor_original, m.valor_nao_indicacao, m.status,
-           v.placa AS veiculo_placa, mo.nome AS motorista_nome
+    SELECT m.id, m.veiculo_id, m.motorista_id, m.data_infracao, m.data_notificacao, m.prazo_indicacao, m.descricao, m.orgao_autuador,
+           m.codigo_orgao, m.numero_ait, m.codigo_infracao, m.renainf, m.local_infracao,
+           m.valor_original, m.valor_nao_indicacao, m.status, m.condutor_origem, m.condutor_fonte,
+           v.placa AS veiculo_placa, mo.nome AS motorista_nome,
+           (SELECT COUNT(*) FROM anexos a WHERE a.entidade_tipo = 'Multa' AND a.entidade_id = m.id) AS qtd_anexos
     FROM multas m
     JOIN veiculos v ON v.id = m.veiculo_id
     LEFT JOIN motoristas mo ON mo.id = m.motorista_id
     WHERE ${condicoes.join(' AND ')}
-    ORDER BY COALESCE(m.data_infracao, m.data_notificacao) DESC
+    ORDER BY COALESCE(m.data_infracao, m.data_notificacao) DESC, m.id DESC
   `).all(...params);
-  res.json(linhas);
+  const dia = (iso) => Math.round((new Date(`${iso}T00:00:00Z`) - new Date(`${hoje}T00:00:00Z`)) / 86400000);
+  res.json(comConjuntoDoVeiculo(linhas.map((r) => ({
+    ...r,
+    // Mesmo valor mostrado na tela de Multas: dobrado quando o condutor nao foi indicado e o valor em dobro foi calculado.
+    valor_efetivo: r.status === 'NaoIndicado' && r.valor_nao_indicacao ? r.valor_nao_indicacao : r.valor_original,
+    dias_restantes: r.status === 'AguardandoIndicacao' ? dia(r.prazo_indicacao) : null,
+  })), req.empresaId));
 }));
 
 // Atividade por usuario (logs_auditoria) - admin-only, mesma regra de

@@ -46,6 +46,10 @@ const DECISOES = [
   ...[['N003241114', '25/05/2026 (S049988049/S049988234)'], ['N003247188', '25/05/2026 (S049988049/S049988234)'], ['N003308990', '18/06/2026 (S050258952)'], ['N003338158', 'inicio de julho (TG00575836/37 ou S0505...)'],
     ['N003346437', 'inicio de julho (TG00575836/37 ou S0505...)'], ['N003371768', 'meados de julho (J009963878/893)'], ['N003386296', 'meados de julho (J009963878/893)'], ['N003401514', 'fim de julho (S050640501/S050695050/S050755764)']]
     .map(([ait, origem]) => ['TWT4B11', ait, 'EDVALDO LAURINDO VIEIRA', `Penalidade por nao identificacao do condutor (DNIT) contra a carreta TWT4B11; infracao de origem estimada pela data da penalidade: ${origem}, no periodo do Edvaldo. Confianca MEDIA.`]),
+  // Demais penalidades por nao identificacao, ligadas ao motorista da infracao de origem (a pedido do usuario).
+  ['TVP0B82', '1AA9609105', 'JESSE CAMPOS ALVES', 'Penalidade por nao identificacao do condutor, originada do auto 1VA3831883 (14/06/2026), atribuido ao Jesse. Confianca ALTA.'],
+  ['TWJ8B96', '1AA5121526', 'LEANDRO CAMPOS ALVES', 'Penalidade por nao identificacao do condutor, originada do auto 1VA5098118 (30/08/2026), atribuido ao Leandro pela viagem do Frottex. Confianca ALTA.'],
+  ['TWC0A52', 'N003290968', 'JESSE CAMPOS ALVES', 'Penalidade por nao identificacao do condutor (DNIT) contra a carreta TWC0A52 em 05/08/2026; infracao de origem estimada em meados de junho (S050218994, 14/06/2026), atribuida ao Jesse. Confianca MEDIA.'],
 ];
 
 console.log(`${aplicar ? 'APLICANDO' : 'SIMULACAO'} (usuario #${usuario.id}, empresa #${EMPRESA_ID})\n`);

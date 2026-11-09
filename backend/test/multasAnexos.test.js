@@ -105,3 +105,43 @@ test('motorista sugerido por dados antigos: ao indicar o condutor pela tela, a m
   assert.equal(indicada.body.condutor_fonte, null);
   assert.equal(indicada.body.status, 'CondutorIndicado');
 });
+
+test('relatorio de multas: filtros novos (status multiplo, sem motorista, prazo vencido, dados antigos, tipo de data), valor efetivo e anexos', async () => {
+  const empresa = criarEmpresa({ razao_social: 'Relatorio Multas LTDA' });
+  const token = await login();
+  const api2 = () => api(token, empresa);
+  const veiculo = await api2().post('/api/veiculos').send({ placa: 'RMT1A23', tipo: 'Cavalo', qtd_eixos: 3 });
+  assert.equal(veiculo.status, 201, JSON.stringify(veiculo.body));
+  const motorista = await api2().post('/api/motoristas').send({ nome: 'Motorista Relatorio Multas', cpf: `${Date.now()}`.slice(-11), cnh: '1', cnh_validade: '2030-01-01' });
+  assert.equal(motorista.status, 201, JSON.stringify(motorista.body));
+  const nova = async (extra) => {
+    const r = await api2().post('/api/multas').send({ veiculo_id: veiculo.body.id, descricao: 'Teste relatorio', valor_original: 10000, data_infracao: '2026-01-05', data_notificacao: '2026-01-10', ...extra });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    return r.body.id;
+  };
+  const vencida = await nova({});                                         // sem motorista, aguardando, prazo 09/02/2026 (vencido)
+  const antiga = await nova({ data_infracao: '2026-03-05', data_notificacao: '2026-03-10' });
+  db.prepare("UPDATE multas SET motorista_id = ?, condutor_origem = 'DadosAntigos', condutor_fonte = 'Fonte X' WHERE id = ?").run(motorista.body.id, antiga);
+  const dobrada = await nova({ data_infracao: '2026-04-05', data_notificacao: '2026-04-10' });
+  db.prepare("UPDATE multas SET status = 'NaoIndicado', valor_nao_indicacao = 20000 WHERE id = ?").run(dobrada);
+  const comAnexo = await nova({ data_infracao: '2026-05-05', data_notificacao: '2026-05-10', motorista_id: motorista.body.id });
+  await api2().post('/api/anexos').field('entidade_tipo', 'Multa').field('entidade_id', String(comAnexo)).attach('arquivo', PDF, { filename: 'n.pdf', contentType: 'application/pdf' });
+
+  const ids = async (qs) => (await api2().get(`/api/relatorios/multas${qs}`)).body.map((r) => r.id).sort((a, b) => a - b);
+  assert.deepEqual(await ids(''), [vencida, antiga, dobrada, comAnexo].sort((a, b) => a - b));
+  assert.deepEqual(await ids('?sem_motorista=1'), [vencida, dobrada].sort((a, b) => a - b));
+  assert.deepEqual(await ids('?dados_antigos=1'), [antiga]);
+  assert.deepEqual(await ids('?prazo_vencido=1'), [vencida, antiga].sort((a, b) => a - b)); // so 'aguardando indicacao': dobrada e comAnexo (condutor indicado) ficam de fora
+  assert.deepEqual(await ids('?status=NaoIndicado&status=CondutorIndicado'), [dobrada, comAnexo].sort((a, b) => a - b));
+  assert.deepEqual(await ids('?data_de=2026-03-01&data_ate=2026-03-31'), [antiga]);
+  assert.deepEqual(await ids('?tipo_data=notificacao&data_de=2026-04-01&data_ate=2026-04-30'), [dobrada]);
+  assert.deepEqual(await ids('?tipo_data=prazo&data_de=2026-02-01&data_ate=2026-02-28'), [vencida]);
+
+  const todas = (await api2().get('/api/relatorios/multas')).body;
+  assert.equal(todas.find((r) => r.id === dobrada).valor_efetivo, 20000);
+  assert.equal(todas.find((r) => r.id === vencida).valor_efetivo, 10000);
+  assert.equal(todas.find((r) => r.id === comAnexo).qtd_anexos, 1);
+  assert.equal(todas.find((r) => r.id === antiga).condutor_fonte, 'Fonte X');
+  assert.ok(todas.find((r) => r.id === vencida).dias_restantes < 0);
+  assert.equal(todas.find((r) => r.id === dobrada).dias_restantes, null);
+});

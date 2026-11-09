@@ -44,7 +44,7 @@ export function criarAnexos({ entidadeTipo, entidadeId, podeGerenciar, max }) {
     return `
       <div class="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm" data-anexo-id="${a.id}">
         ${ehPdf ? ICONE_PDF : ICONE_IMG}
-        <a href="/uploads/anexos/${esc(a.nome_arquivo)}" download="${esc(a.nome_original)}" target="_blank" rel="noopener" class="flex-1 truncate text-gray-900 hover:underline" title="${esc(a.nome_original)}">${esc(a.nome_original)}</a>
+        <a href="/uploads/anexos/${esc(a.nome_arquivo)}" target="_blank" rel="noopener" class="flex-1 truncate text-gray-900 hover:underline" title="${esc(a.nome_original)}">${esc(a.nome_original)}</a>
         <span class="shrink-0 text-xs text-slate-400">${formatarTamanho(a.tamanho_bytes)}</span>
         <span class="shrink-0 text-xs text-slate-400">${esc(a.criado_por_nome || 'Usuario')} &middot; ${formatarDataHoraBr(a.criado_em)}</span>
         ${podeGerenciar ? `<button type="button" class="shrink-0 text-xs text-danger hover:underline" data-remover="${a.id}">Remover</button>` : ''}
