@@ -34,6 +34,18 @@ const DECISOES = [
   ...['N005686991', 'N005686992', 'FD00042240', 'J010179177'].map((ait) => ['TVP0B82', ait, 'MAICON CUNHA DA SILVA', fonteMaicon]),
   ...['ATV0751561', 'VSV1025799', 'AI08007125', 'S049988049', 'S049988234', 'S050258952', '1VA3974586', 'TG00575836', 'TG00575837', 'S050513494', 'S050515342', 'J009963878', 'J009963893', '1VA4351170', 'S050640501', 'S050695050', 'S050755764'].map((ait) => ['TWT4B11', ait, 'EDVALDO LAURINDO VIEIRA', fonteEdvaldoCarreta]),
   ...['S050218994', 'J009771746', 'J009774354'].map((ait) => ['TWC0A52', ait, 'JESSE CAMPOS ALVES', fonteJesseCarreta]),
+  // Multas por NAO IDENTIFICACAO do condutor (5002-0): a penalidade e emitida ~6 a 8 semanas depois da infracao de origem,
+  // e o responsavel e o motorista da infracao de origem. Ligadas ao Edvaldo (a pedido do usuario):
+  ...[['TPN8E74', '1AA6328465', '1L 8046122 (07/05/2026)'], ['TPN8E74', '1AA2906936', '1VA4558587 (29/07/2026)'], ['TWT4B11', 'N000090515', 'VSV1025799 (28/03/2026)'],
+    ['TWT4B11', 'N000091099', 'ATV0751561 (28/03/2026)'], ['TWT4B11', '1AA0220416', '1VA3974586 (25/06/2026)'], ['TWT4B11', '1AA2204536', '1VA4351170 (17/07/2026)']]
+    .map(([placa, ait, origem]) => [placa, ait, 'EDVALDO LAURINDO VIEIRA', `Penalidade por nao identificacao do condutor, originada do auto ${origem}, atribuido ao Edvaldo. Confianca ALTA.`]),
+  ['TPN8E74', 'D009134588', 'EDVALDO LAURINDO VIEIRA', 'Penalidade por nao identificacao do condutor emitida em 05/05/2026 contra a TPN8E74 (auto de origem DETRAN-RS E032741607, de cerca de marco); o Edvaldo dirigia a TPN8E74 de 02/03 a 03/08/2026. Confianca ALTA.'],
+  ['TPN8E74', 'N003139009', 'EDVALDO LAURINDO VIEIRA', 'Penalidade por nao identificacao do condutor emitida em 03/06/2026 contra a TPN8E74 (infracao de origem estimada em abril/maio); o Edvaldo dirigia a TPN8E74 de 02/03 a 03/08/2026. Confianca MEDIA.'],
+  ['TPN8E74', '1AA2780885', 'EDVALDO LAURINDO VIEIRA', 'Penalidade por nao identificacao do condutor emitida em 23/04/2026 contra a TPN8E74 (origem: auto 1K 404316-9, data desconhecida, estimada em marco). Pode ser de antes da admissao do Edvaldo (02/03/2026). Confianca MEDIA.'],
+  ['TPN8E74', 'NIC1175800', 'EDVALDO LAURINDO VIEIRA', 'Penalidade por nao identificacao do condutor (DER-PR, 01/09/2026); a infracao de origem estimada e o auto Z001168414 (DER-PR, 16/07/2026), atribuido ao Edvaldo. Confianca MEDIA.'],
+  ...[['N003241114', '25/05/2026 (S049988049/S049988234)'], ['N003247188', '25/05/2026 (S049988049/S049988234)'], ['N003308990', '18/06/2026 (S050258952)'], ['N003338158', 'inicio de julho (TG00575836/37 ou S0505...)'],
+    ['N003346437', 'inicio de julho (TG00575836/37 ou S0505...)'], ['N003371768', 'meados de julho (J009963878/893)'], ['N003386296', 'meados de julho (J009963878/893)'], ['N003401514', 'fim de julho (S050640501/S050695050/S050755764)']]
+    .map(([ait, origem]) => ['TWT4B11', ait, 'EDVALDO LAURINDO VIEIRA', `Penalidade por nao identificacao do condutor (DNIT) contra a carreta TWT4B11; infracao de origem estimada pela data da penalidade: ${origem}, no periodo do Edvaldo. Confianca MEDIA.`]),
 ];
 
 console.log(`${aplicar ? 'APLICANDO' : 'SIMULACAO'} (usuario #${usuario.id}, empresa #${EMPRESA_ID})\n`);
