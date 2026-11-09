@@ -2,7 +2,7 @@ const createCrudRouter = require('../utils/crud');
 
 module.exports = createCrudRouter({
   table: 'categorias_despesa',
-  columns: ['nome'],
+  columns: ['nome', 'conta_como_manutencao'],
   required: ['nome'],
   searchFields: ['nome'],
   writeMinRole: 'Admin', // taxonomia/configuracao do sistema

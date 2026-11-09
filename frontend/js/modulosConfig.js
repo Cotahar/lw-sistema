@@ -28,7 +28,7 @@ export const GRUPOS_MENU = [
     itens: [
       { chave: 'estoque', label: 'Estoque', rota: '/estoque' },
       { chave: 'pneus', label: 'Pneus', rota: '/pneus' },
-      { chave: 'manutencao', label: 'Manutencao (OS)', rota: '/manutencao' },
+      { chave: 'manutencao', label: 'Manutencao', rota: '/manutencao' },
       { chave: 'alertas', label: 'Alertas', rota: '/alertas' },
       { chave: 'checklist', label: 'Checklist de Bordo', rota: '/checklist' },
     ],

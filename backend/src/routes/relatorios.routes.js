@@ -8,6 +8,7 @@ const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimen
 const { periodoOuTudo, periodoRealizado, resultadoDoVeiculo, totaisGeraisDoPeriodo, resultadoDoConjunto, conjuntoDonoPorVeiculo } = require('../utils/dreHelper');
 const { rotulosDosConjuntos, veiculoIdsDosConjuntos, comConjuntoDoVeiculo, TIPOS_TRATORA } = require('../utils/conjuntoRelatorioHelper');
 const { hojeIsoBrasilia } = require('../utils/dataHora');
+const { listarManutencoes } = require('../utils/manutencoesHelper');
 const { diasParadosPorViagem, diasParadosNoPeriodo } = require('../utils/diasParadosHelper');
 
 const router = express.Router();
@@ -369,31 +370,12 @@ router.get('/atividade-usuarios', requerAdmin, asyncHandler(async (req, res) => 
 // filtra e ja embute os itens de cada OS (mesmo padrao de "ultima_baixa"
 // em /saldos-em-aberto: 1 query extra por linha, aceitavel neste volume).
 router.get('/ordens-servico', requerAcessoModulo('dre', 'Visualizar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const { veiculo_id, conjunto_id, tipo, fornecedor_id, data_de, data_ate } = req.query;
-  const condicoes = ['os.empresa_id = ?'];
-  const params = [req.empresaId];
-  if (veiculo_id) { condicoes.push('os.veiculo_id = ?'); params.push(veiculo_id); }
-  const veiculosDoConjunto = veiculoIdsDosConjuntos(conjunto_id, req.empresaId);
-  if (veiculosDoConjunto) { condicoes.push(clausulaIn('os.veiculo_id', veiculosDoConjunto)); params.push(...veiculosDoConjunto); }
-  if (tipo) { condicoes.push('os.tipo = ?'); params.push(tipo); }
-  if (fornecedor_id) { condicoes.push('os.fornecedor_id = ?'); params.push(fornecedor_id); }
-  if (data_de) { condicoes.push('os.data >= ?'); params.push(data_de); }
-  if (data_ate) { condicoes.push('os.data <= ?'); params.push(data_ate); }
-
-  const linhas = db.prepare(`
-    SELECT os.id, os.data, os.hodometro, os.tipo, os.valor_pecas, os.valor_mao_obra, os.descricao,
-           os.veiculo_id, v.placa AS veiculo_placa, v.tipo AS veiculo_tipo, forn.nome AS fornecedor_nome
-    FROM ordens_servico os
-    JOIN veiculos v ON v.id = os.veiculo_id
-    LEFT JOIN fornecedores forn ON forn.id = os.fornecedor_id
-    WHERE ${condicoes.join(' AND ')}
-    ORDER BY os.data DESC, os.id DESC
-  `).all(...params);
-
-  res.json(comConjuntoDoVeiculo(linhas, req.empresaId).map((r) => {
-    const itens = db.prepare('SELECT descricao, quantidade, valor_unitario FROM os_itens WHERE os_id = ?').all(r.id);
-    return { ...r, valor_total: r.valor_pecas + r.valor_mao_obra, itens };
-  }));
+  // Manutencao unificada: Ordens de Servico (Preventiva/Corretiva) + manutencao de estrada lancada nas viagens ('Estrada').
+  // `tipo` filtra pela classe (aceita varios); `origem` = OS | Viagem restringe a uma das origens.
+  const { veiculo_id, conjunto_id, tipo, origem, fornecedor_id, data_de, data_ate } = req.query;
+  res.json(listarManutencoes(req.empresaId, { veiculo_id, conjunto_id, classe: tipo, origem, fornecedor_id, data_de, data_ate }).map((r) => ({
+    ...r, valor_pecas: r.valor_pecas ?? 0, valor_mao_obra: r.valor_mao_obra ?? 0,
+  })));
 }));
 
 // Posicao e consumo de estoque: quanto esta parado em pecas (valor =

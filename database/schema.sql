@@ -664,7 +664,10 @@ CREATE TABLE categorias_despesa (
     -- Categoria continua existindo/valida (relatorios, historico), so nao
     -- aparece na busca do formulario de despesa. Usado pela 'Arla', que
     -- passou a ser lancada via bloco expansivel dentro de Abastecimento.
-    oculta_na_busca INTEGER NOT NULL DEFAULT 0 CHECK (oculta_na_busca IN (0, 1))
+    oculta_na_busca INTEGER NOT NULL DEFAULT 0 CHECK (oculta_na_busca IN (0, 1)),
+    -- Despesa de viagem nesta categoria (Manutencao, Borracharia, Guincho...) tambem aparece em Manutencao como "Estrada",
+    -- junto das Ordens de Servico.
+    conta_como_manutencao INTEGER NOT NULL DEFAULT 0 CHECK (conta_como_manutencao IN (0, 1))
 );
 
 -- Faixas de KM/L -> % de comissao sobre o Frete Bruto. Cadastro restrito

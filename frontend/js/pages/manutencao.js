@@ -8,6 +8,7 @@ import { formatarMoeda, attachMoedaMask, attachMoedaMaskReais, getMoedaValue, se
 import { navegar } from '../router.js';
 import { criarAnexos } from '../components/anexos.js';
 import { esc } from '../html.js';
+import { badgeClasse, textoClasse, textoOrigem } from '../components/manutencaoClasse.js';
 
 async function buscarVeiculos(termo) {
   return (await get(`/veiculos${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((v) => ({ value: v.id, label: v.placa }));
@@ -233,41 +234,76 @@ async function verDetalhes(os, gerenciar) {
   }
 }
 
-export async function render(container) {
-  container.innerHTML = '<h1 class="mb-4 text-xl font-bold text-slate-900">Manutencao (Ordens de Servico)</h1><div data-tabela></div>';
-  const gerenciar = podeGerenciar('manutencao');
+const FILTROS_ORIGEM = [
+  { valor: '', rotulo: 'Todas' },
+  { valor: 'OS', rotulo: 'Ordens de servico' },
+  { valor: 'Viagem', rotulo: 'Beira de estrada (viagens)' },
+];
 
-  const veiculosCache = {};
-  async function nomeVeiculo(id) {
-    if (!veiculosCache[id]) {
-      try { veiculosCache[id] = (await get(`/veiculos/${id}`)).placa; } catch { veiculosCache[id] = `#${id}`; }
-    }
-    return veiculosCache[id];
+export async function render(container) {
+  container.innerHTML = `
+    <h1 class="mb-1 text-xl font-bold text-slate-900">Manutencao</h1>
+    <p class="mb-4 text-sm text-slate-500">Ordens de servico (revisoes e reparos em oficina) e a manutencao de beira de estrada lancada nas viagens dos motoristas, juntas e diferenciadas. A de estrada se edita na propria viagem.</p>
+    <div class="mb-3 flex flex-wrap items-center gap-2" data-filtros-origem></div>
+    <div class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3" data-resumo></div>
+    <div data-tabela></div>
+  `;
+  const gerenciar = podeGerenciar('manutencao');
+  let origemAtual = '';
+
+  const filtrosEl = container.querySelector('[data-filtros-origem]');
+  function desenharFiltros() {
+    filtrosEl.innerHTML = FILTROS_ORIGEM.map((f) => `<button type="button" class="${f.valor === origemAtual ? 'btn-primary' : 'btn-secondary'} btn-sm" data-origem="${f.valor}" aria-pressed="${f.valor === origemAtual}">${f.rotulo}</button>`).join('');
+    filtrosEl.querySelectorAll('[data-origem]').forEach((b) => b.addEventListener('click', () => { origemAtual = b.dataset.origem; desenharFiltros(); tabela.recarregar(); }));
+  }
+  desenharFiltros();
+
+  const resumoEl = container.querySelector('[data-resumo]');
+  function desenharResumo(dados) {
+    const os = dados.filter((r) => r.origem === 'OS');
+    const estrada = dados.filter((r) => r.origem === 'Viagem');
+    const soma = (a) => a.reduce((t, r) => t + r.valor_total, 0);
+    resumoEl.innerHTML = `
+      <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Total no filtro</p><p class="mt-1 text-2xl font-bold text-slate-900">${formatarMoeda(soma(dados))}</p><p class="text-xs text-slate-500">${dados.length} lancamento(s)</p></div>
+      <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Ordens de servico</p><p class="mt-1 text-2xl font-bold text-slate-900">${formatarMoeda(soma(os))}</p><p class="text-xs text-slate-500">${os.length} OS (${os.filter((r) => r.classe === 'Preventiva').length} preventiva, ${os.filter((r) => r.classe === 'Corretiva').length} corretiva)</p></div>
+      <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Beira de estrada</p><p class="mt-1 text-2xl font-bold text-slate-900">${formatarMoeda(soma(estrada))}</p><p class="text-xs text-slate-500">${estrada.length} lancamento(s) nas viagens</p></div>
+    `;
   }
 
   const tabela = criarDataTable({
     colunas: [
       { chave: 'data', titulo: 'Data', render: (r) => formatarDataBr(r.data) },
-      { chave: 'conjunto', titulo: 'Conjunto', render: (r) => r.conjunto || '-' },
-      { chave: 'placa', titulo: 'Veiculo' },
-      { chave: 'tipo', titulo: 'Tipo' },
+      { chave: 'classe', titulo: 'Tipo', render: (r) => badgeClasse(r), exportar: (r) => textoClasse(r) },
+      { chave: 'conjunto', titulo: 'Conjunto', render: (r) => esc(r.conjunto || '-') },
+      { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => esc(r.veiculo_placa) },
+      { chave: 'descricao', titulo: 'O que foi feito', render: (r) => esc(r.origem === 'Viagem' ? [r.categoria, r.descricao].filter(Boolean).join(' - ') : (r.descricao || '-')), truncar: true },
+      { chave: 'origem_texto', titulo: 'Origem', render: (r) => esc(textoOrigem(r)), exportar: (r) => textoOrigem(r) },
       { chave: 'hodometro', titulo: 'Hodometro', render: (r) => (r.hodometro != null ? `${r.hodometro.toLocaleString('pt-BR')} km` : '-') },
-      { chave: 'total', titulo: 'Valor Total', render: (r) => formatarMoeda(r.valor_pecas + r.valor_mao_obra) },
+      { chave: 'valor_total', titulo: 'Valor Total', render: (r) => formatarMoeda(r.valor_total), exportar: (r) => r.valor_total / 100 },
       { chave: 'qtd_parcelas', titulo: 'Parcelas', render: (r) => (r.qtd_parcelas ? `${r.qtd_parcelas}x` : '-') },
     ],
-    buscarDados: async () => {
-      const ordens = await get('/ordens-servico');
-      for (const os of ordens) os.placa = await nomeVeiculo(os.veiculo_id);
-      return ordens;
+    ordenacaoInicial: { chave: 'data', direcao: 'desc' },
+    exportar: { nomeArquivo: 'manutencao' },
+    buscarDados: async (termo) => {
+      const todos = await get(`/manutencoes${origemAtual ? `?origem=${origemAtual}` : ''}`);
+      const t = (termo || '').toLowerCase();
+      const dados = t
+        ? todos.filter((r) => [r.veiculo_placa, r.conjunto, r.descricao, r.categoria, r.fornecedor_nome, r.motorista_nome, textoClasse(r)].some((v) => (v || '').toLowerCase().includes(t)))
+        : todos;
+      desenharResumo(dados);
+      return dados;
     },
     onNovo: gerenciar ? () => abrirNovaOs(tabela.recarregar) : undefined,
-    onEditar: gerenciar ? (r) => abrirEditarOs(r, tabela.recarregar) : undefined,
-    acoesExtras: (r) => [
-      { label: 'Detalhes', onClick: (os) => verDetalhes(os, gerenciar) },
-      ...(r.qtd_parcelas ? [{ label: 'Ver parcelas', onClick: (os) => navegar(`/contas-pagar?os_id=${os.id}`) }] : []),
-    ],
+    onEditar: gerenciar ? (r) => abrirEditarOs({ ...r, placa: r.veiculo_placa }, tabela.recarregar) : undefined,
+    podeEditar: (r) => r.origem === 'OS',
+    acoesExtras: (r) => (r.origem === 'Viagem'
+      ? [{ label: 'Ver viagem', onClick: (x) => navegar(`/viagens/${x.viagem_id}`) }]
+      : [
+        { label: 'Detalhes', onClick: (os) => verDetalhes(os, gerenciar) },
+        ...(r.qtd_parcelas ? [{ label: 'Ver parcelas', onClick: (os) => navegar(`/contas-pagar?os_id=${os.id}`) }] : []),
+      ]),
     tituloNovo: 'Ordem de Servico',
-    vazio: 'Nenhuma ordem de servico registrada.',
+    vazio: 'Nenhuma manutencao registrada.',
   });
   container.querySelector('[data-tabela]').appendChild(tabela.el);
 }

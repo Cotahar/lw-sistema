@@ -232,6 +232,7 @@ export async function abrirNovaDespesa(viagemId, recarregar, centroCustoPadrao) 
       <div><label class="label">Data</label><input type="text" name="data" class="input" /></div>
       <div><label class="label">Pago por *</label><select name="pago_por" class="input" required><option value="Empresa">Empresa</option><option value="Motorista">Motorista (desconta do acerto)</option><option value="AdminOutros">Admin/Outros (reembolsavel)</option></select></div>
     </div>
+    <p class="hidden rounded-lg border border-info/40 bg-info-soft px-3 py-2 text-xs text-info-text" data-dica-manutencao>Esta categoria conta como manutencao: o lancamento tambem aparece em Manutencao e nos relatorios de manutencao como <b>Estrada</b> (manutencao de beira de estrada), junto das Ordens de Servico.</p>
     <div data-bloco-usuario class="hidden"><label class="label">Quem desembolsou *</label><div data-usuario-select></div></div>
     <div data-bloco-vencimento class="hidden"><label class="label">Data de vencimento (se faturada)</label><input type="text" name="data_vencimento" class="input" placeholder="Deixe em branco se ja foi paga" /></div>
     <div data-bloco-pago-no-ato class="hidden rounded-lg border border-slate-200 p-3">
@@ -334,13 +335,19 @@ export async function abrirNovaDespesa(viagemId, recarregar, centroCustoPadrao) 
     // alertas e conferencia com o Onixsat dependem dele).
     form.km_abastecimento.required = ativo;
   }
+  function atualizarDicaManutencao() {
+    const cat = todasCategorias.find((c) => c.id === Number(form.categoria_id.value));
+    form.querySelector('[data-dica-manutencao]').classList.toggle('hidden', !(cat && cat.conta_como_manutencao));
+  }
   form.categoria_id.addEventListener('change', () => {
+    atualizarDicaManutencao();
     const agoraAbastecimento = categoriaEhAbastecimento();
     if (agoraAbastecimento && !categoriaEraAbastecimento) fornecedorSelect.setValue(null, '');
     categoriaEraAbastecimento = agoraAbastecimento;
     atualizarDisponibilidadeAbastecimento();
   });
   atualizarDisponibilidadeAbastecimento();
+  atualizarDicaManutencao();
 
   const contaPagoSelect = criarSearchableSelect({ buscar: buscarContasBancarias, placeholder: 'Pesquisar conta bancaria...' });
   form.querySelector('[data-conta-pago-select]').appendChild(contaPagoSelect.el);

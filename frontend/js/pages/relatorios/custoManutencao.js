@@ -7,12 +7,13 @@ import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js'
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
 import { esc } from '../../html.js';
+import { badgeClasse, textoClasse, textoOrigem, OPCOES_CLASSE } from '../../components/manutencaoClasse.js';
 
 const OPCOES_AGRUPAR = [
   { value: '', label: 'Nenhum' },
   { value: 'conjunto', label: 'Conjunto' },
   { value: 'veiculo_placa', label: 'Veiculo' },
-  { value: 'tipo', label: 'Tipo (Preventiva/Corretiva)' },
+  { value: 'tipo', label: 'Tipo (Preventiva/Corretiva/Estrada)' },
   { value: 'fornecedor_nome', label: 'Oficina' },
 ];
 
@@ -26,17 +27,13 @@ async function buscarOficinas(termo) {
 export async function render(container) {
   container.innerHTML = `
     <h1 class="mb-1 text-xl font-bold text-slate-900">Custo de Manutencao</h1>
-    <p class="mb-4 text-sm text-slate-500">Quanto cada conjunto (e cada placa dele) custou em pecas e mao de obra no periodo.</p>
+    <p class="mb-4 text-sm text-slate-500">Quanto cada conjunto (e cada placa dele) custou de manutencao no periodo: ordens de servico (pecas e mao de obra) mais a manutencao de beira de estrada lancada nas viagens.</p>
     <div class="card mb-4 grid grid-cols-2 gap-3 p-4 lg:grid-cols-4">
       <div><label class="label">Conjunto</label><div data-filtro-conjunto></div></div>
       <div><label class="label">Veiculo</label><div data-filtro-veiculo></div></div>
       <div>
         <label class="label">Tipo</label>
-        <select class="input" data-filtro-tipo>
-          <option value="">Todos</option>
-          <option value="Preventiva">Preventiva</option>
-          <option value="Corretiva">Corretiva</option>
-        </select>
+        <select class="input" data-filtro-tipo>${OPCOES_CLASSE.map((o) => `<option value="${o.value}">${o.label}</option>`).join('')}</select>
       </div>
       <div><label class="label">Oficina</label><div data-filtro-oficina></div></div>
       <div class="grid grid-cols-2 gap-2">
@@ -54,7 +51,7 @@ export async function render(container) {
       </div>
       <button type="button" class="btn-secondary btn-sm" data-exportar-pdf>Exportar PDF</button>
     </div>
-    <div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2" data-resumo></div>
+    <div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3" data-resumo></div>
     <div class="mb-4" data-resumo-grupo></div>
     <div data-tabela></div>
   `;
@@ -120,10 +117,11 @@ export async function render(container) {
       { chave: 'data', titulo: 'Data', render: (r) => formatarDataBr(r.data) },
       { chave: 'conjunto', titulo: 'Conjunto', render: (r) => r.conjunto || '-' },
       { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => esc(r.veiculo_placa) },
-      { chave: 'tipo', titulo: 'Tipo', render: (r) => esc(r.tipo) },
+      { chave: 'tipo', titulo: 'Tipo', render: (r) => badgeClasse(r), exportar: (r) => textoClasse(r) },
+      { chave: 'origem_texto', titulo: 'Origem', render: (r) => esc(textoOrigem(r)), exportar: (r) => textoOrigem(r) },
       { chave: 'fornecedor_nome', titulo: 'Oficina', render: (r) => esc(r.fornecedor_nome || '-') },
-      { chave: 'valor_pecas', titulo: 'Pecas', render: (r) => formatarMoeda(r.valor_pecas), exportar: (r) => r.valor_pecas / 100 },
-      { chave: 'valor_mao_obra', titulo: 'Mao de obra', render: (r) => formatarMoeda(r.valor_mao_obra), exportar: (r) => r.valor_mao_obra / 100 },
+      { chave: 'valor_pecas', titulo: 'Pecas', render: (r) => (r.origem === 'Viagem' ? '-' : formatarMoeda(r.valor_pecas)), exportar: (r) => (r.origem === 'Viagem' ? '' : r.valor_pecas / 100) },
+      { chave: 'valor_mao_obra', titulo: 'Mao de obra', render: (r) => (r.origem === 'Viagem' ? '-' : formatarMoeda(r.valor_mao_obra)), exportar: (r) => (r.origem === 'Viagem' ? '' : r.valor_mao_obra / 100) },
       { chave: 'valor_total', titulo: 'Total', render: (r) => `<span class="font-semibold">${formatarMoeda(r.valor_total)}</span>`, exportar: (r) => r.valor_total / 100 },
     ],
     ordenacaoInicial: { chave: 'data', direcao: 'desc' },
@@ -140,17 +138,21 @@ export async function render(container) {
       const todos = await get(`/relatorios/ordens-servico${query ? `?${query}` : ''}`);
       const termoLower = (termo || '').toLowerCase();
       const dados = termoLower
-        ? todos.filter((r) => [r.veiculo_placa, r.conjunto, r.fornecedor_nome, r.descricao].some((v) => (v || '').toLowerCase().includes(termoLower)))
+        ? todos.filter((r) => [r.veiculo_placa, r.conjunto, r.fornecedor_nome, r.descricao, r.categoria, r.motorista_nome, textoClasse(r)].some((v) => (v || '').toLowerCase().includes(termoLower)))
         : todos;
       const total = dados.reduce((t, r) => t + r.valor_total, 0);
+      const dasOs = dados.filter((r) => r.origem !== 'Viagem');
+      const daEstrada = dados.filter((r) => r.origem === 'Viagem');
+      const somar = (a) => a.reduce((t, r) => t + r.valor_total, 0);
       resumoEl.innerHTML = `
-        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Total no filtro</p><p class="mt-1 text-2xl font-bold text-danger">${formatarMoeda(total)}</p></div>
-        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Ordens de servico</p><p class="mt-1 text-2xl font-bold text-slate-900">${dados.length}</p></div>
+        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Total no filtro</p><p class="mt-1 text-2xl font-bold text-danger">${formatarMoeda(total)}</p><p class="text-xs text-slate-500">${dados.length} lancamento(s)</p></div>
+        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Ordens de servico</p><p class="mt-1 text-2xl font-bold text-slate-900">${formatarMoeda(somar(dasOs))}</p><p class="text-xs text-slate-500">${dasOs.length} OS</p></div>
+        <div class="card p-4"><p class="text-xs font-medium uppercase text-slate-500">Beira de estrada (viagens)</p><p class="mt-1 text-2xl font-bold text-slate-900">${formatarMoeda(somar(daEstrada))}</p><p class="text-xs text-slate-500">${daEstrada.length} lancamento(s)</p></div>
       `;
       renderResumoGrupo(dados);
       return dados;
     },
-    vazio: 'Nenhuma ordem de servico encontrada com estes filtros.',
+    vazio: 'Nenhuma manutencao encontrada com estes filtros.',
   });
   container.querySelector('[data-tabela]').appendChild(tabela.el);
 
@@ -185,7 +187,7 @@ export async function render(container) {
     const filtros = [];
     if (conjuntoSelect.getValues().length) filtros.push(`Conjunto: ${conjuntoSelect.getLabels().join(', ')}`);
     if (veiculoSelect.getValue()) filtros.push(`Veiculo: ${veiculoSelect.getLabel()}`);
-    if (selectTipo.value) filtros.push(`Tipo: ${selectTipo.value}`);
+    if (selectTipo.value) filtros.push(`Tipo: ${selectTipo.options[selectTipo.selectedIndex].text}`);
     if (oficinaSelect.getValue()) filtros.push(`Oficina: ${oficinaSelect.getLabel()}`);
     if (inputDataDe.value) filtros.push(`Data de: ${inputDataDe.value}`);
     if (inputDataAte.value) filtros.push(`Data ate: ${inputDataAte.value}`);
@@ -194,19 +196,20 @@ export async function render(container) {
       filtros,
       resumo: [
         { label: 'Total no filtro', valor: formatarMoeda(total), cor: 'red' },
-        { label: 'Ordens de servico', valor: String(dados.length) },
+        { label: 'Ordens de servico', valor: formatarMoeda(dados.filter((r) => r.origem !== 'Viagem').reduce((t, r) => t + r.valor_total, 0)) },
+        { label: 'Beira de estrada', valor: formatarMoeda(dados.filter((r) => r.origem === 'Viagem').reduce((t, r) => t + r.valor_total, 0)) },
       ],
-      colunas: ['Data', 'Conjunto', 'Veiculo', 'Tipo', 'Oficina', { titulo: 'Pecas', alinhar: 'right' }, { titulo: 'Mao de obra', alinhar: 'right' }, { titulo: 'Total', alinhar: 'right' }],
+      colunas: ['Data', 'Conjunto', 'Veiculo', 'Tipo', 'Origem', 'Oficina', { titulo: 'Pecas', alinhar: 'right' }, { titulo: 'Mao de obra', alinhar: 'right' }, { titulo: 'Total', alinhar: 'right' }],
       linhas: dados.map((r) => [
-        formatarDataBr(r.data), r.conjunto || '-', r.veiculo_placa, r.tipo, r.fornecedor_nome || '-',
-        formatarMoeda(r.valor_pecas), formatarMoeda(r.valor_mao_obra), formatarMoeda(r.valor_total),
+        formatarDataBr(r.data), r.conjunto || '-', r.veiculo_placa, textoClasse(r), textoOrigem(r), r.fornecedor_nome || '-',
+        r.origem === 'Viagem' ? '-' : formatarMoeda(r.valor_pecas), r.origem === 'Viagem' ? '-' : formatarMoeda(r.valor_mao_obra), formatarMoeda(r.valor_total),
       ]),
       grupo: grupo ? {
         titulo: `Total por ${grupo.label}`,
         colunas: [grupo.label, { titulo: 'Qtd', alinhar: 'right' }, { titulo: 'Total', alinhar: 'right' }],
         linhas: grupo.linhas.map(([chave, g]) => [chave, String(g.qtd), formatarMoeda(g.total)]),
       } : null,
-      tituloVazio: 'Nenhuma ordem de servico encontrada com estes filtros.',
+      tituloVazio: 'Nenhuma manutencao encontrada com estes filtros.',
     });
   });
 }

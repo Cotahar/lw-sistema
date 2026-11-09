@@ -21,6 +21,7 @@ const SETA_DESC = '<svg class="inline h-3 w-3" viewBox="0 0 24 24" fill="current
 // somaLote: (linhasSelecionadas) => string - texto de total na barra flutuante de selecao (ex.: soma dos valores).
 // selecionavel: (linha) => boolean - quais linhas mostram a caixa de selecao
 //   (padrao: todas).
+// podeEditar: (linha) => boolean - quais linhas mostram o botao Editar (padrao: todas).
 export function criarDataTable({
   colunas,
   buscarDados,
@@ -31,6 +32,7 @@ export function criarDataTable({
   acoesLote,
   somaLote,
   selecionavel = () => true,
+  podeEditar = () => true,
   acoesExtras,
   tituloNovo = 'Novo',
   vazio = 'Nenhum registro encontrado.',
@@ -310,7 +312,7 @@ export function criarDataTable({
           btn.addEventListener('click', () => acao.onClick(linha));
           tdAcoes.appendChild(btn);
         }
-        if (onEditar) {
+        if (onEditar && podeEditar(linha)) {
           const btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'btn-secondary btn-sm mr-1';

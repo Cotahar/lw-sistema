@@ -28,7 +28,10 @@ function rotulosDosConjuntos(empresaId) {
   }
   const mapa = new Map();
   for (const c of conjuntos) {
-    mapa.set(c.id, `${c.nome || `Conjunto #${c.id}`} (${(placas.get(c.id) || []).join(' + ')})`);
+    const nome = c.nome || `Conjunto #${c.id}`;
+    const lista = placas.get(c.id) || [];
+    // Quando o nome ja traz as placas (ex.: "TPN8E74 + TWJ8B96"), nao repete entre parenteses.
+    mapa.set(c.id, lista.length && !lista.every((p) => nome.includes(p)) ? `${nome} (${lista.join(' + ')})` : nome);
   }
   return mapa;
 }

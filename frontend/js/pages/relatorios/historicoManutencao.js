@@ -7,6 +7,13 @@ import { abrirRelatorioImpressao } from '../../components/relatorioImpressao.js'
 import { criarRelatoriosSalvos } from '../../components/relatoriosSalvos.js';
 import { formatarMoeda, formatarDataBr, attachDataMask, parseDataBrParaIso } from '../../masks.js';
 import { esc } from '../../html.js';
+import { badgeClasse, textoClasse, textoOrigem, OPCOES_CLASSE } from '../../components/manutencaoClasse.js';
+
+// Manutencao de estrada (despesa da viagem) nao tem itens: mostra a categoria lancada (Manutencao, Borracharia, Guincho...).
+function textoItensOuCategoria(r) {
+  if (r.origem === 'Viagem') return r.categoria || '-';
+  return textoItens(r.itens);
+}
 
 function textoItens(itens) {
   if (!itens || !itens.length) return '-';
@@ -20,17 +27,13 @@ async function buscarVeiculos(termo) {
 export async function render(container) {
   container.innerHTML = `
     <h1 class="mb-1 text-xl font-bold text-slate-900">Historico de Manutencao</h1>
-    <p class="mb-4 text-sm text-slate-500">O que ja foi feito em cada conjunto (cavalo e carreta), em ordem cronologica.</p>
+    <p class="mb-4 text-sm text-slate-500">O que ja foi feito em cada conjunto (cavalo e carreta), em ordem cronologica: ordens de servico (oficina) e manutencao de beira de estrada lancada nas viagens, diferenciadas pelo tipo.</p>
     <div class="card mb-4 grid grid-cols-2 gap-3 p-4 lg:grid-cols-4">
       <div><label class="label">Conjunto</label><div data-filtro-conjunto></div></div>
       <div><label class="label">Veiculo</label><div data-filtro-veiculo></div></div>
       <div>
         <label class="label">Tipo</label>
-        <select class="input" data-filtro-tipo>
-          <option value="">Todos</option>
-          <option value="Preventiva">Preventiva</option>
-          <option value="Corretiva">Corretiva</option>
-        </select>
+        <select class="input" data-filtro-tipo>${OPCOES_CLASSE.map((o) => `<option value="${o.value}">${o.label}</option>`).join('')}</select>
       </div>
       <div><label class="label">Data de</label><input type="text" class="input" data-filtro-data-de placeholder="dd/mm/aaaa" /></div>
       <div><label class="label">Data ate</label><input type="text" class="input" data-filtro-data-ate placeholder="dd/mm/aaaa" /></div>
@@ -63,9 +66,10 @@ export async function render(container) {
       { chave: 'conjunto', titulo: 'Conjunto', render: (r) => r.conjunto || '-' },
       { chave: 'veiculo_placa', titulo: 'Veiculo', render: (r) => esc(r.veiculo_placa) },
       { chave: 'hodometro', titulo: 'Hodometro', render: (r) => (r.hodometro != null ? r.hodometro.toLocaleString('pt-BR') : '-') },
-      { chave: 'tipo', titulo: 'Tipo', render: (r) => esc(r.tipo) },
+      { chave: 'tipo', titulo: 'Tipo', render: (r) => badgeClasse(r), exportar: (r) => textoClasse(r) },
+      { chave: 'origem_texto', titulo: 'Origem', render: (r) => esc(textoOrigem(r)), exportar: (r) => textoOrigem(r) },
       { chave: 'descricao', titulo: 'Descricao', render: (r) => esc(r.descricao || '-'), truncar: true },
-      { chave: 'itens', titulo: 'Itens', render: (r) => textoItens(r.itens), truncar: true },
+      { chave: 'itens', titulo: 'Itens', render: (r) => esc(textoItensOuCategoria(r)), truncar: true },
       { chave: 'fornecedor_nome', titulo: 'Oficina', render: (r) => esc(r.fornecedor_nome || '-') },
       { chave: 'valor_total', titulo: 'Total', render: (r) => formatarMoeda(r.valor_total), exportar: (r) => r.valor_total / 100 },
     ],
@@ -82,10 +86,10 @@ export async function render(container) {
       const todos = await get(`/relatorios/ordens-servico${query ? `?${query}` : ''}`);
       const termoLower = (termo || '').toLowerCase();
       return termoLower
-        ? todos.filter((r) => [r.veiculo_placa, r.conjunto, r.fornecedor_nome, r.descricao].some((v) => (v || '').toLowerCase().includes(termoLower)))
+        ? todos.filter((r) => [r.veiculo_placa, r.conjunto, r.fornecedor_nome, r.descricao, r.categoria, r.motorista_nome, textoClasse(r)].some((v) => (v || '').toLowerCase().includes(termoLower)))
         : todos;
     },
-    vazio: 'Nenhuma ordem de servico encontrada com estes filtros.',
+    vazio: 'Nenhuma manutencao encontrada com estes filtros.',
   });
   container.querySelector('[data-tabela]').appendChild(tabela.el);
 
@@ -113,18 +117,18 @@ export async function render(container) {
     const filtros = [];
     if (conjuntoSelect.getValues().length) filtros.push(`Conjunto: ${conjuntoSelect.getLabels().join(', ')}`);
     if (veiculoSelect.getValue()) filtros.push(`Veiculo: ${veiculoSelect.getLabel()}`);
-    if (selectTipo.value) filtros.push(`Tipo: ${selectTipo.value}`);
+    if (selectTipo.value) filtros.push(`Tipo: ${selectTipo.options[selectTipo.selectedIndex].text}`);
     if (inputDataDe.value) filtros.push(`Data de: ${inputDataDe.value}`);
     if (inputDataAte.value) filtros.push(`Data ate: ${inputDataAte.value}`);
     abrirRelatorioImpressao({
       titulo: 'Historico de Manutencao',
       filtros,
-      colunas: ['Data', 'Conjunto', 'Veiculo', 'Hodometro', 'Tipo', 'Descricao', 'Itens', 'Oficina', { titulo: 'Total', alinhar: 'right' }],
+      colunas: ['Data', 'Conjunto', 'Veiculo', 'Hodometro', 'Tipo', 'Origem', 'Descricao', 'Itens', 'Oficina', { titulo: 'Total', alinhar: 'right' }],
       linhas: dados.map((r) => [
         formatarDataBr(r.data), r.conjunto || '-', r.veiculo_placa, r.hodometro != null ? r.hodometro.toLocaleString('pt-BR') : '-',
-        r.tipo, r.descricao || '-', textoItens(r.itens), r.fornecedor_nome || '-', formatarMoeda(r.valor_total),
+        textoClasse(r), textoOrigem(r), r.descricao || '-', textoItensOuCategoria(r), r.fornecedor_nome || '-', formatarMoeda(r.valor_total),
       ]),
-      tituloVazio: 'Nenhuma ordem de servico encontrada com estes filtros.',
+      tituloVazio: 'Nenhuma manutencao encontrada com estes filtros.',
     });
   });
 }
