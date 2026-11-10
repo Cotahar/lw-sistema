@@ -6,10 +6,30 @@ function listarItensManuais(viagemId) {
   return db.prepare('SELECT * FROM acerto_itens WHERE viagem_id = ? ORDER BY id').all(viagemId);
 }
 
-// Despesas "por conta do motorista" (pago_por = 'Motorista') nao geram Conta a
-// Pagar: viram desconto no acerto, uma linha por despesa. Sao somadas no
-// total de descontos (ver calcularAcerto em acertos.routes.js) e aparecem
-// junto dos descontos manuais na listagem.
+// REGRA ATUAL (so para acertos AINDA NAO fechados): quando o motorista paga uma despesa do caminhao (pago_por = 'Motorista') ou paga
+// parte dela em dinheiro (valor_pago_dinheiro), ele vai cobrar a empresa no fim da viagem: o valor vira REEMBOLSO automatico no
+// acerto, uma linha por despesa. A unica coisa descontada do motorista sao os adiantamentos (e os descontos lancados a mao).
+function listarReembolsosAutomaticos(viagemId) {
+  const despesas = db.prepare(`
+    SELECT dv.id, dv.data, dv.valor, dv.pago_por, dv.valor_pago_dinheiro, dv.descricao, cat.nome AS categoria_nome
+    FROM despesas_viagem dv
+    LEFT JOIN categorias_despesa cat ON cat.id = dv.categoria_id
+    WHERE dv.viagem_id = ? AND (dv.pago_por = 'Motorista' OR dv.valor_pago_dinheiro > 0)
+    ORDER BY dv.data, dv.id
+  `).all(viagemId);
+  return despesas.map((d) => {
+    const pagouTudo = d.pago_por === 'Motorista';
+    const detalhe = [d.categoria_nome, d.descricao].filter(Boolean).join(' - ') || 'Despesa';
+    return {
+      origem: 'Despesa', automatico: true, despesa_id: d.id, data: d.data,
+      descricao: `${pagouTudo ? 'Pago pelo motorista' : 'Pago em dinheiro pelo motorista'}: ${detalhe}`,
+      valor: pagouTudo ? d.valor : d.valor_pago_dinheiro,
+    };
+  }).filter((l) => l.valor > 0);
+}
+
+// Legado: ate esta regra, despesa por conta do motorista (pago_por = 'Motorista') virava DESCONTO no acerto. Acertos ja fechados
+// continuam sendo mostrados assim (viagens fechadas nao mudam).
 function listarDespesasPorContaDoMotorista(viagemId) {
   return db.prepare(`
     SELECT dv.id, dv.data, dv.valor, dv.descricao, cat.nome AS categoria_nome
@@ -48,14 +68,24 @@ function reconciliarComTotal(linhas, totalGravado) {
 // reconciliada com os totais gravados (ver reconciliarComTotal).
 function montarDetalhamentoAcerto(viagemId, acerto = null) {
   const itens = listarItensManuais(viagemId);
-  let reembolsos = itens.filter((i) => i.tipo === 'Reembolso').map(linhaDeItem);
-  let descontos = [
-    ...listarDespesasPorContaDoMotorista(viagemId).map(linhaDeDespesa),
-    ...itens.filter((i) => i.tipo === 'Desconto').map(linhaDeItem),
-  ];
-  if (acerto) {
-    reembolsos = reconciliarComTotal(reembolsos, acerto.valor_reembolsos);
-    descontos = reconciliarComTotal(descontos, acerto.valor_descontos);
+  const reembolsosManuais = itens.filter((i) => i.tipo === 'Reembolso').map(linhaDeItem);
+  const descontosManuais = itens.filter((i) => i.tipo === 'Desconto').map(linhaDeItem);
+  const reembolsosAutomaticos = listarReembolsosAutomaticos(viagemId);
+  const descontosLegado = [...listarDespesasPorContaDoMotorista(viagemId).map(linhaDeDespesa), ...descontosManuais];
+  let reembolsos;
+  let descontos;
+  if (!acerto) {
+    // Acerto em aberto: regra atual (reembolso automatico; nada de desconto por despesa).
+    reembolsos = [...reembolsosAutomaticos, ...reembolsosManuais];
+    descontos = descontosManuais;
+  } else {
+    // Acerto fechado: mostra as linhas que batem com o total gravado (novo ou legado); se nenhuma bater, reconcilia o legado.
+    const comAutomaticos = [...reembolsosAutomaticos, ...reembolsosManuais];
+    reembolsos = somar(comAutomaticos.map((l) => l.valor)) === acerto.valor_reembolsos
+      ? comAutomaticos : reconciliarComTotal(reembolsosManuais, acerto.valor_reembolsos);
+    if (somar(descontosLegado.map((l) => l.valor)) === acerto.valor_descontos) descontos = descontosLegado;
+    else if (somar(descontosManuais.map((l) => l.valor)) === acerto.valor_descontos) descontos = descontosManuais;
+    else descontos = reconciliarComTotal(descontosLegado, acerto.valor_descontos);
   }
   const viagem = db.prepare('SELECT valor_pedagio FROM viagens WHERE id = ?').get(viagemId);
   return {
@@ -67,4 +97,4 @@ function montarDetalhamentoAcerto(viagemId, acerto = null) {
   };
 }
 
-module.exports = { listarItensManuais, listarDespesasPorContaDoMotorista, montarDetalhamentoAcerto };
+module.exports = { listarItensManuais, listarReembolsosAutomaticos, listarDespesasPorContaDoMotorista, montarDetalhamentoAcerto };

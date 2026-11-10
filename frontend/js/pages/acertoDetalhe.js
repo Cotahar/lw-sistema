@@ -235,7 +235,7 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
     ]) + grupo('Conta do motorista', [
       linha('Reembolsos ao motorista', formatarMoeda(p.valorReembolsos), false, 'reembolsos'),
       linha('Adiantamentos tomados', formatarMoeda(p.adiantamentosTotal)),
-      linha('Descontos (despesas do motorista + lancados)', formatarMoeda(p.valorDescontos), false, 'descontos'),
+      linha('Descontos (lancados)', formatarMoeda(p.valorDescontos), false, 'descontos'),
       linha('Saldo conta corrente anterior', formatarMoeda(p.saldoContaCorrenteAnterior)),
     ]);
 
@@ -317,7 +317,7 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
     return { principais, arlaPorPaiId };
   }
 
-  const PAGO_POR_LABEL = { Empresa: 'Empresa', Motorista: '<span class="badge-atencao">Motorista (desconto)</span>', AdminOutros: 'Admin/Outros' };
+  const PAGO_POR_LABEL = { Empresa: 'Empresa', Motorista: '<span class="badge-sucesso">Motorista (reembolso)</span>', AdminOutros: 'Admin/Outros' };
 
   function htmlDespesas(p) {
     const { principais, arlaPorPaiId } = despesasPrincipaisEArla(p);
@@ -345,7 +345,7 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
         + (p.valorPedagio > 0 ? linhaTotal(7, 'Pedagio da viagem (informativo no saldo)', formatarMoeda(p.valorPedagio)) : '')
         + linhaTotal(7, 'Comissao do motorista', formatarMoeda(p.valorComissao))
         + linhaTotal(7, 'Total das despesas do acerto', formatarMoeda(p.despesasTotal)),
-    }), 'Despesas pagas pelo motorista viram desconto no acerto.', { contagem: principais.length, total: formatarMoeda(p.despesasLancadasTotal), pendentes: p.despesasPendentes });
+    }), 'Despesa paga pelo motorista (ou a parte paga por ele em dinheiro) vira reembolso no acerto.', { contagem: principais.length, total: formatarMoeda(p.despesasLancadasTotal), pendentes: p.despesasPendentes });
   }
 
   function htmlAdiantamentos(p) {
@@ -373,13 +373,13 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
     const itens = ehReembolso ? p.itensReembolso : p.itensDesconto;
     const acoes = gerenciar ? [{ acao: `editar-item`, rotulo: 'Editar' }, { acao: `excluir-item`, rotulo: 'Excluir', perigo: true }] : [];
     const linhasManuais = itens.map((i) => [esc(i.descricao), formatarMoeda(i.valor), botoesAcao(acoes, i.id)]);
-    // Descontos tambem inclui, so pra leitura, as despesas por conta do
-    // motorista (editadas/excluidas na secao Despesas).
-    const linhasDespesa = ehReembolso ? [] : p.despesas.filter((d) => d.pago_por === 'Motorista').map((d) => [
-      `${esc(nomeCategoria[d.categoria_id] || 'Despesa')}${d.descricao ? ` - ${esc(d.descricao)}` : ''} <span class="badge-neutro">Despesa #${d.id}</span>`,
-      formatarMoeda(d.valor),
-      '<span class="text-xs text-slate-400">ajuste na secao Despesas</span>',
-    ]);
+    // Reembolsos tambem inclui, so pra leitura, o que o motorista pagou das despesas da viagem (despesa paga por ele ou a parte paga
+    // em dinheiro) - editado/excluido na secao Despesas. Descontos: so os lancados a mao.
+    const linhasDespesa = ehReembolso ? (p.reembolsosAutomaticos || []).map((l) => [
+      `${esc(l.descricao)} <span class="badge-neutro">Despesa #${l.despesa_id}</span>`,
+      formatarMoeda(l.valor),
+      '<span class="text-xs text-slate-400">automatico - ajuste na secao Despesas</span>',
+    ]) : [];
     const total = ehReembolso ? p.valorReembolsos : p.valorDescontos;
     return secao(
       ehReembolso ? 'Reembolsos ao motorista' : 'Descontos ao motorista',
@@ -391,7 +391,7 @@ async function renderPreview(container, viagem, motorista, gerenciar) {
         vazio: ehReembolso ? 'Nenhum reembolso lancado (ex.: caixinha, reaperto de rodas).' : 'Nenhum desconto lancado (ex.: multas, avarias).',
         rodape: linhaTotal(1, ehReembolso ? 'Total (Reembolsos)' : 'Total (Descontos)', formatarMoeda(total)),
       }),
-      ehReembolso ? 'Somam ao que o motorista recebe.' : 'Reduzem o que o motorista recebe.',
+      ehReembolso ? 'Somam ao que o motorista recebe. O que ele pagou das despesas entra sozinho.' : 'Reduzem o que o motorista recebe (alem dos adiantamentos).',
       { contagem: linhasDespesa.length + linhasManuais.length, total: formatarMoeda(total) },
     );
   }

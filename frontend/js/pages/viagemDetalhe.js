@@ -21,14 +21,14 @@ const TIPOS_TRATORA = ['Cavalo', 'Truck', 'Toco'];
 // Situacao de pagamento de uma despesa na tela da viagem: vem da conta a pagar
 // (diesel + Arla = uma conta so, presa na despesa principal).
 function badgePagamentoDespesa(d) {
-  if (d.pago_por === 'Motorista') return '<span class="text-xs text-slate-400">Desconta do acerto</span>';
+  if (d.pago_por === 'Motorista') return '<span class="text-xs text-slate-400">Reembolsa no acerto</span>';
   if (!d.contas_pagar_id || !d.conta_status) return '<span class="text-xs text-slate-400">-</span>';
   if (d.conta_status === 'Pago') return '<span class="badge-sucesso">Paga</span>';
   if (d.conta_status === 'Parcial') return '<span class="badge-atencao">Parcial</span>';
   return '<span class="badge-atencao">A pagar</span>';
 }
 function textoPagamentoDespesa(d) {
-  if (d.pago_por === 'Motorista') return 'Desconta do acerto';
+  if (d.pago_por === 'Motorista') return 'Reembolsa no acerto';
   if (!d.contas_pagar_id || !d.conta_status) return '-';
   return d.conta_status === 'Pago' ? 'Paga' : d.conta_status === 'Parcial' ? 'Parcial' : 'A pagar';
 }
@@ -230,7 +230,7 @@ export async function abrirNovaDespesa(viagemId, recarregar, centroCustoPadrao) 
     </div>
     <div class="grid grid-cols-2 gap-3">
       <div><label class="label">Data</label><input type="text" name="data" class="input" /></div>
-      <div><label class="label">Pago por *</label><select name="pago_por" class="input" required><option value="Empresa">Empresa</option><option value="Motorista">Motorista (desconta do acerto)</option><option value="AdminOutros">Admin/Outros (reembolsavel)</option></select></div>
+      <div><label class="label">Pago por *</label><select name="pago_por" class="input" required><option value="Empresa">Empresa</option><option value="Motorista">Motorista (reembolsa no acerto)</option><option value="AdminOutros">Admin/Outros (reembolsavel)</option></select></div>
     </div>
     <p class="hidden rounded-lg border border-info/40 bg-info-soft px-3 py-2 text-xs text-info-text" data-dica-manutencao>Esta categoria conta como manutencao: o lancamento tambem aparece em Manutencao e nos relatorios de manutencao como <b>Estrada</b> (manutencao de beira de estrada), junto das Ordens de Servico.</p>
     <div data-bloco-usuario class="hidden"><label class="label">Quem desembolsou *</label><div data-usuario-select></div></div>
@@ -243,7 +243,7 @@ export async function abrirNovaDespesa(viagemId, recarregar, centroCustoPadrao) 
     <div data-bloco-dinheiro class="hidden">
       <label class="label">Valor pago em dinheiro (pelo motorista)</label>
       <input type="text" name="valor_pago_dinheiro" class="input max-w-[12rem]" />
-      <p class="mt-1 text-xs text-slate-400">Se o motorista usou dinheiro que ja tinha em maos (adiantamento em especie) pra pagar parte ou tudo, informe aqui - reduz o valor da conta a pagar gerada.</p>
+      <p class="mt-1 text-xs text-slate-400">Se o motorista pagou parte ou tudo com o proprio dinheiro (ou com adiantamento em especie), informe aqui: reduz o valor da conta a pagar gerada e vira REEMBOLSO dele no acerto.</p>
     </div>
     <div><label class="label">Fornecedor</label><div data-fornecedor-select></div></div>
     <div>
@@ -544,7 +544,7 @@ function montarFormularioDespesaExistente({ despesa, arlaDespesa, categoriaNome,
       <div>
         <label class="label">Valor pago em dinheiro (pelo motorista)</label>
         <input type="text" name="valor_pago_dinheiro" class="input max-w-[12rem]" />
-        <p class="mt-1 text-xs text-slate-400">Reduz o valor da conta a pagar gerada ao posto/fornecedor.</p>
+        <p class="mt-1 text-xs text-slate-400">Reduz o valor da conta a pagar gerada ao posto/fornecedor e vira reembolso do motorista no acerto (viagem com acerto ainda aberto).</p>
       </div>
     ` : ''}
     ${incluirFormaPagamento ? `

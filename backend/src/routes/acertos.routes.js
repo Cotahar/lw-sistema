@@ -10,7 +10,7 @@ const { withTransaction } = require('../utils/transaction');
 const { buscarUnidadeTratora, buscarCentroCustoDoVeiculo } = require('../utils/conjuntoHelper');
 const { calcularMediasConsumo, buscarCategoriaAbastecimentoId, buscarAbastecimentosDoVeiculo } = require('../utils/mediaConsumoHelper');
 const { SELECT_STATUS_PAGAMENTO, comStatusPagamento } = require('../utils/acertoPagamentoHelper');
-const { listarItensManuais, montarDetalhamentoAcerto } = require('../utils/acertoDetalhamentoHelper');
+const { listarItensManuais, listarReembolsosAutomaticos, montarDetalhamentoAcerto } = require('../utils/acertoDetalhamentoHelper');
 const { somar, formatarMoeda, formatarDataBr } = require('../utils/formatacao');
 const { percentualComissaoPorMedia } = require('../utils/comissaoHelper');
 const { calcularDiasParados } = require('../utils/diasParadosHelper');
@@ -21,8 +21,12 @@ const router = express.Router();
 // "overrides" permite ao operador sobrescrever o percentual sugerido antes de
 // fechar (Fechamento Livre, sem travas). Reembolsos e descontos NAO sao mais
 // um valor digitado: vem da lista de itens da viagem (acerto_itens) - os
-// reembolsos sao a soma dos itens "Reembolso"; os descontos sao as despesas
-// por conta do motorista + a soma dos itens "Desconto". O pedagio e so
+// reembolsos sao a soma dos itens "Reembolso" MAIS o que o motorista pagou
+// das despesas da viagem (automatico: despesa paga pelo motorista + parte paga
+// em dinheiro); os descontos sao so os itens "Desconto" lancados a mao (o que
+// reduz o motorista sao os adiantamentos). Viagem com acerto JA FECHADO e
+// ignorada pela regra nova: continua no calculo antigo (despesa do motorista
+// = desconto, sem reembolso automatico). O pedagio e so
 // informativo (viagens.valor_pedagio) e nunca entra na formula do saldo.
 function calcularAcerto(viagemId, empresaId, overrides = {}) {
   const percentualInformado = overrides.percentual_comissao_aplicado;
@@ -87,10 +91,15 @@ function calcularAcerto(viagemId, empresaId, overrides = {}) {
   const itens = listarItensManuais(viagemId);
   const itensReembolso = itens.filter((i) => i.tipo === 'Reembolso');
   const itensDesconto = itens.filter((i) => i.tipo === 'Desconto');
-  const valorDescontosSugerido = somar(despesas.filter((d) => d.pago_por === 'Motorista').map((d) => d.valor));
+  const acertoJaFechado = Boolean(db.prepare('SELECT 1 FROM acertos_viagem WHERE viagem_id = ?').get(viagemId));
+  const reembolsosAutomaticos = acertoJaFechado ? [] : listarReembolsosAutomaticos(viagemId);
+  const valorReembolsosAutomaticos = somar(reembolsosAutomaticos.map((l) => l.valor));
+  const valorReembolsosManuais = somar(itensReembolso.map((i) => i.valor));
+  // Legado (so acerto ja fechado): despesa por conta do motorista era desconto.
+  const valorDescontosSugerido = acertoJaFechado ? somar(despesas.filter((d) => d.pago_por === 'Motorista').map((d) => d.valor)) : 0;
   const valorDescontosManuais = somar(itensDesconto.map((i) => i.valor));
   const valorDescontos = valorDescontosSugerido + valorDescontosManuais;
-  const valorReembolsos = somar(itensReembolso.map((i) => i.valor));
+  const valorReembolsos = valorReembolsosManuais + valorReembolsosAutomaticos;
 
   const motorista = db.prepare('SELECT * FROM motoristas WHERE id = ?').get(viagem.motorista_id);
   const saldoContaCorrenteAnterior = motorista.saldo_conta_corrente;
@@ -109,7 +118,8 @@ function calcularAcerto(viagemId, empresaId, overrides = {}) {
     freteBrutoTotal, kmTotal, litrosTotal, mediaConsumoKmL, mediaUltimaAbastecidaKmL,
     percentualSugerido, percentualAplicado, valorComissao,
     percentualImposto, valorImposto, baseCalculoComissao,
-    valorReembolsos, adiantamentosTotal, valorDescontosSugerido, valorDescontosManuais, valorDescontos,
+    valorReembolsos, valorReembolsosManuais, valorReembolsosAutomaticos, reembolsosAutomaticos,
+    adiantamentosTotal, valorDescontosSugerido, valorDescontosManuais, valorDescontos,
     itensReembolso, itensDesconto,
     // Receitas (frete bruto) - despesas da viagem (lancadas + pedagio + comissao
     // do motorista): so informativo, pro escritorio enxergar o resultado da

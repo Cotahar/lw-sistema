@@ -117,10 +117,11 @@ test('09. fecha o acerto e confere o saldo final calculado', async () => {
   assert.equal(res.status, 201, JSON.stringify(res.body));
   acertoId = res.body.id;
   assert.equal(res.body.status, 'Fechado');
-  assert.equal(res.body.valor_reembolsos, 0);
+  assert.equal(res.body.valor_reembolsos, 25000, 'o pedagio pago pelo motorista (R$ 250) vira reembolso dele');
+  assert.equal(res.body.valor_descontos, 0, 'so os adiantamentos descontam do motorista');
   assert.equal(res.body.valor_adiantamentos, 100000);
   // Saldo final = comissao + reembolsos - adiantamentos - descontos - saldo_cc_anterior.
-  const esperado = res.body.valor_comissao - 100000 - res.body.valor_descontos;
+  const esperado = res.body.valor_comissao + res.body.valor_reembolsos - 100000 - res.body.valor_descontos;
   assert.equal(res.body.saldo_final, esperado, 'saldo final deveria bater com a formula do PRD');
 
   const viagemDepois = await admin().get(`/api/viagens/${viagemId}`);

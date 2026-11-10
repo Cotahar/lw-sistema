@@ -77,28 +77,30 @@ test('itens: cria reembolsos e desconto (descricao em caixa alta), valida tipo/d
   assert.equal(lista.body.length, 3);
 });
 
-test('preview: reembolsos/descontos vem dos itens, pedagio nao entra no saldo, Receitas - Despesas calculado', async () => {
+test('preview: reembolsos (itens + o que o motorista pagou) e descontos (so itens), pedagio nao entra no saldo, Receitas - Despesas calculado', async () => {
   const antes = await admin().get(`/api/acertos/viagem/${viagemId}/preview?percentual_comissao_aplicado=20`);
   assert.equal(antes.status, 200, JSON.stringify(antes.body));
   const p = antes.body;
-  assert.equal(p.valorReembolsos, 8000);
-  assert.equal(p.valorDescontosSugerido, 20000, 'despesa por conta do motorista');
+  assert.equal(p.valorReembolsosManuais, 8000);
+  assert.equal(p.valorReembolsosAutomaticos, 20000, 'a despesa paga pelo motorista vira reembolso dele');
+  assert.equal(p.valorReembolsos, 28000);
+  assert.equal(p.valorDescontosSugerido, 0, 'despesa do motorista nao e mais desconto: so os adiantamentos (e itens lancados) reduzem o motorista');
   assert.equal(p.valorDescontosManuais, 2000);
-  assert.equal(p.valorDescontos, 22000);
+  assert.equal(p.valorDescontos, 2000);
   assert.equal(p.despesasLancadasTotal, 120000);
   assert.equal(p.despesasTotal, 120000 + 100000, 'despesas lancadas + comissao do motorista (20% de 500000)');
   assert.equal(p.receitasMenosDespesas, 500000 - 220000);
   assert.equal(p.adiantamentos.length, 1);
-  // comissao 20% de 500000 = 100000; + 8000 - 50000 (adiantamento) - 22000 - 0
+  // comissao 20% de 500000 = 100000; + 28000 (8000 manuais + 20000 que o motorista pagou) - 50000 (adiantamento) - 2000 - 0
   assert.equal(p.valorComissao, 100000);
-  assert.equal(p.saldoFinal, 36000);
+  assert.equal(p.saldoFinal, 76000);
 
   const pedagio = await admin().put(`/api/acertos/viagem/${viagemId}/pedagio`).send({ valor: 123456 });
   assert.equal(pedagio.status, 200, JSON.stringify(pedagio.body));
   assert.equal(pedagio.body.valor_pedagio, 123456);
   const depois = await admin().get(`/api/acertos/viagem/${viagemId}/preview?percentual_comissao_aplicado=20`);
   assert.equal(depois.body.valorPedagio, 123456);
-  assert.equal(depois.body.saldoFinal, 36000, 'pedagio e so informativo: saldo nao muda');
+  assert.equal(depois.body.saldoFinal, 76000, 'pedagio e so informativo: saldo nao muda');
   // ...mas e custo da viagem: entra no total de despesas, em Receitas - Despesas e no % de sobra.
   assert.equal(depois.body.despesasLancadasTotal, 120000);
   assert.equal(depois.body.despesasTotal, 120000 + 123456 + 100000, 'lancadas + pedagio + comissao');
@@ -119,17 +121,19 @@ test('editar e remover item recalculam o preview', async () => {
   const del = await admin().delete(`/api/acertos/itens/${itemRodasId}`);
   assert.equal(del.status, 204);
   const p = (await admin().get(`/api/acertos/viagem/${viagemId}/preview?percentual_comissao_aplicado=20`)).body;
-  assert.equal(p.valorReembolsos, 7000);
+  assert.equal(p.valorReembolsos, 27000, '7000 manual + 20000 que o motorista pagou');
   assert.equal(p.itensReembolso.length, 1);
   assert.equal((await admin().put('/api/acertos/itens/999999').send({ valor: 1 })).status, 404);
 });
 
-test('detalhamento antes de fechar: despesa por conta do motorista + desconto manual, sem reconciliacao', async () => {
+test('detalhamento antes de fechar: reembolso automatico (despesa do motorista) + manual; desconto so o manual', async () => {
   const res = await admin().get(`/api/acertos/viagem/${viagemId}/detalhamento`);
   assert.equal(res.status, 200, JSON.stringify(res.body));
-  assert.equal(res.body.totalReembolsos, 7000);
-  assert.equal(res.body.totalDescontos, 22000);
-  assert.deepEqual(res.body.descontos.map((d) => d.origem), ['Despesa', 'Manual']);
+  assert.equal(res.body.totalReembolsos, 27000);
+  assert.equal(res.body.totalDescontos, 2000);
+  assert.deepEqual(res.body.reembolsos.map((d) => d.origem), ['Despesa', 'Manual']);
+  assert.match(res.body.reembolsos[0].descricao, /^Pago pelo motorista: /);
+  assert.deepEqual(res.body.descontos.map((d) => d.origem), ['Manual']);
   assert.equal(res.body.valorPedagio, 123456);
 });
 
@@ -137,9 +141,9 @@ test('fechar congela os totais; depois disso os itens nao mudam mais (o pedagio 
   const fechar = await admin().post(`/api/acertos/viagem/${viagemId}/fechar`).send({ percentual_comissao_aplicado: 20 });
   assert.equal(fechar.status, 201, JSON.stringify(fechar.body));
   acertoId = fechar.body.id;
-  assert.equal(fechar.body.valor_reembolsos, 7000);
-  assert.equal(fechar.body.valor_descontos, 22000);
-  assert.equal(fechar.body.saldo_final, 35000); // 100000 + 7000 - 50000 - 22000
+  assert.equal(fechar.body.valor_reembolsos, 27000);
+  assert.equal(fechar.body.valor_descontos, 2000);
+  assert.equal(fechar.body.saldo_final, 75000); // 100000 + 27000 - 50000 - 2000
 
   assert.equal((await admin().post(`/api/acertos/viagem/${viagemId}/itens`).send({ tipo: 'Reembolso', descricao: 'tarde demais', valor: 100 })).status, 400);
   assert.equal((await admin().put(`/api/acertos/itens/${itemCaixinhaId}`).send({ valor: 1 })).status, 400);
@@ -147,14 +151,14 @@ test('fechar congela os totais; depois disso os itens nao mudam mais (o pedagio 
   // Pedagio e so informativo: pode ser corrigido mesmo com o acerto fechado, sem mexer nos totais congelados.
   const pedagioDepois = await admin().put(`/api/acertos/viagem/${viagemId}/pedagio`).send({ valor: 99999 });
   assert.equal(pedagioDepois.status, 200, JSON.stringify(pedagioDepois.body));
-  assert.equal(db.prepare('SELECT saldo_final FROM acertos_viagem WHERE id = ?').get(acertoId).saldo_final, 35000);
+  assert.equal(db.prepare('SELECT saldo_final FROM acertos_viagem WHERE id = ?').get(acertoId).saldo_final, 75000);
   assert.equal((await admin().put(`/api/acertos/viagem/${viagemId}/pedagio`).send({ valor: 123456 })).status, 200);
 });
 
 test('detalhamento de acerto antigo reconcilia com o total gravado (linha "Sem detalhamento")', async () => {
   // Simula um acerto fechado antes da listagem existir: total gravado maior
   // que a soma dos itens.
-  db.prepare('UPDATE acertos_viagem SET valor_reembolsos = valor_reembolsos + 1500 WHERE id = ?').run(acertoId);
+  db.prepare('UPDATE acertos_viagem SET valor_reembolsos = 8500 WHERE id = ?').run(acertoId); // 7000 de itens + 1500 sem detalhe, como um acerto antigo
   const res = await admin().get(`/api/acertos/viagem/${viagemId}/detalhamento`);
   assert.equal(res.status, 200);
   assert.equal(res.body.totalReembolsos, 8500);
@@ -168,7 +172,7 @@ test('detalhamento de acerto antigo reconcilia com o total gravado (linha "Sem d
   assert.equal(menor.body.totalDescontos, 100);
   assert.equal(menor.body.descontos.length, 1);
   assert.equal(menor.body.descontos[0].origem, 'SemDetalhe');
-  db.prepare('UPDATE acertos_viagem SET valor_reembolsos = 7000, valor_descontos = 22000 WHERE id = ?').run(acertoId);
+  db.prepare('UPDATE acertos_viagem SET valor_reembolsos = 27000, valor_descontos = 2000 WHERE id = ?').run(acertoId);
 });
 
 test('texto de WhatsApp lista cada item e mostra o pedagio informativo', async () => {
@@ -176,6 +180,7 @@ test('texto de WhatsApp lista cada item e mostra o pedagio informativo', async (
   assert.equal(res.status, 200);
   assert.match(res.text, /CAIXINHA: R\$\s?70,00/);
   assert.match(res.text, /AVARIA NA LONA: R\$\s?20,00/);
+  assert.match(res.text, /Pago pelo motorista/);
   assert.match(res.text, /Pedagio da viagem \(informativo/);
   assert.match(res.text, /1\.234,56/);
 });
@@ -183,8 +188,9 @@ test('texto de WhatsApp lista cada item e mostra o pedagio informativo', async (
 test('app do motorista: detalhe do acerto traz detalhamento e pedagio', async () => {
   const res = await api(motoristaUsuarioToken, empresaId).get(`/api/motorista/acertos/${acertoId}`);
   assert.equal(res.status, 200, JSON.stringify(res.body));
-  assert.equal(res.body.detalhamento.totalReembolsos, 7000);
-  assert.equal(res.body.detalhamento.reembolsos[0].descricao, 'CAIXINHA');
+  assert.equal(res.body.detalhamento.totalReembolsos, 27000);
+  assert.ok(res.body.detalhamento.reembolsos.some((r) => r.descricao === 'CAIXINHA'));
+  assert.ok(res.body.detalhamento.reembolsos.some((r) => r.automatico && /^Pago pelo motorista/.test(r.descricao)));
   assert.equal(res.body.detalhamento.valorPedagio, 123456);
 });
 
