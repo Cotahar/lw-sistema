@@ -67,8 +67,8 @@ export async function render(appEl) {
           <p class="-mt-2 text-xs text-slate-400">Deixe em branco se for so Arla (compra isolada).</p>
           <div><label class="label">Data</label><input type="text" name="data" class="input" inputmode="numeric" placeholder="DD/MM/AAAA" /></div>
           <div class="grid grid-cols-2 gap-3">
-            <div><label class="label">Preco/Litro</label><input type="text" name="preco_litro" class="input" inputmode="decimal" /></div>
             <div><label class="label">Litragem</label><input type="number" step="0.001" min="0" name="litragem" class="input" /></div>
+            <div><label class="label">Preco/Litro</label><input type="text" name="preco_litro" class="input" inputmode="decimal" /></div>
           </div>
           <label class="flex items-center gap-2 text-sm text-slate-700">
             <input type="checkbox" name="tanque_completo" class="h-4 w-4" />
@@ -104,8 +104,8 @@ export async function render(appEl) {
             <div class="mt-3 space-y-3">
               <div><label class="label">Unidade</label><select name="arla_unidade" class="input"><option value="Litro">Litro</option><option value="Galao">Galao (20L)</option></select></div>
               <div class="grid grid-cols-2 gap-3">
-                <div><label class="label" data-label-arla-preco>Preco/Litro (Arla)</label><input type="text" name="arla_preco" class="input" inputmode="decimal" /></div>
                 <div><label class="label" data-label-arla-qtd>Litragem (Arla)</label><input type="number" step="0.001" min="0" name="arla_qtd" class="input" /></div>
+                <div><label class="label" data-label-arla-preco>Preco/Litro (Arla)</label><input type="text" name="arla_preco" class="input" inputmode="decimal" /></div>
               </div>
               <div><label class="label">Valor Arla</label><input type="text" name="arla_valor" class="input" inputmode="decimal" /></div>
             </div>

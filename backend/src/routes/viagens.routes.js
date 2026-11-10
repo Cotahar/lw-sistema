@@ -136,6 +136,26 @@ router.post('/', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmpresaEspeci
   res.status(201).json(viagem);
 }));
 
+// O recebivel do frete guarda a placa (centro de custo) do cavalo da viagem NO MOMENTO em que o frete foi lancado. Se a viagem
+// troca de conjunto depois, a receita e o desconto automatico (DESCONTO NO FRETE) precisam acompanhar a placa nova - senao o
+// desconto "vai para a placa errada". So o que ainda estava na placa antiga muda (custo lancado a mao em outra placa fica).
+function realinharPlacaDosRecebiveis(viagemAntes, novoConjuntoId) {
+  const tratoraAntiga = buscarUnidadeTratora(viagemAntes.conjunto_id);
+  const tratoraNova = buscarUnidadeTratora(novoConjuntoId);
+  const centroAntigo = tratoraAntiga ? buscarCentroCustoDoVeiculo(tratoraAntiga.id) : null;
+  const centroNovo = tratoraNova ? buscarCentroCustoDoVeiculo(tratoraNova.id) : null;
+  if (!centroNovo || (centroAntigo && centroAntigo.id === centroNovo.id)) return;
+  const recebiveis = db.prepare('SELECT cr.id, cr.centro_custo_id FROM contas_receber cr JOIN fretes f ON f.id = cr.frete_id WHERE f.viagem_id = ?').all(viagemAntes.id);
+  for (const cr of recebiveis) {
+    if (cr.centro_custo_id === centroNovo.id) continue;
+    db.prepare('UPDATE contas_receber SET centro_custo_id = ? WHERE id = ?').run(centroNovo.id, cr.id);
+    db.prepare(`
+      UPDATE despesas_fixas SET centro_custo_id = ?
+      WHERE centro_custo_id = ? AND id IN (SELECT despesa_fixa_id FROM contas_receber_baixas WHERE contas_receber_id = ? AND tipo = 'Desconto' AND despesa_fixa_id IS NOT NULL)
+    `).run(centroNovo.id, cr.centro_custo_id, cr.id);
+  }
+}
+
 router.put('/:id', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
   const antes = db.prepare('SELECT * FROM viagens WHERE id = ? AND empresa_id = ?').get(req.params.id, req.empresaId);
   if (!antes) throw new ApiError(404, 'Viagem nao encontrada.');
@@ -163,7 +183,10 @@ router.put('/:id', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmpresaEspe
     if (req.body[campo] !== undefined) { sets.push(`${campo} = ?`); valores.push(req.body[campo]); }
   }
   if (!sets.length) throw new ApiError(400, 'Nenhum campo valido informado.');
-  db.prepare(`UPDATE viagens SET ${sets.join(', ')} WHERE id = ?`).run(...valores, req.params.id);
+  withTransaction(db, () => {
+    db.prepare(`UPDATE viagens SET ${sets.join(', ')} WHERE id = ?`).run(...valores, req.params.id);
+    if (req.body.conjunto_id !== undefined && Number(req.body.conjunto_id) !== antes.conjunto_id) realinharPlacaDosRecebiveis(antes, Number(req.body.conjunto_id));
+  });
   const depois = db.prepare('SELECT * FROM viagens WHERE id = ?').get(req.params.id);
   registrarAuditoria({ usuarioId: req.usuario.id, empresaId: req.empresaId, tabela: 'viagens', registroId: depois.id, acao: 'UPDATE', antes, depois });
   res.json(depois);
@@ -274,6 +297,13 @@ router.get('/:id/fretes', requerAcessoModulo('viagens', 'Visualizar'), exigirEmp
 
 function dataOuHoje(data) {
   return data || hojeIsoBrasilia();
+}
+
+// "AAAA-MM-DD" que existe no calendario (rejeita 2026-02-31).
+function dataIsoValida(texto) {
+  if (typeof texto !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(texto)) return false;
+  const d = new Date(`${texto}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === texto;
 }
 
 router.post('/:id/fretes', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
@@ -435,7 +465,8 @@ router.get('/fretes/:freteId/baixas', requerAcessoModulo('viagens', 'Visualizar'
     LEFT JOIN categorias_despesa cat ON cat.id = df.categoria_id
     WHERE b.contas_receber_id = ? ORDER BY b.data, b.id
   `).all(receber.id);
-  res.json({ frete, contaReceber: receber, baixas });
+  const centro = receber.centro_custo_id ? db.prepare('SELECT nome FROM centros_custo WHERE id = ?').get(receber.centro_custo_id) : null;
+  res.json({ frete, contaReceber: { ...receber, centro_custo_nome: centro ? centro.nome : null }, baixas });
 }));
 
 // Baixa que e abatimento do frete (desconto/pedagio/outro) mas, na pratica, foi um CUSTO da placa
@@ -479,11 +510,15 @@ router.delete('/fretes/baixas/:baixaId/custo', requerAcessoModulo('viagens', 'Ge
 const TIPOS_BAIXA = ['Adiantamento', 'Pedagio', 'Saldo', 'Desconto', 'Outro'];
 
 router.post('/fretes/:freteId/baixas', requerAcessoModulo('viagens', 'Gerenciar'), exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const { tipo, valor, data, conta_bancaria_id, descricao } = req.body;
+  // `data` = data em que o dinheiro entrou (as vezes pagam dia 1 e a baixa so e lancada dia 5); em branco = hoje.
+  // `centro_custo_id` (so Desconto) = placa que arca com o desconto; em branco = a placa do frete (cavalo da viagem).
+  const { tipo, valor, data, conta_bancaria_id, descricao, centro_custo_id } = req.body;
   if (!tipo || !valor) throw new ApiError(400, 'Preencha tipo e valor.');
   if (!TIPOS_BAIXA.includes(tipo)) throw new ApiError(400, `Tipo invalido. Use um de: ${TIPOS_BAIXA.join(', ')}`);
   if (tipo === 'Desconto' && conta_bancaria_id) throw new ApiError(400, 'Baixa do tipo Desconto nao movimenta conta bancaria.');
   exigirCentavos(valor);
+  if (data && !dataIsoValida(data)) throw new ApiError(400, 'Data de recebimento invalida.');
+  if (data && data > hojeIsoBrasilia()) throw new ApiError(400, 'A data de recebimento nao pode ser futura.');
 
   const resultado = withTransaction(db, () => {
     const frete = db.prepare('SELECT id FROM fretes WHERE id = ? AND empresa_id = ?').get(req.params.freteId, req.empresaId);
@@ -511,9 +546,11 @@ router.post('/fretes/:freteId/baixas', requerAcessoModulo('viagens', 'Gerenciar'
     const novoValorDescontado = receber.valor_descontado + (tipo === 'Desconto' ? valor : 0);
     const totalBaixado = novoValorRecebido + novoValorDescontado;
     const novoStatus = totalBaixado >= receber.valor ? 'Recebido' : (totalBaixado > 0 ? 'Parcial' : 'Pendente');
+    // data_recebimento = data da baixa MAIS RECENTE (uma baixa lancada com data antiga nao pode recuar a data do recebivel).
+    const ultimaData = db.prepare('SELECT MAX(data) AS ultima FROM contas_receber_baixas WHERE contas_receber_id = ?').get(receber.id).ultima;
     db.prepare(`
       UPDATE contas_receber SET valor_recebido = ?, valor_descontado = ?, status = ?, data_recebimento = ? WHERE id = ?
-    `).run(novoValorRecebido, novoValorDescontado, novoStatus, dataBaixa, receber.id);
+    `).run(novoValorRecebido, novoValorDescontado, novoStatus, ultimaData || dataBaixa, receber.id);
 
     let movimentacao = null;
     if (conta_bancaria_id) {
@@ -525,13 +562,14 @@ router.post('/fretes/:freteId/baixas', requerAcessoModulo('viagens', 'Gerenciar'
       movimentacao = db.prepare('SELECT * FROM movimentacoes_caixa WHERE id = ?').get(movInfo.lastInsertRowid);
     }
 
-    // Desconto concedido ao cliente/transportadora (seguro de carga, gerenciadora de risco, cintas...): e DESPESA da placa do
-    // frete no DRE (categoria DESCONTO NO FRETE), na data da baixa. Pedagio e Outro NAO viram custo sozinhos (pedagio abatido
+    // Desconto concedido ao cliente/transportadora (seguro de carga, gerenciadora de risco, cintas...): e DESPESA do DRE
+    // (categoria DESCONTO NO FRETE), na data da baixa, na placa do frete - ou na placa escolhida (o desconto nem sempre e do
+    // caminhao que fez o frete: cinta/pallet de outro conjunto). Pedagio e Outro NAO viram custo sozinhos (pedagio abatido
     // continua receita) - so se alguem lancar "como custo" na mao.
     let despesaDesconto = null;
     if (tipo === 'Desconto') {
       despesaDesconto = criarDespesaVinculada({
-        empresaId: req.empresaId, usuarioId: req.usuario.id, centroCustoId: receber.centro_custo_id, categoriaId: categoriaPorNome(CATEGORIA_DESCONTO_FRETE), valor,
+        empresaId: req.empresaId, usuarioId: req.usuario.id, centroCustoId: Number(centro_custo_id) || receber.centro_custo_id, categoriaId: categoriaPorNome(CATEGORIA_DESCONTO_FRETE), valor,
         data: dataBaixa, descricao: `DESCONTO DO FRETE #${req.params.freteId}${descricao ? ` - ${descricao}` : ''}`,
       }).despesa;
       db.prepare('UPDATE contas_receber_baixas SET despesa_fixa_id = ? WHERE id = ?').run(despesaDesconto.id, baixa.id);
@@ -564,6 +602,7 @@ router.delete('/fretes/baixas/:baixaId', requerAcessoModulo('viagens', 'Gerencia
       .run(novoValorRecebido, novoValorDescontado, novoStatus, receber.id);
 
     db.prepare('DELETE FROM contas_receber_baixas WHERE id = ?').run(baixa.id);
+    db.prepare('UPDATE contas_receber SET data_recebimento = (SELECT MAX(data) FROM contas_receber_baixas WHERE contas_receber_id = ?) WHERE id = ?').run(receber.id, receber.id);
     // O custo lancado a partir desta baixa nao faz mais sentido sem ela.
     if (baixa.despesa_fixa_id) removerDespesaVinculada({ empresaId: req.empresaId, usuarioId: req.usuario.id, despesaFixaId: baixa.despesa_fixa_id });
     return baixa;

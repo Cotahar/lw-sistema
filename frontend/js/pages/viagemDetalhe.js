@@ -226,7 +226,7 @@ export async function abrirNovaDespesa(viagemId, recarregar, centroCustoPadrao) 
   form.innerHTML = `
     <div class="grid grid-cols-2 gap-3">
       <div data-bloco-valor-generico><label class="label">Valor *</label><input type="text" name="valor" class="input" required /></div>
-      <div><label class="label">Categoria *</label><select name="categoria_id" class="input" required>${categorias.map((c) => `<option value="${c.id}">${esc(c.nome)}</option>`).join('')}</select></div>
+      <div class="col-start-2"><label class="label">Categoria *</label><select name="categoria_id" class="input" required>${categorias.map((c) => `<option value="${c.id}">${esc(c.nome)}</option>`).join('')}</select></div>
     </div>
     <div class="grid grid-cols-2 gap-3">
       <div><label class="label">Data</label><input type="text" name="data" class="input" /></div>
@@ -259,8 +259,8 @@ export async function abrirNovaDespesa(viagemId, recarregar, centroCustoPadrao) 
       <div class="mt-3 rounded-lg bg-slate-50 p-2">
         <p class="mb-2 text-xs font-medium uppercase text-slate-500">Diesel</p>
         <div class="grid grid-cols-2 gap-3">
-          <div><label class="label">Preco/Litro (diesel)</label><input type="text" name="preco_litro" class="input" /></div>
           <div><label class="label">Litragem (diesel)</label><input type="number" step="0.001" min="0" name="litragem" class="input" /></div>
+          <div><label class="label">Preco/Litro (diesel)</label><input type="text" name="preco_litro" class="input" /></div>
         </div>
         <label class="mt-2 flex items-center gap-2 text-sm text-slate-700">
           <input type="checkbox" name="tanque_completo" class="h-4 w-4" />
@@ -274,8 +274,8 @@ export async function abrirNovaDespesa(viagemId, recarregar, centroCustoPadrao) 
         <div class="mt-3 space-y-3">
           <div class="max-w-[10rem]"><label class="label">Unidade</label><select name="arla_unidade" class="input"><option value="Litro">Litro</option><option value="Galao">Galao (20L)</option></select></div>
           <div class="grid grid-cols-2 gap-3">
-            <div><label class="label" data-label-arla-preco>Preco/Litro (Arla)</label><input type="text" name="arla_preco" class="input" /></div>
             <div><label class="label" data-label-arla-qtd>Litragem (Arla)</label><input type="number" step="0.001" min="0" name="arla_qtd" class="input" /></div>
+            <div><label class="label" data-label-arla-preco>Preco/Litro (Arla)</label><input type="text" name="arla_preco" class="input" /></div>
           </div>
           <div><label class="label">Valor Arla</label><input type="text" name="arla_valor" class="input" /></div>
         </div>
@@ -528,8 +528,8 @@ function montarFormularioDespesaExistente({ despesa, arlaDespesa, categoriaNome,
       <div><label class="label">Data</label><input type="text" name="data" class="input" /></div>
     </div>
     <div class="grid grid-cols-2 gap-3">
-      <div><label class="label">${ehArlaIsolada ? 'Preco/Litro (Arla)' : 'Preco/Litro (diesel)'}</label><input type="text" name="preco_litro" class="input" /></div>
       <div><label class="label">${ehArlaIsolada ? 'Litragem (Arla)' : 'Litragem (diesel)'}</label><input type="number" step="0.001" min="0" name="litragem" class="input" /></div>
+      <div><label class="label">${ehArlaIsolada ? 'Preco/Litro (Arla)' : 'Preco/Litro (diesel)'}</label><input type="text" name="preco_litro" class="input" /></div>
     </div>
     ${ehDiesel ? `
       <label class="flex items-center gap-2 text-sm text-slate-700">
@@ -560,8 +560,8 @@ function montarFormularioDespesaExistente({ despesa, arlaDespesa, categoriaNome,
       <div class="rounded-lg border border-slate-200 p-3">
         <p class="mb-2 text-xs font-medium uppercase text-slate-500">Arla</p>
         <div class="grid grid-cols-2 gap-3">
-          <div><label class="label">Preco/Litro (Arla)</label><input type="text" name="arla_preco" class="input" /></div>
           <div><label class="label">Litragem (Arla)</label><input type="number" step="0.001" min="0" name="arla_qtd" class="input" /></div>
+          <div><label class="label">Preco/Litro (Arla)</label><input type="text" name="arla_preco" class="input" /></div>
         </div>
         <div class="mt-3"><label class="label">Valor Arla</label><input type="text" name="arla_valor" class="input" /></div>
       </div>

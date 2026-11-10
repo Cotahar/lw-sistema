@@ -4,7 +4,7 @@ import { mostrarToast, mostrarErro } from './toast.js';
 import { criarSearchableSelect } from './searchableSelect.js';
 import { criarOcorrencias } from './ocorrencias.js';
 import { criarAnexos } from './anexos.js';
-import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, formatarDataBr, attachDataMask, parseDataBrParaIso, attachUppercaseInput } from '../masks.js';
+import { formatarMoeda, attachMoedaMaskReais, getMoedaValue, formatarDataBr, attachDataMask, parseDataBrParaIso, attachUppercaseInput, hojeIsoLocal } from '../masks.js';
 import { esc } from '../html.js';
 
 const TIPOS_BAIXA = ['Adiantamento', 'Pedagio', 'Saldo', 'Desconto', 'Outro'];
@@ -87,10 +87,12 @@ export async function abrirBaixasFrete(frete, recarregar, gerenciar) {
     // atual sem precisar reler o DOM.
     let freteRowAtual = freteAtual;
     let baixasAtuais = baixas;
+    let contaReceberAtual = contaReceber;
 
     function montarConteudo(freteRow, cr, listaBaixas) {
       freteRowAtual = freteRow;
       baixasAtuais = listaBaixas;
+      contaReceberAtual = cr;
       const saldoEmAberto = cr.valor - cr.valor_recebido - cr.valor_descontado;
       const wrapper = document.createElement('div');
       wrapper.innerHTML = `
@@ -131,6 +133,10 @@ export async function abrirBaixasFrete(frete, recarregar, gerenciar) {
             <div class="grid grid-cols-2 gap-3">
               <div><label class="label">Tipo *</label><select name="tipo" class="input" required>${TIPOS_BAIXA.map((t) => `<option value="${t}">${t}</option>`).join('')}</select></div>
               <div><label class="label">Valor *</label><input type="text" name="valor" class="input" required /></div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div><label class="label" data-rotulo-data>Data do recebimento *</label><input type="text" name="data" class="input" required /></div>
+              <div class="hidden" data-bloco-placa><label class="label">Placa do desconto</label><div data-placa-select></div></div>
             </div>
             <p class="text-xs text-slate-500" data-dica-tipo></p>
             <div data-bloco-conta><label class="label">Conta bancaria (se recebeu de verdade)</label><div data-conta-select></div></div>
@@ -214,13 +220,25 @@ export async function abrirBaixasFrete(frete, recarregar, gerenciar) {
       formBaixa.querySelector('[data-conta-select]').appendChild(contaSelect.el);
       attachMoedaMaskReais(formBaixa.valor, 0);
       attachUppercaseInput(formBaixa.descricao);
+      // Data em que o dinheiro entrou (as vezes pagam dia 1 e a baixa so e lancada dia 5): padrao = hoje, pode ser anterior.
+      attachDataMask(formBaixa.data, hojeIsoLocal());
+      // O desconto vira despesa de uma placa no DRE: por padrao a do frete, mas pode ser outra (cinta/pallet de outro caminhao).
+      const placaSelect = criarSearchableSelect({
+        buscar: async (termo) => (await get(`/centros-custo${termo ? `?search=${encodeURIComponent(termo)}` : ''}`)).map((c) => ({ value: c.id, label: c.nome })),
+        valorInicial: contaReceberAtual.centro_custo_id, labelInicial: contaReceberAtual.centro_custo_nome || '',
+        placeholder: 'Pesquisar placa...',
+      });
+      formBaixa.querySelector('[data-placa-select]').appendChild(placaSelect.el);
       const DICAS = {
-        Desconto: 'O desconto entra como DESPESA da placa do frete no DRE (categoria DESCONTO NO FRETE).',
+        Desconto: 'O desconto entra como DESPESA no DRE (categoria DESCONTO NO FRETE), na placa do frete - troque a placa se o desconto for de outro caminhao.',
         Pedagio: 'Pedagio creditado na tag: so informa que essa parte do frete foi paga como credito na tag (nao e transferencia para a conta). Continua como receita; o custo de pedagio e o liquido da fatura do Sem Parar.',
       };
       const dicaTipo = formBaixa.querySelector('[data-dica-tipo]');
       const atualizarTipo = () => {
-        formBaixa.querySelector('[data-bloco-conta]').classList.toggle('hidden', formBaixa.tipo.value === 'Desconto');
+        const ehDesconto = formBaixa.tipo.value === 'Desconto';
+        formBaixa.querySelector('[data-bloco-conta]').classList.toggle('hidden', ehDesconto);
+        formBaixa.querySelector('[data-bloco-placa]').classList.toggle('hidden', !ehDesconto);
+        formBaixa.querySelector('[data-rotulo-data]').textContent = ehDesconto ? 'Data do desconto *' : 'Data do recebimento *';
         dicaTipo.textContent = DICAS[formBaixa.tipo.value] || '';
       };
       formBaixa.tipo.addEventListener('change', atualizarTipo);
@@ -229,11 +247,17 @@ export async function abrirBaixasFrete(frete, recarregar, gerenciar) {
         ev.preventDefault();
         const erroEl = formBaixa.querySelector('[data-erro-baixa]');
         erroEl.classList.add('hidden');
+        const dataBaixa = parseDataBrParaIso(formBaixa.data.value);
+        if (!dataBaixa) { erroEl.textContent = 'Informe a data (dd/mm/aaaa).'; erroEl.classList.remove('hidden'); return; }
+        const ehDesconto = formBaixa.tipo.value === 'Desconto';
+        if (ehDesconto && !placaSelect.getValue()) { erroEl.textContent = 'Escolha a placa do desconto.'; erroEl.classList.remove('hidden'); return; }
         try {
           await post(`/viagens/fretes/${frete.id}/baixas`, {
             tipo: formBaixa.tipo.value,
             valor: getMoedaValue(formBaixa.valor),
-            conta_bancaria_id: formBaixa.tipo.value === 'Desconto' ? null : contaSelect.getValue(),
+            data: dataBaixa,
+            conta_bancaria_id: ehDesconto ? null : contaSelect.getValue(),
+            centro_custo_id: ehDesconto ? Number(placaSelect.getValue()) : undefined,
             descricao: formBaixa.descricao.value || null,
           });
           mostrarToast('Baixa registrada.');
