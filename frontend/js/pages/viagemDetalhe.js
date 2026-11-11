@@ -15,6 +15,7 @@ import { criarBotaoSincronizarOnixsat } from '../components/onixsatSync.js';
 import { esqueletoPagina } from '../components/skeleton.js';
 import { criarTimelineAuditoria } from '../components/auditoriaTimeline.js';
 import { esc } from '../html.js';
+import { placaHtml } from '../components/placa.js';
 
 const TIPOS_TRATORA = ['Cavalo', 'Truck', 'Toco'];
 
@@ -215,6 +216,23 @@ function recalcularTrio(formPreco, formLitragem, formValor, campoEditado) {
   } else if (litragem > 0 && preco > 0) {
     setMoedaValue(formValor, Math.round(preco * litragem));
   }
+}
+
+// Barra fixa (motorista + placas) abaixo do cabecalho do sistema: aparece quando o titulo da viagem rola para fora da tela e
+// some quando ele volta. `fixed` (e nao sticky) para nao empurrar o conteudo ao aparecer.
+function ligarBarraFixaDaViagem(container) {
+  if (observadorTituloViagem) { observadorTituloViagem.disconnect(); observadorTituloViagem = null; }
+  const barra = container.querySelector('[data-barra-fixa]');
+  const titulo = container.querySelector('[data-titulo-viagem]');
+  if (!barra || !titulo || !('IntersectionObserver' in window)) return;
+  // -1px: a barra passa por baixo do cabecalho (z menor), assim nunca sobra uma fresta entre os dois.
+  const alturaCabecalho = () => { const topo = document.querySelector('header.sticky'); return topo ? Math.max(topo.offsetHeight - 1, 0) : 0; };
+  barra.style.top = `${alturaCabecalho()}px`;
+  observadorTituloViagem = new IntersectionObserver(([entrada]) => {
+    barra.style.top = `${alturaCabecalho()}px`;
+    barra.classList.toggle('hidden', entrada.isIntersecting);
+  }, { rootMargin: `-${alturaCabecalho()}px 0px 0px 0px` });
+  observadorTituloViagem.observe(titulo);
 }
 
 export async function abrirNovaDespesa(viagemId, recarregar, centroCustoPadrao) {
@@ -944,6 +962,8 @@ function ligarChevronSecao(details) {
 }
 
 let intervaloAtualizacao = null;
+// Observa o titulo da viagem: quando ele sai da tela (rolagem), a barra fixa com motorista e placas aparece no topo.
+let observadorTituloViagem = null;
 
 export async function render(container, params) {
   const viagemId = params.id;
@@ -1031,7 +1051,15 @@ export async function render(container, params) {
     const mediaUltimoTanque = viagem.media_ultima_abastecida_km_l;
 
     container.innerHTML = `
-      <div class="mb-4 flex items-center justify-between">
+      <div class="fixed inset-x-0 z-[9] hidden border-b border-slate-200 bg-brand-surface px-4 py-2 shadow-sm lg:left-64 lg:px-6" data-barra-fixa aria-label="Viagem aberta">
+        <div class="flex items-center gap-3 text-sm">
+          <span class="shrink-0 font-semibold text-slate-900">Viagem #${viagem.id}</span>
+          <span class="min-w-0 truncate text-slate-700">${esc(motorista.nome)}</span>
+          <span class="flex shrink-0 items-center gap-1">${conjunto.itens.map((i) => placaHtml(i.placa, { pequena: true })).join('')}</span>
+          <span class="ml-auto shrink-0 ${viagem.status === 'EmAndamento' ? 'badge-sucesso' : viagem.status === 'AguardandoAcerto' ? 'badge-atencao' : 'badge-neutro'}">${STATUS_LABEL[viagem.status]}</span>
+        </div>
+      </div>
+      <div class="mb-4 flex items-center justify-between" data-titulo-viagem>
         <div>
           <button type="button" class="mb-2 text-sm text-gray-900 hover:underline" data-voltar>&larr; Voltar para Viagens</button>
           <h1 class="text-xl font-bold text-slate-900">Viagem #${viagem.id} - ${esc(motorista.nome)}</h1>
@@ -1195,6 +1223,7 @@ export async function render(container, params) {
       ligarChevronSecao(container.querySelector(seletor));
     });
     container.querySelector('[data-voltar]').addEventListener('click', () => navegar('/viagens'));
+    ligarBarraFixaDaViagem(container);
     if (viagem.status !== 'EmAndamento') {
       container.querySelector('[data-ir-acerto]').addEventListener('click', () => navegar(`/acertos/${viagem.id}`));
     }
