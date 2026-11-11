@@ -225,8 +225,8 @@ export async function abrirNovaDespesa(viagemId, recarregar, centroCustoPadrao) 
   form.className = 'space-y-4';
   form.innerHTML = `
     <div class="grid grid-cols-2 gap-3">
+      <div><label class="label">Categoria *</label><select name="categoria_id" class="input" required>${categorias.map((c) => `<option value="${c.id}">${esc(c.nome)}</option>`).join('')}</select></div>
       <div data-bloco-valor-generico><label class="label">Valor *</label><input type="text" name="valor" class="input" required /></div>
-      <div class="col-start-2"><label class="label">Categoria *</label><select name="categoria_id" class="input" required>${categorias.map((c) => `<option value="${c.id}">${esc(c.nome)}</option>`).join('')}</select></div>
     </div>
     <div class="grid grid-cols-2 gap-3">
       <div><label class="label">Data</label><input type="text" name="data" class="input" /></div>
