@@ -171,10 +171,15 @@ CREATE TABLE fornecedores (
     posto_forma_pagamento TEXT,
     posto_preco_diesel   INTEGER,
     posto_preco_arla     INTEGER,
+    -- Fornecedor "espelho" de um motorista (tipo MOTORISTA): permite lancar contas a pagar para o motorista (rescisao etc.).
+    -- Mantido pelos gatilhos trg_motoristas_fornecedor_* no fim deste arquivo (migracao 042). Sem FK de proposito: se o
+    -- motorista for excluido o fornecedor fica (historico) e so perde a ligacao.
+    motorista_id    INTEGER,
     criado_em       TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
     atualizado_em   TEXT
 );
 CREATE INDEX idx_fornecedores_nome ON fornecedores(nome);
+CREATE UNIQUE INDEX idx_fornecedores_motorista ON fornecedores(motorista_id) WHERE motorista_id IS NOT NULL;
 
 CREATE TABLE motoristas (
     id                      INTEGER PRIMARY KEY,
@@ -1192,3 +1197,27 @@ CREATE TABLE IF NOT EXISTS schema_migracoes (
     nome        TEXT PRIMARY KEY,
     aplicada_em TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
 );
+
+-- Motorista tambem e fornecedor (migracao 042): cada motorista ganha um fornecedor espelho (tipo MOTORISTA), acompanhando
+-- nome/ativo. Excluir o motorista so desfaz a ligacao. Ver database/migrations/042_motoristas_como_fornecedores.js.
+CREATE TRIGGER trg_motoristas_fornecedor_ins AFTER INSERT ON motoristas
+BEGIN
+  INSERT INTO fornecedor_tipos (nome)
+  SELECT 'MOTORISTA' WHERE NOT EXISTS (SELECT 1 FROM fornecedor_tipos WHERE upper(trim(nome)) = 'MOTORISTA');
+  INSERT INTO fornecedores (empresa_id, nome, tipo_id, ativo, motorista_id)
+  SELECT NEW.empresa_id, NEW.nome, (SELECT id FROM fornecedor_tipos WHERE upper(trim(nome)) = 'MOTORISTA' ORDER BY id LIMIT 1), NEW.ativo, NEW.id
+  WHERE NOT EXISTS (SELECT 1 FROM fornecedores WHERE motorista_id = NEW.id);
+END;
+CREATE TRIGGER trg_motoristas_fornecedor_upd AFTER UPDATE OF nome, ativo ON motoristas
+BEGIN
+  UPDATE fornecedores SET nome = NEW.nome, ativo = NEW.ativo, atualizado_em = datetime('now', '-3 hours') WHERE motorista_id = NEW.id;
+  INSERT INTO fornecedor_tipos (nome)
+  SELECT 'MOTORISTA' WHERE NOT EXISTS (SELECT 1 FROM fornecedor_tipos WHERE upper(trim(nome)) = 'MOTORISTA');
+  INSERT INTO fornecedores (empresa_id, nome, tipo_id, ativo, motorista_id)
+  SELECT NEW.empresa_id, NEW.nome, (SELECT id FROM fornecedor_tipos WHERE upper(trim(nome)) = 'MOTORISTA' ORDER BY id LIMIT 1), NEW.ativo, NEW.id
+  WHERE NOT EXISTS (SELECT 1 FROM fornecedores WHERE motorista_id = NEW.id);
+END;
+CREATE TRIGGER trg_motoristas_fornecedor_del AFTER DELETE ON motoristas
+BEGIN
+  UPDATE fornecedores SET motorista_id = NULL WHERE motorista_id = OLD.id;
+END;
