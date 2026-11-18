@@ -311,3 +311,28 @@ test('placas ignoradas + ratear diferenca: a diferenca e dividida entre todas as
   assert.equal(db.prepare("SELECT valor FROM contas_pagar WHERE origem_tipo = 'DespesaFixa' AND origem_id = ?").get(ok.body.rateio_id).valor, somaDespesas, 'conta = soma das partes da frota');
   assert.ok(somaDespesas > SOMA_FROTA && somaDespesas < SOMA_FROTA + 1000, 'a frota recebe so a sua fatia dos juros');
 });
+
+test('devolucao de mensalidade/servico (linha "(-) Credito de Adesao/Mens/Outros Servicos" no resumo) entra na conferencia de creditos', async () => {
+  // Fatura real de 11/2026: 3 devolucoes na aba CREDITOS (mensalidade, licenca de sistema, audiobooks) = R$ 30,87, e o resumo traz
+  // essa soma numa linha propria. Aqui, uma devolucao de R$ 18,77 para a TWA9C94.
+  const total = 736045 - 1877;
+  const abas = montarAbas({ numero: '3001', total });
+  const resumo = abas['RESUMO DA FATURA'];
+  const iTotal = resumo.findIndex((l) => l[0] === 'TOTAL FATURA');
+  resumo.splice(iTotal, 0, ['(-) Crédito de Adesão/Mens/Outros Serviços', null, null, 1, 18.77]);
+  abas['CRÉDITOS'].push(['TWA9C94', PLACAS.TWA9C94.tag, 18.77, 'DEVOLUÇÃO MENSALIDADE']);
+
+  const r = await admin().post('/api/admin/importacoes/sem-parar/analisar').send({ abas });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const creditos = r.body.conferencias.find((c) => c.rotulo === 'Creditos');
+  assert.ok(creditos.ok, `creditos devem conferir: ${JSON.stringify(creditos)}`);
+  assert.equal(creditos.resumo, creditos.planilha);
+  assert.ok(r.body.conferencias.every((c) => c.ok), JSON.stringify(r.body.conferencias));
+  assert.equal(r.body.diferenca, 0);
+  assert.deepEqual(r.body.avisos, []);
+  assert.equal(r.body.placas.find((p) => p.placa === 'TWA9C94').liquido, 210930 - 1877, 'a devolucao abate o liquido da placa');
+
+  const ok = await admin().post('/api/admin/importacoes/sem-parar').send({ abas, categoria_id: categoriaId });
+  assert.equal(ok.status, 201, JSON.stringify(ok.body));
+  assert.equal(ok.body.valor_total, total);
+});

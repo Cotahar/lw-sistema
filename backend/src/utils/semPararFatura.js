@@ -109,7 +109,9 @@ const COMPONENTES = [
   { chave: 'estacionamento', rotulo: 'Estacionamento', abas: ['PASSAGENS ESTACIONAMENTO'], resumo: ['PASSAGENS ESTACIONAMENTO'] },
   { chave: 'estabelecimentos', rotulo: 'Estabelecimentos', abas: ['TRANSACOES ESTABELECIMENTOS'], resumo: ['ESTABELECIMENTOS'] },
 ];
-const CREDITOS_RESUMO = ['(-) CREDITOS PASSAGENS E ESTACIONAMENTO', '(-) OUTROS CREDITOS'];
+// Linhas do resumo que somam a aba CREDITOS. "(-) Credito de Adesao/Mens/Outros Servicos" aparece quando ha devolucao de mensalidade
+// ou de servico (ex.: DEVOLUCAO MENSALIDADE na aba CREDITOS): sem ela a conferencia acusava divergencia igual ao valor da devolucao.
+const CREDITOS_RESUMO = ['(-) CREDITOS PASSAGENS E ESTACIONAMENTO', '(-) OUTROS CREDITOS', '(-) CREDITO DE ADESAO'];
 
 function somaResumo(resumo, prefixos) {
   const itens = resumo.itens.filter((i) => prefixos.some((p) => i.rotulo.startsWith(p)));
