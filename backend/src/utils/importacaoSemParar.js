@@ -59,15 +59,49 @@ function sugestoes(empresaId, fatura) {
   };
 }
 
-function analisarParaEmpresa(empresaId, abas) {
+// Placas IGNORADAS: veiculos que usam a mesma conta do Sem Parar mas nao sao da transportadora (ex.: da empresa de engenharia
+// do mesmo CNPJ) e por isso nao tem cadastro no Frottex. Ficam fora do rateio e da conta a pagar. So placa SEM cadastro pode ser
+// ignorada - para nao deixar de fora, sem querer, o custo de um caminhao da frota.
+function normalizarIgnoradas(lista) {
+  if (lista === undefined || lista === null) return new Set();
+  if (!Array.isArray(lista) || lista.some((p) => typeof p !== 'string')) throw new ApiError(400, 'A lista de placas ignoradas e invalida.');
+  return new Set(lista.map(normPlaca).filter(Boolean));
+}
+
+// Quanto vai para a conta a pagar e para cada centro de custo, ja sem as placas ignoradas. A diferenca entre o total da fatura e a
+// soma das placas (quando o administrador manda ratear) e dividida entre TODAS as placas com valor, e so depois as ignoradas saem:
+// assim a parte de cada placa da frota e a mesma que teria se as ignoradas nao existissem no arquivo.
+function montarLancamento(placas, diferenca) {
+  const comValor = placas.filter((p) => p.liquido > 0);
+  const valores = ratearDiferenca(comValor.map((p) => p.liquido), diferenca);
+  const itens = comValor.map((p, i) => ({
+    placa: p.placa, centro_custo_id: p.centro_custo_id, centro_custo_nome: p.centro_custo_nome, valor: valores[i], ignorada: Boolean(p.ignorada),
+  }));
+  const lancados = itens.filter((i) => !i.ignorada);
+  const ignoradas = placas.filter((p) => p.ignorada).map((p) => ({ placa: p.placa, liquido: p.liquido }));
+  return {
+    itens: lancados,
+    valor_conta: lancados.reduce((t, i) => t + i.valor, 0),
+    ignoradas,
+    valor_ignorado: ignoradas.reduce((t, i) => t + i.liquido, 0),
+  };
+}
+
+function analisarParaEmpresa(empresaId, abas, { placasIgnoradas, ratearDiferenca: ratear = false } = {}) {
   if (!abas || typeof abas !== 'object') throw new ApiError(400, 'Envie o conteudo da fatura (abas da planilha).');
   const analise = analisarFatura(abas);
-  const placas = resolverCentros(empresaId, analise.placas);
+  const ignoradas = normalizarIgnoradas(placasIgnoradas);
+  const placas = resolverCentros(empresaId, analise.placas).map((p) => ({ ...p, ignorada: ignoradas.has(p.placa) }));
+  for (const placa of ignoradas) {
+    const p = placas.find((x) => x.placa === placa);
+    if (!p) throw new ApiError(400, `A placa ${placa} nao esta nesta fatura.`);
+    if (p.encontrado) throw new ApiError(400, `A placa ${placa} esta cadastrada no Frottex e nao pode ser ignorada.`);
+  }
   const anterior = buscarImportacaoAnterior(empresaId, analise.fatura.numero);
   const avisos = [];
-  const semCadastro = placas.filter((p) => !p.encontrado && p.liquido !== 0).map((p) => p.placa);
-  if (semCadastro.length) avisos.push(`Placa(s) sem veiculo/centro de custo cadastrado no Frottex: ${semCadastro.join(', ')}.`);
-  const negativas = placas.filter((p) => p.liquido < 0).map((p) => `${p.placa} (${formatarMoeda(p.liquido)})`);
+  const semCadastro = placas.filter((p) => !p.encontrado && !p.ignorada && p.liquido !== 0).map((p) => p.placa);
+  if (semCadastro.length) avisos.push(`Placa(s) sem veiculo/centro de custo cadastrado no Frottex: ${semCadastro.join(', ')}. Cadastre o veiculo ou, se nao for da transportadora, marque Ignorar.`);
+  const negativas = placas.filter((p) => !p.ignorada && p.liquido < 0).map((p) => `${p.placa} (${formatarMoeda(p.liquido)})`);
   if (negativas.length) avisos.push(`Placa(s) com valor liquido negativo (creditos maiores que os debitos): ${negativas.join(', ')}. Lance essas diferencas manualmente.`);
   if (analise.diferenca !== 0) avisos.push(`A soma das placas (${formatarMoeda(analise.soma_placas)}) difere do total da fatura (${formatarMoeda(analise.fatura.total)}) em ${formatarMoeda(analise.diferenca)}.`);
   const divergentes = analise.conferencias.filter((c) => !c.ok).map((c) => c.rotulo);
@@ -76,6 +110,7 @@ function analisarParaEmpresa(empresaId, abas) {
   return {
     ...analise,
     placas,
+    lancamento: montarLancamento(placas, ratear ? analise.diferenca : 0),
     ja_importada: anterior,
     sugestoes: sugestoes(empresaId, analise.fatura),
     avisos,
@@ -84,8 +119,8 @@ function analisarParaEmpresa(empresaId, abas) {
 
 // Lanca a fatura (conta a pagar unica + despesa por centro). `jaPaga`: fatura quitada fora do Frottex (ex.: de um
 // mes anterior) - a conta e baixada SEM PAGAMENTO na data de vencimento (nada sai do caixa, fica a Ocorrencia).
-function importarFatura({ empresaId, usuarioId, abas, categoria_id, fornecedor_id, data, data_vencimento, ratear_diferenca, jaPaga = false }) {
-  const analise = analisarParaEmpresa(empresaId, abas);
+function importarFatura({ empresaId, usuarioId, abas, categoria_id, fornecedor_id, data, data_vencimento, ratear_diferenca, jaPaga = false, placasIgnoradas }) {
+  const analise = analisarParaEmpresa(empresaId, abas, { placasIgnoradas, ratearDiferenca: Boolean(ratear_diferenca) });
   const { fatura } = analise;
 
   if (analise.ja_importada) {
@@ -94,10 +129,10 @@ function importarFatura({ empresaId, usuarioId, abas, categoria_id, fornecedor_i
   if (!categoria_id) throw new ApiError(400, 'Escolha a categoria da despesa.');
   const vencimento = data_vencimento || fatura.vencimento;
   if (!vencimento) throw new ApiError(400, 'Informe a data de vencimento.');
-  if (analise.placas.some((p) => !p.encontrado && p.liquido !== 0)) {
+  if (analise.placas.some((p) => !p.encontrado && !p.ignorada && p.liquido !== 0)) {
     throw new ApiError(400, analise.avisos.find((a) => a.startsWith('Placa(s) sem veiculo')));
   }
-  if (analise.placas.some((p) => p.liquido < 0)) {
+  if (analise.placas.some((p) => !p.ignorada && p.liquido < 0)) {
     throw new ApiError(400, analise.avisos.find((a) => a.startsWith('Placa(s) com valor liquido negativo')));
   }
   const divergentes = analise.conferencias.filter((c) => !c.ok);
@@ -108,22 +143,26 @@ function importarFatura({ empresaId, usuarioId, abas, categoria_id, fornecedor_i
     throw new ApiError(400, `A soma das placas (${formatarMoeda(analise.soma_placas)}) difere do total da fatura (${formatarMoeda(fatura.total)}) em ${formatarMoeda(analise.diferenca)}. Marque a opcao de ratear a diferenca proporcionalmente ou confira o arquivo.`);
   }
 
-  const comValor = analise.placas.filter((p) => p.liquido > 0);
-  if (!comValor.length) throw new ApiError(400, 'Nenhuma placa com valor a ratear nesta fatura.');
-  const valores = ratearDiferenca(comValor.map((p) => p.liquido), analise.diferenca);
-  const rateios = comValor.map((p, i) => ({ centro_custo_id: p.centro_custo_id, valor: valores[i] }));
+  const { lancamento } = analise;
+  if (!lancamento.itens.length) throw new ApiError(400, 'Nenhuma placa com valor a ratear nesta fatura.');
+  const rateios = lancamento.itens.map((i) => ({ centro_custo_id: i.centro_custo_id, valor: i.valor }));
+  // Com placas ignoradas a conta a pagar fica so com a parte da frota; a observacao da conta guarda o que ficou de fora.
+  const observacao = lancamento.ignoradas.length
+    ? `PLACAS IGNORADAS (SEM CADASTRO NO FROTTEX, NAO ENTRAM NESTE LANCAMENTO): ${lancamento.ignoradas.map((i) => `${i.placa} (${formatarMoeda(i.liquido)})`).join(', ')}. TOTAL DA FATURA ${formatarMoeda(fatura.total)}; CONTA SO COM A PARTE DA FROTA (${formatarMoeda(lancamento.valor_conta)}).`
+    : null;
 
   const resultado = criarDespesaRateada({
     empresaId,
     usuarioId,
     rateios,
     categoria_id,
-    valor: fatura.total,
+    valor: lancamento.valor_conta,
     data: data || fatura.vencimento || null,
     data_vencimento: vencimento,
     descricao: descricaoDaFatura({ ...fatura, vencimento: fatura.vencimento || vencimento }),
     fornecedor_id: fornecedor_id || null,
     documento: fatura.numero,
+    observacao,
     baixaSemPagamentoEm: jaPaga ? vencimento : null,
     minimoCentros: 1,
   });
@@ -134,7 +173,8 @@ function importarFatura({ empresaId, usuarioId, abas, categoria_id, fornecedor_i
     ...resultado,
     fatura,
     ja_paga: Boolean(jaPaga),
-    rateio: comValor.map((p, i) => ({ placa: p.placa, centro_custo_id: p.centro_custo_id, centro_custo_nome: p.centro_custo_nome, valor: valores[i] })),
+    rateio: lancamento.itens.map((i) => ({ placa: i.placa, centro_custo_id: i.centro_custo_id, centro_custo_nome: i.centro_custo_nome, valor: i.valor })),
+    placas_ignoradas: lancamento.ignoradas,
   };
 }
 

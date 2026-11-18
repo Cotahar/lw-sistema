@@ -10,13 +10,13 @@ const router = express.Router();
 router.use(requerAdmin);
 
 router.post('/sem-parar/analisar', exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  res.json(analisarParaEmpresa(req.empresaId, req.body.abas));
+  res.json(analisarParaEmpresa(req.empresaId, req.body.abas, { placasIgnoradas: req.body.placas_ignoradas, ratearDiferenca: Boolean(req.body.ratear_diferenca) }));
 }));
 
 router.post('/sem-parar', exigirEmpresaEspecifica, asyncHandler(async (req, res) => {
-  const { abas, categoria_id, fornecedor_id, data, data_vencimento, ratear_diferenca, ja_paga } = req.body;
+  const { abas, categoria_id, fornecedor_id, data, data_vencimento, ratear_diferenca, ja_paga, placas_ignoradas } = req.body;
   const resultado = importarFatura({
-    empresaId: req.empresaId, usuarioId: req.usuario.id, abas, categoria_id, fornecedor_id, data, data_vencimento, ratear_diferenca, jaPaga: Boolean(ja_paga),
+    empresaId: req.empresaId, usuarioId: req.usuario.id, abas, categoria_id, fornecedor_id, data, data_vencimento, ratear_diferenca, jaPaga: Boolean(ja_paga), placasIgnoradas: placas_ignoradas,
   });
   res.status(201).json(resultado);
 }));

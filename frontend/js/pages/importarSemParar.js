@@ -10,6 +10,8 @@ import { esc } from '../html.js';
 // navegador (SheetJS, ja carregado no index.html), manda as abas para a API calcular o
 // valor liquido de cada placa e lanca UMA conta a pagar com o total da fatura, rateada
 // entre os centros de custo das placas (mesmo "lancamento rateado" das Despesas Fixas).
+// Placas sem cadastro que nao sao da transportadora (ex.: empresa de engenharia do mesmo CNPJ)
+// podem ser IGNORADAS: ficam fora do rateio e da conta a pagar.
 
 // Abas que a API usa; a primeira (resumo) vai inteira, as de detalhe so com as colunas
 // de que a conta precisa (placa, tag, valor, tipo) - o arquivo tem centenas de passagens.
@@ -46,19 +48,24 @@ function linhaPlaca(p, totalLiquido) {
   const c = p.componentes;
   const passagens = c.pedagio + c.vale_pedagio + c.estacionamento + c.estabelecimentos;
   const servicos = c.adesao + c.mensalidade + c.outros_servicos;
-  const pct = totalLiquido > 0 ? ((p.liquido / totalLiquido) * 100).toFixed(1).replace('.', ',') : '0,0';
-  const centro = p.encontrado
-    ? esc(p.centro_custo_nome)
-    : '<span class="badge-critico">Sem cadastro</span>';
+  const ignorada = Boolean(p.ignorada);
+  const pct = ignorada ? '-' : (totalLiquido > 0 ? ((p.liquido / totalLiquido) * 100).toFixed(1).replace('.', ',') : '0,0');
+  let centro;
+  if (ignorada) centro = '<span class="badge-neutro">Ignorada</span>';
+  else if (p.encontrado) centro = esc(p.centro_custo_nome);
+  else centro = '<span class="badge-critico">Sem cadastro</span>';
+  // So placa sem cadastro pode ser ignorada: o caminhao da frota nunca fica fora do rateio sem querer.
+  const ignorar = p.encontrado ? '' : `<label class="flex items-center gap-1 text-sm"><input type="checkbox" class="h-4 w-4" data-ignorar="${esc(p.placa)}" ${ignorada ? 'checked' : ''} />Ignorar</label>`;
   return `
-    <tr>
+    <tr class="${ignorada ? 'bg-slate-50 text-slate-400' : ''}">
       <td class="table-td font-medium">${esc(p.placa)}</td>
       <td class="table-td">${centro}</td>
       <td class="table-td text-right">${formatarMoeda(passagens)}</td>
       <td class="table-td text-right">${formatarMoeda(servicos)}</td>
       <td class="table-td text-right">${p.creditos ? `- ${formatarMoeda(p.creditos)}` : formatarMoeda(0)}</td>
       <td class="table-td text-right font-bold">${formatarMoeda(p.liquido)}</td>
-      <td class="table-td text-right text-slate-500">${pct}%</td>
+      <td class="table-td text-right text-slate-500">${ignorada ? '-' : `${pct}%`}</td>
+      <td class="table-td">${ignorar}</td>
     </tr>
   `;
 }
@@ -96,17 +103,14 @@ export async function render(container) {
   });
 }
 
-async function mostrarAnalise(resultadoEl, abas, analise) {
-  const { fatura, placas, conferencias, avisos, sugestoes, ja_importada: jaImportada } = analise;
-  const comValor = placas.filter((p) => p.liquido !== 0);
-  const totalLiquido = placas.filter((p) => p.liquido > 0).reduce((t, p) => t + p.liquido, 0);
-  const bloqueios = [];
-  if (jaImportada) bloqueios.push('fatura ja importada');
-  if (placas.some((p) => !p.encontrado && p.liquido !== 0)) bloqueios.push('placa sem cadastro');
-  if (placas.some((p) => p.liquido < 0)) bloqueios.push('placa com valor negativo');
-  if (conferencias.some((c) => !c.ok)) bloqueios.push('abas nao fecham com o resumo');
-  const temDiferenca = analise.diferenca !== 0;
+async function mostrarAnalise(resultadoEl, abas, analiseInicial) {
+  // Fatura, conferencias e sugestoes nao mudam ao ignorar placas; o resto (placas, avisos, lancamento) e refeito pela API.
+  const { fatura, conferencias, sugestoes } = analiseInicial;
+  const temDiferenca = analiseInicial.diferenca !== 0;
   const categorias = await get('/categorias-despesa');
+  let analise = analiseInicial;
+  let ignoradas = new Set();
+  let sequencia = 0;
 
   resultadoEl.innerHTML = `
     <div class="card mb-4 grid gap-3 p-4 sm:grid-cols-4">
@@ -115,21 +119,20 @@ async function mostrarAnalise(resultadoEl, abas, analise) {
       <div><p class="text-xs uppercase tracking-wide text-slate-500">Vencimento</p><p class="font-semibold text-slate-900">${formatarDataBr(fatura.vencimento) || '-'}</p></div>
       <div><p class="text-xs uppercase tracking-wide text-slate-500">Valor total da fatura</p><p class="text-lg font-bold text-accent-fg">${formatarMoeda(fatura.total)}</p></div>
     </div>
-    ${jaImportada ? `<div class="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-danger">Esta fatura ja foi importada${jaImportada.conta_pagar_id ? ` (conta a pagar #${jaImportada.conta_pagar_id}, ${esc(jaImportada.conta_status || '')})` : ''}. Para importar de novo, exclua antes o lancamento rateado em Despesas Fixas.</div>` : ''}
-    ${avisos.length ? `<div class="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-warning"><ul class="list-disc pl-5">${avisos.map((a) => `<li>${esc(a)}</li>`).join('')}</ul></div>` : ''}
+    <div data-ja-importada></div>
+    <div data-avisos></div>
     <div class="card mb-4 overflow-x-auto">
       <p class="px-4 pt-3 text-sm font-semibold text-slate-900">Rateio por placa / centro de custo</p>
+      <p class="hidden px-4 pt-1 text-xs text-slate-500" data-dica-ignorar>Placas sem cadastro que nao sao da transportadora (ex.: empresa de engenharia do mesmo CNPJ): marque <strong>Ignorar</strong> para deixa-las de fora do rateio e da conta a pagar.</p>
       <table class="min-w-full divide-y divide-slate-200">
         <thead><tr>
           <th class="table-th">Placa</th><th class="table-th">Centro de custo</th>
           <th class="table-th text-right">Passagens</th><th class="table-th text-right">Mensalidade e servicos</th>
           <th class="table-th text-right">Creditos</th><th class="table-th text-right">Valor a ratear</th><th class="table-th text-right">%</th>
+          <th class="table-th"></th>
         </tr></thead>
-        <tbody class="divide-y divide-slate-200">${comValor.map((p) => linhaPlaca(p, totalLiquido)).join('') || '<tr><td class="table-td text-slate-400" colspan="7">Nenhuma placa com valor.</td></tr>'}</tbody>
-        <tfoot><tr>
-          <td class="table-td font-bold" colspan="5">Soma das placas</td>
-          <td class="table-td text-right font-bold">${formatarMoeda(analise.soma_placas)}</td><td class="table-td"></td>
-        </tr></tfoot>
+        <tbody class="divide-y divide-slate-200" data-tbody></tbody>
+        <tfoot data-tfoot></tfoot>
       </table>
     </div>
     <details class="card mb-4 p-4">
@@ -153,17 +156,19 @@ async function mostrarAnalise(resultadoEl, abas, analise) {
         <div><label class="label">Vencimento da conta a pagar *</label><input type="text" name="data_vencimento" class="input" required /></div>
       </div>
       <label class="flex items-start gap-2 text-sm"><input type="checkbox" name="ja_paga" class="mt-0.5 h-4 w-4" /><span>Fatura <strong>ja paga</strong> (de um mes anterior): baixar sem lancar movimento de caixa, na data do vencimento. O custo continua entrando no DRE.</span></label>
-      ${temDiferenca ? `<label class="flex items-start gap-2 text-sm"><input type="checkbox" name="ratear_diferenca" class="mt-0.5 h-4 w-4" /><span>Ratear a diferenca de ${formatarMoeda(analise.diferenca)} (total da fatura menos a soma das placas) proporcionalmente entre as placas.</span></label>` : ''}
+      ${temDiferenca ? `<label class="flex items-start gap-2 text-sm"><input type="checkbox" name="ratear_diferenca" class="mt-0.5 h-4 w-4" /><span>Ratear a diferenca de ${formatarMoeda(analiseInicial.diferenca)} (total da fatura menos a soma das placas) proporcionalmente entre as placas.</span></label>` : ''}
       <p class="hidden text-sm text-danger" data-erro-form></p>
       <div class="flex items-center justify-between gap-3">
-        <p class="text-xs text-slate-500">Cria 1 conta a pagar de ${formatarMoeda(fatura.total)} e ${comValor.filter((p) => p.liquido > 0).length} lancamentos de despesa (um por centro de custo).</p>
-        <button type="submit" class="btn-primary" ${bloqueios.length ? 'disabled' : ''}>Importar e lancar</button>
+        <p class="text-xs text-slate-500" data-info-lancamento></p>
+        <button type="submit" class="btn-primary" data-botao>Importar e lancar</button>
       </div>
-      ${bloqueios.length ? `<p class="text-xs text-warning">Importacao bloqueada: ${esc(bloqueios.join('; '))}.</p>` : ''}
+      <p class="hidden text-xs text-warning" data-bloqueios></p>
     </form>
   `;
 
   const form = resultadoEl.querySelector('[data-form]');
+  const botao = form.querySelector('[data-botao]');
+  const erroForm = form.querySelector('[data-erro-form]');
   attachDataMask(form.data, sugestoes.data);
   attachDataMask(form.data_vencimento, sugestoes.data_vencimento);
   const fornecedorSelect = criarSearchableSelect({
@@ -175,21 +180,91 @@ async function mostrarAnalise(resultadoEl, abas, analise) {
   });
   form.querySelector('[data-fornecedor]').appendChild(fornecedorSelect.el);
 
-  const erroForm = form.querySelector('[data-erro-form]');
+  let bloqueios = [];
+
+  // Redesenha tudo o que depende das placas ignoradas (avisos, tabela, valor a lancar, bloqueios); o formulario fica como esta.
+  function desenhar() {
+    const { placas, avisos, lancamento, ja_importada: jaImportada } = analise;
+    const comValor = placas.filter((p) => p.liquido !== 0);
+    const totalLiquido = placas.filter((p) => p.liquido > 0 && !p.ignorada).reduce((t, p) => t + p.liquido, 0);
+    bloqueios = [];
+    if (jaImportada) bloqueios.push('fatura ja importada');
+    if (placas.some((p) => !p.encontrado && !p.ignorada && p.liquido !== 0)) bloqueios.push('placa sem cadastro (cadastre o veiculo ou marque Ignorar)');
+    if (placas.some((p) => !p.ignorada && p.liquido < 0)) bloqueios.push('placa com valor negativo');
+    if (conferencias.some((c) => !c.ok)) bloqueios.push('abas nao fecham com o resumo');
+
+    resultadoEl.querySelector('[data-ja-importada]').innerHTML = jaImportada
+      ? `<div class="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-danger">Esta fatura ja foi importada${jaImportada.conta_pagar_id ? ` (conta a pagar #${jaImportada.conta_pagar_id}, ${esc(jaImportada.conta_status || '')})` : ''}. Para importar de novo, exclua antes o lancamento rateado em Despesas Fixas.</div>`
+      : '';
+    resultadoEl.querySelector('[data-avisos]').innerHTML = avisos.length
+      ? `<div class="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-warning"><ul class="list-disc pl-5">${avisos.map((a) => `<li>${esc(a)}</li>`).join('')}</ul></div>`
+      : '';
+    resultadoEl.querySelector('[data-dica-ignorar]').classList.toggle('hidden', !placas.some((p) => !p.encontrado && p.liquido !== 0));
+    resultadoEl.querySelector('[data-tbody]').innerHTML = comValor.map((p) => linhaPlaca(p, totalLiquido)).join('') || '<tr><td class="table-td text-slate-400" colspan="8">Nenhuma placa com valor.</td></tr>';
+
+    const linhaTotal = (rotulo, valor, destaque) => `<tr><td class="table-td ${destaque ? 'font-bold' : 'text-slate-500'}" colspan="5">${rotulo}</td><td class="table-td text-right ${destaque ? 'font-bold' : 'text-slate-500'}">${valor}</td><td class="table-td" colspan="2"></td></tr>`;
+    resultadoEl.querySelector('[data-tfoot]').innerHTML = lancamento.ignoradas.length
+      ? linhaTotal('Soma das placas (total da fatura)', formatarMoeda(analise.soma_placas), false)
+        + linhaTotal('(-) Placas ignoradas', `- ${formatarMoeda(lancamento.valor_ignorado)}`, false)
+        + linhaTotal('Valor a lancar na conta a pagar', formatarMoeda(lancamento.valor_conta), true)
+      : linhaTotal('Soma das placas', formatarMoeda(analise.soma_placas), true);
+
+    resultadoEl.querySelector('[data-info-lancamento]').textContent = `Cria 1 conta a pagar de ${formatarMoeda(lancamento.valor_conta)} e ${lancamento.itens.length} lancamentos de despesa (um por centro de custo).`;
+    const bloqueiosEl = resultadoEl.querySelector('[data-bloqueios]');
+    bloqueiosEl.textContent = bloqueios.length ? `Importacao bloqueada: ${bloqueios.join('; ')}.` : '';
+    bloqueiosEl.classList.toggle('hidden', !bloqueios.length);
+    botao.disabled = Boolean(bloqueios.length);
+  }
+
+  // Refaz a analise na API com as placas ignoradas e a opcao de ratear a diferenca (um unico calculo, o mesmo da importacao).
+  async function reanalisar() {
+    const minha = ++sequencia;
+    erroForm.classList.add('hidden');
+    botao.disabled = true;
+    try {
+      const nova = await post('/admin/importacoes/sem-parar/analisar', {
+        abas,
+        placas_ignoradas: [...ignoradas],
+        ratear_diferenca: Boolean(form.ratear_diferenca && form.ratear_diferenca.checked),
+      });
+      if (minha !== sequencia) return;
+      analise = nova;
+    } catch (err) {
+      if (minha !== sequencia) return;
+      // volta ao estado anterior (o da ultima analise valida) e avisa
+      ignoradas = new Set(analise.placas.filter((p) => p.ignorada).map((p) => p.placa));
+      erroForm.textContent = err.message;
+      erroForm.classList.remove('hidden');
+    }
+    desenhar();
+  }
+
+  resultadoEl.querySelector('[data-tbody]').addEventListener('change', (ev) => {
+    const caixa = ev.target.closest('input[data-ignorar]');
+    if (!caixa) return;
+    if (caixa.checked) ignoradas.add(caixa.dataset.ignorar); else ignoradas.delete(caixa.dataset.ignorar);
+    reanalisar();
+  });
+  if (form.ratear_diferenca) form.ratear_diferenca.addEventListener('change', reanalisar);
+  desenhar();
+
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     erroForm.classList.add('hidden');
     const vencimento = parseDataBrParaIso(form.data_vencimento.value);
     if (!vencimento) { erroForm.textContent = 'Informe o vencimento (dd/mm/aaaa).'; erroForm.classList.remove('hidden'); return; }
     if (form.data.value && !parseDataBrParaIso(form.data.value)) { erroForm.textContent = 'Data da despesa invalida (dd/mm/aaaa).'; erroForm.classList.remove('hidden'); return; }
+    const { lancamento } = analise;
+    const textoIgnoradas = lancamento.ignoradas.length
+      ? ` Ficam de fora as placas ignoradas: ${lancamento.ignoradas.map((i) => `${esc(i.placa)} (${formatarMoeda(i.liquido)})`).join(', ')}.`
+      : '';
     const ok = await confirmarAcao({
       titulo: 'Importar fatura',
-      mensagem: `Lancar a fatura ${esc(fatura.numero)} de <strong>${formatarMoeda(fatura.total)}</strong> (vencimento ${formatarDataBr(vencimento)}) como uma conta a pagar, rateada entre ${comValor.filter((p) => p.liquido > 0).length} centros de custo?`,
+      mensagem: `Lancar a fatura ${esc(fatura.numero)} de <strong>${formatarMoeda(lancamento.valor_conta)}</strong> (vencimento ${formatarDataBr(vencimento)}) como uma conta a pagar, rateada entre ${lancamento.itens.length} centros de custo?${textoIgnoradas}`,
       textoConfirmar: 'Importar',
       perigo: false,
     });
     if (!ok) return;
-    const botao = form.querySelector('button[type="submit"]');
     botao.disabled = true;
     try {
       const r = await post('/admin/importacoes/sem-parar', {
@@ -200,12 +275,14 @@ async function mostrarAnalise(resultadoEl, abas, analise) {
         data_vencimento: vencimento,
         ratear_diferenca: Boolean(form.ratear_diferenca && form.ratear_diferenca.checked),
         ja_paga: form.ja_paga.checked,
+        placas_ignoradas: [...ignoradas],
       });
       mostrarToast(`Fatura ${fatura.numero} importada: ${formatarMoeda(r.valor_total)} rateados em ${r.despesas.length} centros de custo.`);
       resultadoEl.innerHTML = `
         <div class="card space-y-3 p-4">
           <p class="font-semibold text-success">Fatura importada com sucesso.</p>
           <p class="text-sm text-slate-600">Conta a pagar #${r.conta_pagar_id} de ${formatarMoeda(r.valor_total)}, rateada entre: ${r.rateio.map((x) => `${esc(x.centro_custo_nome)} (${formatarMoeda(x.valor)})`).join(', ')}.</p>
+          ${r.placas_ignoradas && r.placas_ignoradas.length ? `<p class="text-sm text-slate-500">Placas ignoradas (fora do lancamento): ${r.placas_ignoradas.map((i) => `${esc(i.placa)} (${formatarMoeda(i.liquido)})`).join(', ')}.</p>` : ''}
           <div class="flex gap-2">
             <a href="#/contas-pagar" class="btn-primary btn-sm">Ver em Contas a Pagar</a>
             <a href="#/despesas-fixas" class="btn-secondary btn-sm">Ver em Despesas Fixas</a>

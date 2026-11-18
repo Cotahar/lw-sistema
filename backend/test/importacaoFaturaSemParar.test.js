@@ -202,3 +202,112 @@ test('fatura de meses anteriores ja quitada fora do Frottex: importa baixada SEM
   const dre = await admin().get(`/api/dre/veiculo/${veiculos.TWJ8C06}?data_inicio=2026-08-01&data_fim=2026-08-31`);
   assert.equal(dre.body.custos.despesasFixas, 299325);
 });
+
+// ---- Placas ignoradas (veiculos de outra empresa do mesmo CNPJ, sem cadastro no Frottex) ----
+
+const { ratearDiferenca } = require('../src/utils/semPararFatura');
+const ENG1 = { tag: '9001', pedagio: 80000, vale_pedagio: 20000 }; // 1.000,00
+const ENG2 = { tag: '9002', pedagio: 30000, creditos: 50000 }; // -200,00 (credito maior que o debito)
+const SOMA_FROTA = 736045;
+
+test('placas ignoradas: analisar mostra o lancamento so com a frota e o quanto ficou de fora', async () => {
+  const abas = montarAbas({ numero: '2001', placas: { ...PLACAS, ENG1A23: ENG1 } });
+  const sem = await admin().post('/api/admin/importacoes/sem-parar/analisar').send({ abas });
+  assert.equal(sem.status, 200, JSON.stringify(sem.body));
+  assert.match(sem.body.avisos.join(' '), /ENG1A23/);
+  assert.equal(sem.body.placas.find((p) => p.placa === 'ENG1A23').ignorada, false);
+
+  const com = await admin().post('/api/admin/importacoes/sem-parar/analisar').send({ abas, placas_ignoradas: ['eng1a23'] });
+  assert.equal(com.status, 200, JSON.stringify(com.body));
+  assert.deepEqual(com.body.avisos, [], 'ignorada nao gera aviso de placa sem cadastro');
+  assert.equal(com.body.placas.find((p) => p.placa === 'ENG1A23').ignorada, true);
+  assert.equal(com.body.fatura.total, SOMA_FROTA + 100000);
+  assert.equal(com.body.soma_placas, SOMA_FROTA + 100000, 'o arquivo continua conferindo com o total da fatura');
+  assert.equal(com.body.lancamento.valor_conta, SOMA_FROTA);
+  assert.equal(com.body.lancamento.valor_ignorado, 100000);
+  assert.equal(com.body.lancamento.itens.length, 5);
+  assert.deepEqual(com.body.lancamento.ignoradas, [{ placa: 'ENG1A23', liquido: 100000 }]);
+});
+
+test('placas ignoradas: importar lanca conta a pagar e despesas SO da frota; a observacao guarda o que ficou de fora', async () => {
+  const abas = montarAbas({ numero: '2002', placas: { ...PLACAS, ENG1A23: ENG1 } });
+  const bloqueada = await admin().post('/api/admin/importacoes/sem-parar').send({ abas, categoria_id: categoriaId });
+  assert.equal(bloqueada.status, 400, 'sem ignorar continua bloqueando');
+
+  const r = await admin().post('/api/admin/importacoes/sem-parar').send({ abas, categoria_id: categoriaId, fornecedor_id: fornecedorId, placas_ignoradas: ['ENG1A23'] });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(r.body.valor_total, SOMA_FROTA);
+  assert.deepEqual(r.body.placas_ignoradas, [{ placa: 'ENG1A23', liquido: 100000 }]);
+
+  const conta = db.prepare("SELECT * FROM contas_pagar WHERE origem_tipo = 'DespesaFixa' AND origem_id = ?").get(r.body.rateio_id);
+  assert.equal(conta.valor, SOMA_FROTA, 'conta a pagar = total da fatura menos as placas ignoradas');
+  assert.match(conta.descricao, /RATEIO ENTRE 5 CENTROS DE CUSTO - FATURA SEM PARAR 2002/);
+  assert.match(conta.observacao, /ENG1A23/);
+  assert.match(conta.observacao, /TOTAL DA FATURA/);
+  const despesas = db.prepare('SELECT centro_custo_id, valor FROM despesas_fixas WHERE rateio_id = ?').all(r.body.rateio_id);
+  assert.equal(despesas.length, 5);
+  assert.equal(despesas.reduce((t, d) => t + d.valor, 0), SOMA_FROTA);
+  const porCentro = Object.fromEntries(despesas.map((d) => [d.centro_custo_id, d.valor]));
+  assert.equal(porCentro[centroDe('TWJ8C06')], 299325);
+  // a mesma fatura continua nao entrando duas vezes
+  assert.equal((await admin().post('/api/admin/importacoes/sem-parar').send({ abas, categoria_id: categoriaId, placas_ignoradas: ['ENG1A23'] })).status, 409);
+});
+
+test('placas ignoradas: so placa SEM cadastro e que esta na fatura pode ser ignorada; as demais continuam bloqueando', async () => {
+  const abas = montarAbas({ numero: '2003', placas: { ...PLACAS, ENG1A23: ENG1, ZZZ9Z99: { tag: '5', pedagio: 10000 } } });
+  const post = (placas_ignoradas) => admin().post('/api/admin/importacoes/sem-parar').send({ abas, categoria_id: categoriaId, placas_ignoradas });
+
+  const cadastrada = await post(['TPN8E74']);
+  assert.equal(cadastrada.status, 400, JSON.stringify(cadastrada.body));
+  assert.match(cadastrada.body.erro, /TPN8E74.*cadastrada.*nao pode ser ignorada/);
+  const forada = await post(['NAO1A11']);
+  assert.equal(forada.status, 400);
+  assert.match(forada.body.erro, /NAO1A11.*nao esta nesta fatura/);
+  const invalida = await post('ENG1A23');
+  assert.equal(invalida.status, 400);
+  assert.match(invalida.body.erro, /invalida/);
+
+  // ignorou so uma das duas sem cadastro: a outra ainda bloqueia e o erro cita SO ela
+  const parcial = await post(['ENG1A23']);
+  assert.equal(parcial.status, 400, JSON.stringify(parcial.body));
+  assert.match(parcial.body.erro, /ZZZ9Z99/);
+  assert.doesNotMatch(parcial.body.erro, /ENG1A23/);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM contas_pagar WHERE descricao LIKE '%FATURA SEM PARAR 2003%'").get().n, 0, 'nada foi gravado');
+
+  const todas = await post(['ENG1A23', 'ZZZ9Z99']);
+  assert.equal(todas.status, 201, JSON.stringify(todas.body));
+  assert.equal(todas.body.valor_total, SOMA_FROTA);
+});
+
+test('placas ignoradas: placa ignorada com valor liquido negativo nao bloqueia; sem ignorar, bloqueia', async () => {
+  const abas = montarAbas({ numero: '2004', placas: { ...PLACAS, ENG2A22: ENG2 } });
+  const sem = await admin().post('/api/admin/importacoes/sem-parar').send({ abas, categoria_id: categoriaId });
+  assert.equal(sem.status, 400, JSON.stringify(sem.body));
+  const com = await admin().post('/api/admin/importacoes/sem-parar').send({ abas, categoria_id: categoriaId, placas_ignoradas: ['ENG2A22'] });
+  assert.equal(com.status, 201, JSON.stringify(com.body));
+  assert.equal(com.body.valor_total, SOMA_FROTA);
+});
+
+test('placas ignoradas + ratear diferenca: a diferenca e dividida entre todas as placas e so depois as ignoradas saem', async () => {
+  // R$ 10,00 de juros fora das abas de placa, alem das placas da frota e da ENG1A23 (R$ 1.000,00)
+  const total = SOMA_FROTA + 100000 + 1000;
+  const abas = montarAbas({ numero: '2005', total, placas: { ...PLACAS, ENG1A23: ENG1 } });
+  const analise = await admin().post('/api/admin/importacoes/sem-parar/analisar').send({ abas, placas_ignoradas: ['ENG1A23'], ratear_diferenca: true });
+  assert.equal(analise.status, 200, JSON.stringify(analise.body));
+  const positivas = analise.body.placas.filter((p) => p.liquido > 0);
+  const esperado = ratearDiferenca(positivas.map((p) => p.liquido), 1000);
+  const esperadoFrota = positivas.map((p, i) => ({ placa: p.placa, valor: esperado[i], ignorada: p.ignorada })).filter((x) => !x.ignorada);
+  assert.deepEqual(analise.body.lancamento.itens.map((i) => ({ placa: i.placa, valor: i.valor, ignorada: i.ignorada })), esperadoFrota);
+
+  const sem = await admin().post('/api/admin/importacoes/sem-parar').send({ abas, categoria_id: categoriaId, placas_ignoradas: ['ENG1A23'] });
+  assert.equal(sem.status, 400, JSON.stringify(sem.body));
+  assert.match(sem.body.erro, /difere do total da fatura/);
+
+  const ok = await admin().post('/api/admin/importacoes/sem-parar').send({ abas, categoria_id: categoriaId, placas_ignoradas: ['ENG1A23'], ratear_diferenca: true });
+  assert.equal(ok.status, 201, JSON.stringify(ok.body));
+  const despesas = db.prepare('SELECT valor FROM despesas_fixas WHERE rateio_id = ?').all(ok.body.rateio_id);
+  const somaDespesas = despesas.reduce((t, d) => t + d.valor, 0);
+  assert.equal(somaDespesas, esperadoFrota.reduce((t, x) => t + x.valor, 0));
+  assert.equal(db.prepare("SELECT valor FROM contas_pagar WHERE origem_tipo = 'DespesaFixa' AND origem_id = ?").get(ok.body.rateio_id).valor, somaDespesas, 'conta = soma das partes da frota');
+  assert.ok(somaDespesas > SOMA_FROTA && somaDespesas < SOMA_FROTA + 1000, 'a frota recebe so a sua fatia dos juros');
+});
